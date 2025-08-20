@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Navbar from "./Navbar";
 
 const API = window.API_BASE;
 
@@ -24,23 +25,26 @@ export default function App(){
 
   if (!user) return <Onboarding onDone={saveUser} />;
   if (!club) return <ClubGate user={user} onJoin={saveClub} onCreate={saveClub} />;
-
+  
   return (
-    <div className="max-w-5xl mx-auto p-4 space-y-4">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Club Booking</h1>
-        <div className="text-sm text-gray-600 flex items-center gap-2">
-          <span>{user.name} ({user.role})</span>
-          <span className="mx-2">•</span>
-          <span>{club.name} (code {club.code})</span>
-          <Button onClick={()=>{localStorage.clear(); location.reload();}}>Reset</Button>
-        </div>
-      </header>
+    <div className="min-h-screen flex flex-col">
+      <Navbar />
+      <div className="max-w-5xl mx-auto p-4 space-y-4 flex-1">
+        <header className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold">Club Booking</h1>
+          <div className="text-sm text-gray-600 flex items-center gap-2">
+            <span>{user.name} ({user.role})</span>
+            <span className="mx-2">•</span>
+            <span>{club.name} (code {club.code})</span>
+            <Button onClick={()=>{localStorage.clear(); location.reload();}}>Reset</Button>
+          </div>
+        </header>
 
-      {user.role === 'manager' ?
-        <ManagerDashboard user={user} club={club} /> :
-        <UserBooking user={user} club={club} />
-      }
+        {user.role === 'manager' ?
+          <ManagerDashboard user={user} club={club} /> :
+          <UserBooking user={user} club={club} />
+        }
+      </div>
     </div>
   );
 }
@@ -74,21 +78,65 @@ function Onboarding({ onDone }){
 function ClubGate({ user, onJoin, onCreate }){
   const [code, setCode] = useState('');
   const [clubName, setClubName] = useState('');
+
   const join = async ()=> {
-    const res = await fetch(`${API}/clubs/join`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ code, userId:user.id })});
+    const res = await fetch(`${API}/clubs/join`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ code, userId:user.id })
+    });
     const data = await res.json();
     if (res.ok) onJoin(data.club);
     else alert(data.error || 'error');
   };
+
   const create = async ()=> {
-    const res = await fetch(`${API}/clubs`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: clubName, managerId: user.id })});
+    const res = await fetch(`${API}/clubs`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name: clubName, managerId: user.id })
+    });
     const data = await res.json();
     if (res.ok) onCreate(data);
     else alert(data.error || 'error');
   };
 
+  const goBack = () => {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      localStorage.removeItem('user');
+      location.reload();
+    }
+  };
+
+  const goHome = () => {
+    // if already joined/created a club → dashboard
+    if (user.clubId) {
+      location.reload(); // reload so app mounts at dashboard
+    } else {
+      alert("You need to join or create a club first!");
+    }
+  };
+
   return (
-    <div className="min-h-screen grid place-items-center p-4">
+    <div className="min-h-screen grid place-items-center p-4 relative">
+      {/* Buttons row */}
+      <div className="absolute top-4 left-4 flex gap-2">
+        <button
+          onClick={goBack}
+          className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300"
+        >
+          Back
+        </button>
+        <button
+          onClick={goHome}
+          className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300"
+        >
+          Home
+        </button>
+      </div>
+
       <div className="grid md:grid-cols-2 gap-6 w-full max-w-3xl">
         <Card>
           <div className="space-y-3">
@@ -97,6 +145,7 @@ function ClubGate({ user, onJoin, onCreate }){
             <Button onClick={join} disabled={!code}>Join</Button>
           </div>
         </Card>
+
         {user.role === 'manager' && (
           <Card>
             <div className="space-y-3">
@@ -110,6 +159,7 @@ function ClubGate({ user, onJoin, onCreate }){
     </div>
   );
 }
+
 
 function ManagerDashboard({ user, club }){
   const [sports, setSports] = useState([]);
