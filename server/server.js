@@ -141,6 +141,25 @@ app.post('/auth/login', async (req, res) => {
   }
 });
 
+// Return the latest club the user belongs to (if any)
+app.get('/users/:id/club', (req, res) => {
+  const userId = Number(req.params.id);
+  if (!userId) return res.status(400).json({ error: 'invalid user id' });
+
+  // if you have a 'joined_at' column, order by it; otherwise use rowid as recency
+  const row = db.prepare(`
+    SELECT c.*
+    FROM club_members m
+    JOIN clubs c ON c.id = m.club_id
+    WHERE m.user_id = ?
+    ORDER BY m.rowid DESC
+    LIMIT 1
+  `).get(userId);
+
+  if (!row) return res.status(404).json({ error: 'no club for user' });
+  res.json(row);
+});
+
 // Configure sport for a club
 app.post('/clubs/:clubId/sports', (req, res) => {
   const clubId = Number(req.params.clubId);
@@ -173,6 +192,35 @@ app.post('/clubs/:clubId/sports', (req, res) => {
 app.get('/clubs/:clubId/sports', (req, res) => {
   const clubId = Number(req.params.clubId);
   const rows = db.prepare('SELECT * FROM club_sports WHERE club_id=?').all(clubId);
+  res.json(rows);
+});
+
+// List all clubs a user belongs to
+app.get('/users/:id/clubs', (req, res) => {
+  const userId = Number(req.params.id);
+  if (!userId) return res.status(400).json({ error: 'invalid user id' });
+
+  // ⚠️ Use the correct membership table name for YOUR schema.
+  // If your schema used "club_members", keep the first query.
+  // If it used just "members", use the second one (uncomment it).
+
+  const rows = db.prepare(`
+    SELECT c.*
+    FROM club_members m
+    JOIN clubs c ON c.id = m.club_id
+    WHERE m.user_id = ?
+    ORDER BY c.name
+  `).all(userId);
+
+  // // If your table is named "members", use this instead:
+  // const rows = db.prepare(`
+  //   SELECT c.*
+  //   FROM members m
+  //   JOIN clubs c ON c.id = m.club_id
+  //   WHERE m.user_id = ?
+  //   ORDER BY c.name
+  // `).all(userId);
+
   res.json(rows);
 });
 
@@ -286,6 +334,41 @@ app.post('/cancel', (req, res) => {
   db.prepare('DELETE FROM bookings WHERE id=?').run(bookingId);
   res.json({ ok: true });
 });
+
+// 1) Latest/active club for a user (if any)
+app.get('/users/:id/club', (req, res) => {
+  const userId = Number(req.params.id);
+  if (!userId) return res.status(400).json({ error: 'invalid user id' });
+
+  const row = db.prepare(`
+    SELECT c.*
+    FROM club_members m
+    JOIN clubs c ON c.id = m.club_id
+    WHERE m.user_id = ?
+    ORDER BY m.rowid DESC
+    LIMIT 1
+  `).get(userId);
+
+  if (!row) return res.status(404).json({ error: 'no club for user' });
+  res.json(row);
+});
+
+// 2) All clubs a user belongs to
+app.get('/users/:id/clubs', (req, res) => {
+  const userId = Number(req.params.id);
+  if (!userId) return res.status(400).json({ error: 'invalid user id' });
+
+  const rows = db.prepare(`
+    SELECT c.*
+    FROM club_members m
+    JOIN clubs c ON c.id = m.club_id
+    WHERE m.user_id = ?
+    ORDER BY c.name
+  `).all(userId);
+
+  res.json(rows);
+});
+
 
 
 const PORT = process.env.PORT || 5000;

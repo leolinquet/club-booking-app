@@ -19,36 +19,86 @@ function Select(props) {
 export default function App(){
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user')||'null'));
   const [club, setClub] = useState(() => JSON.parse(localStorage.getItem('club')||'null'));
+  const [page, setPage] = useState('book'); // 'book' | 'home' | 'clubs'
 
   function saveUser(u){ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }
   function saveClub(c){ setClub(c); localStorage.setItem('club', JSON.stringify(c)); }
 
-  if (!user) return (<Auth onLogin={(u)=>{ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }} onRegister={(u)=>{ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }} />);
-  if (!club) return <ClubGate user={user} onJoin={saveClub} onCreate={saveClub} />;
-  
+  if (!user) {
+    const handleAuthed = async (u) => {
+      localStorage.setItem('user', JSON.stringify(u));
+      setUser(u);
+      try {
+        const r = await fetch(`${API}/users/${u.id}/club`);
+        if (r.ok) {
+          const c = await r.json();
+          localStorage.setItem('club', JSON.stringify(c));
+          setClub(c);
+          setPage('book');                 // land on Book
+        } else {
+          localStorage.removeItem('club');
+          setClub(null);
+        }
+      } catch {
+        setClub(null);
+      }
+    };
+    return <Auth onLogin={handleAuthed} onRegister={handleAuthed} />;
+  }
+
+  if (!club) return <ClubGate user={user} onJoin={(c)=>{saveClub(c); setPage('book');}} onCreate={(c)=>{saveClub(c); setPage('home');}} />;
+
+  // If a non-manager ever hits "home", bounce them back to Book
+  const effectivePage = user.role === 'manager' ? page : (page === 'home' ? 'book' : page);
+
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar />
+      <Navbar
+        isManager={user.role === 'manager'}
+        onBook={() => setPage('book')}
+        onHome={() => setPage('home')}
+        onClubs={() => setPage('clubs')}
+      />
       <div className="max-w-5xl mx-auto p-4 space-y-4 flex-1">
-        <header className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Club Booking</h1>
-          <div className="text-sm text-gray-600 flex items-center gap-2">
-            <span>{user.name} ({user.role})</span>
-            <span className="mx-2">•</span>
-            <span>{club.name} (code {club.code})</span>
-            <Button onClick={()=>{localStorage.clear(); location.reload();}}>Reset</Button>
-          </div>
-        </header>
-
-        {user.role === 'manager' ?
-          <ManagerDashboard user={user} club={club} /> :
-          <UserBooking user={user} club={club} />
-        }
+        {effectivePage === 'clubs' ? (
+          <ClubsPage
+            user={user}
+            club={club}
+            onSetActive={(c) => { saveClub(c); setPage('book'); }}
+          />
+        ) : effectivePage === 'home' ? (
+          <>
+            <header className="flex items-center justify-between">
+              <h1 className="text-2xl font-semibold">Manager Home</h1>
+              <div className="text-sm text-gray-600 flex items-center gap-2">
+                <span>{user.name} ({user.role})</span>
+                <span className="mx-2">•</span>
+                <span>{club.name} (code {club.code})</span>
+                <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
+              </div>
+            </header>
+            <ManagerDashboard user={user} club={club} />
+          </>
+        ) : (
+          <>
+            <header className="flex items-center justify-between">
+              <h1 className="text-2xl font-semibold">Book</h1>
+              <div className="text-sm text-gray-600 flex items-center gap-2">
+                <span>{user.name} ({user.role})</span>
+                <span className="mx-2">•</span>
+                <span>{club.name} (code {club.code})</span>
+                <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
+              </div>
+            </header>
+            <UserBooking user={user} club={club} />
+          </>
+        )}
       </div>
     </div>
   );
 }
 
+/* -------------------- Auth (Login / Register) -------------------- */
 function Auth({ onLogin, onRegister }) {
   const [mode, setMode] = useState('login'); // 'login' | 'register'
   const [name, setName] = useState('');
@@ -131,7 +181,7 @@ function Auth({ onLogin, onRegister }) {
   );
 }
 
-
+/* -------------------- ClubGate (Join/Create) -------------------- */
 function ClubGate({ user, onJoin, onCreate }){
   const [code, setCode] = useState('');
   const [clubName, setClubName] = useState('');
@@ -168,9 +218,8 @@ function ClubGate({ user, onJoin, onCreate }){
   };
 
   const goHome = () => {
-    // if already joined/created a club → dashboard
     if (user.clubId) {
-      location.reload(); // reload so app mounts at dashboard
+      location.reload();
     } else {
       alert("You need to join or create a club first!");
     }
@@ -178,20 +227,9 @@ function ClubGate({ user, onJoin, onCreate }){
 
   return (
     <div className="min-h-screen grid place-items-center p-4 relative">
-      {/* Buttons row */}
       <div className="absolute top-4 left-4 flex gap-2">
-        <button
-          onClick={goBack}
-          className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300"
-        >
-          Back
-        </button>
-        <button
-          onClick={goHome}
-          className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300"
-        >
-          Home
-        </button>
+        <button onClick={goBack} className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300">Back</button>
+        <button onClick={goHome} className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300">Home</button>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6 w-full max-w-3xl">
@@ -217,7 +255,7 @@ function ClubGate({ user, onJoin, onCreate }){
   );
 }
 
-
+/* -------------------- Manager Home (Dashboard) -------------------- */
 function ManagerDashboard({ user, club }){
   const [sports, setSports] = useState([]);
   const [form, setForm] = useState({ sport:'tennis', courts:4, openHour:8, closeHour:22, slotMinutes:60 });
@@ -242,22 +280,46 @@ function ManagerDashboard({ user, club }){
     <div className="space-y-4">
       <Card>
         <h3 className="text-lg font-medium mb-3">Add a sport</h3>
+
+        {/* Field labels above every input as requested */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          <Select value={form.sport} onChange={e=>setForm({...form, sport:e.target.value})}>
-            <option value="tennis">Tennis</option>
-            <option value="basketball">Basketball</option>
-            <option value="football">Football</option>
-          </Select>
-          <TextInput type="number" placeholder="Courts" value={form.courts} onChange={e=>setForm({...form, courts:Number(e.target.value)})} />
-          <TextInput type="number" placeholder="Open hour" value={form.openHour} onChange={e=>setForm({...form, openHour:Number(e.target.value)})} />
-          <TextInput type="number" placeholder="Close hour" value={form.closeHour} onChange={e=>setForm({...form, closeHour:Number(e.target.value)})} />
-          <Select value={form.slotMinutes} onChange={e=>setForm({...form, slotMinutes:Number(e.target.value)})}>
-            <option value={30}>30</option>
-            <option value={60}>60</option>
-            <option value={90}>90</option>
-            <option value={120}>120</option>
-          </Select>
-          <Button onClick={save}>Save</Button>
+          <div>
+            <div className="text-xs text-gray-600 mb-1">Sport</div>
+            <Select value={form.sport} onChange={e=>setForm({...form, sport:e.target.value})}>
+              <option value="tennis">Tennis</option>
+              <option value="basketball">Basketball</option>
+              <option value="football">Football</option>
+            </Select>
+          </div>
+
+          <div>
+            <div className="text-xs text-gray-600 mb-1">Courts / Fields</div>
+            <TextInput type="number" value={form.courts} onChange={e=>setForm({...form, courts:Number(e.target.value)})} />
+          </div>
+
+          <div>
+            <div className="text-xs text-gray-600 mb-1">Open time (0–23)</div>
+            <TextInput type="number" value={form.openHour} onChange={e=>setForm({...form, openHour:Number(e.target.value)})} />
+          </div>
+
+          <div>
+            <div className="text-xs text-gray-600 mb-1">Closing time (1–24)</div>
+            <TextInput type="number" value={form.closeHour} onChange={e=>setForm({...form, closeHour:Number(e.target.value)})} />
+          </div>
+
+          <div>
+            <div className="text-xs text-gray-600 mb-1">Time slots (minutes)</div>
+            <Select value={form.slotMinutes} onChange={e=>setForm({...form, slotMinutes:Number(e.target.value)})}>
+              <option value={30}>30</option>
+              <option value={60}>60</option>
+              <option value={90}>90</option>
+              <option value={120}>120</option>
+            </Select>
+          </div>
+
+          <div className="flex items-end">
+            <Button onClick={save}>Save</Button>
+          </div>
         </div>
       </Card>
 
@@ -279,13 +341,13 @@ function ManagerDashboard({ user, club }){
   );
 }
 
+/* -------------------- Book (for both; managers have extra powers) -------------------- */
 function UserBooking({ user, club }){
   const [sports, setSports] = useState([]);
   const [sport, setSport] = useState('');
   const [date, setDate] = useState(()=> new Date().toISOString().slice(0,10));
   const [grid, setGrid] = useState(null);
 
-  // NEW: modal + pending slot
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(null); // { courtIndex, time }
 
@@ -298,7 +360,6 @@ function UserBooking({ user, club }){
     })();
   }, [club.id]);
 
-  // NOTE: pass userId so backend can mark "owned"
   useEffect(()=>{
     if (!sport || !date) return;
     (async ()=>{
@@ -309,21 +370,22 @@ function UserBooking({ user, club }){
     })();
   }, [sport, date, club.id, user.id]);
 
-  // Do I already have a booking?
-  const hasOwnBooking = grid?.slots?.some(row => row.courts.some(c => c.owned));
+  // Managers can book multiple & can cancel anyone's booking
+  const isManager = user.role === 'manager';
+  const hasOwnBooking = isManager ? false : grid?.slots?.some(row => row.courts.some(c => c.owned));
 
-  // Open/close confirm
   const openConfirm = (courtIndex, time) => {
-    if (hasOwnBooking) return;
+    if (hasOwnBooking && !isManager) return;
     setPending({ courtIndex, time });
     setConfirmOpen(true);
   };
-  const closeConfirm = () => {
-    setConfirmOpen(false);
-    setPending(null);
+  const closeConfirm = () => { setConfirmOpen(false); setPending(null); };
+
+  const refresh = async () => {
+    const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`);
+    setGrid(await r.json());
   };
 
-  // Confirm booking
   const confirmBook = async () => {
     if (!pending) return;
     const { courtIndex, time } = pending;
@@ -334,13 +396,11 @@ function UserBooking({ user, club }){
     const data = await res.json().catch(()=>null);
     if (!res.ok) alert((data && data.error) || 'Booking failed');
     closeConfirm();
-    const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`);
-    setGrid(await r.json());
+    await refresh();
   };
 
-  // Cancel my booking
-  const cancelOwn = async (bookingId) => {
-    const yes = confirm('Cancel your reservation?');
+  const cancelBooking = async (bookingId) => {
+    const yes = confirm('Cancel this reservation?');
     if (!yes) return;
     const res = await fetch(`${API}/cancel`, {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -348,8 +408,7 @@ function UserBooking({ user, club }){
     });
     const data = await res.json().catch(()=>null);
     if (!res.ok) alert((data && data.error) || 'Cancel failed');
-    const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`);
-    setGrid(await r.json());
+    await refresh();
   };
 
   return (
@@ -366,7 +425,6 @@ function UserBooking({ user, club }){
             <div className="text-sm text-gray-600">Date</div>
             <TextInput type="date" value={date} onChange={e=>setDate(e.target.value)} />
           </div>
-          {/* Legend updated to include "Yours" */}
           <div className="flex items-center gap-3">
             <span className="inline-block w-4 h-4 rounded bg-green-500" /> <span className="text-sm">Available</span>
             <span className="inline-block w-4 h-4 rounded bg-orange-500" /> <span className="text-sm">Yours</span>
@@ -394,21 +452,30 @@ function UserBooking({ user, club }){
                     {row.courts.map(cell => (
                       <td key={cell.courtIndex} className="p-1">
                         {cell.owned ? (
-                          // ORANGE: your booking → click to cancel
+                          // ORANGE: your booking → cancel
                           <button
-                            onClick={() => cancelOwn(cell.bookingId)}
+                            onClick={() => cancelBooking(cell.bookingId)}
                             className="h-10 w-full rounded bg-orange-500 hover:opacity-90"
                             title="Click to cancel your reservation"
                           />
                         ) : cell.booked ? (
                           // RED: someone else booked
-                          <div className="h-10 rounded bg-red-500" />
+                          isManager ? (
+                            // Managers can cancel any booking
+                            <button
+                              onClick={() => cancelBooking(cell.bookingId)}
+                              className="h-10 w-full rounded bg-red-500 hover:opacity-90"
+                              title="Manager: click to cancel this booking"
+                            />
+                          ) : (
+                            <div className="h-10 rounded bg-red-500" />
+                          )
                         ) : (
                           // GREEN: available
                           <button
                             onClick={() => openConfirm(cell.courtIndex, row.time)}
                             className={`h-10 w-full rounded bg-green-500 hover:opacity-90 ${hasOwnBooking ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            disabled={hasOwnBooking}
+                            disabled={hasOwnBooking && !isManager}
                           />
                         )}
                       </td>
@@ -423,7 +490,6 @@ function UserBooking({ user, club }){
 
       {!grid && <Card><div className="text-sm text-gray-600">Select a sport and date to see slots.</div></Card>}
 
-      {/* Confirm modal */}
       {confirmOpen && pending && (
         <div className="fixed inset-0 bg-black/40 grid place-items-center z-50">
           <div className="bg-white rounded-xl shadow p-5 w-[320px]">
@@ -442,3 +508,109 @@ function UserBooking({ user, club }){
   );
 }
 
+/* -------------------- Clubs Page -------------------- */
+function ClubsPage({ user, club, onSetActive }) {
+  const [clubs, setClubs] = useState([]);
+  const [joinCode, setJoinCode] = useState('');
+  const [newName, setNewName] = useState('');
+  const [error, setError] = useState('');
+  const isManager = user.role === 'manager';
+
+  const load = async () => {
+    setError('');
+    try {
+      const r = await fetch(`${API}/users/${user.id}/clubs`);
+      if (!r.ok) {
+        const d = await r.json().catch(()=>null);
+        throw new Error((d && d.error) || `Failed to load clubs (${r.status})`);
+      }
+      const data = await r.json();
+      setClubs(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setError(String(e.message || e));
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const join = async () => {
+    try {
+      const res = await fetch(`${API}/clubs/join`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ code: joinCode.trim(), userId: user.id })
+      });
+      const data = await res.json().catch(()=>null);
+      if (!res.ok) throw new Error((data && data.error) || 'Join failed');
+      setJoinCode('');
+      await load();
+      onSetActive(data.club);
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const create = async () => {
+    try {
+      const res = await fetch(`${API}/clubs`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ name: newName.trim(), managerId: user.id })
+      });
+      const data = await res.json().catch(()=>null);
+      if (!res.ok) throw new Error((data && data.error) || 'Create failed');
+      setNewName('');
+      await load();
+      onSetActive(data);
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-xl font-semibold">Clubs</h2>
+
+      {error && <Card><div className="text-red-600 text-sm">{error}</div></Card>}
+
+      <Card>
+        <h3 className="text-lg font-medium mb-2">Your clubs</h3>
+        <div className="grid gap-2">
+          {clubs.map(c => (
+            <div key={c.id} className="flex items-center justify-between border rounded-lg p-3">
+              <div className="text-sm">
+                <div className="font-medium">{c.name}</div>
+                <div className="text-gray-600 text-xs">code {c.code}</div>
+              </div>
+              {club && club.id === c.id ? (
+                <span className="text-xs px-2 py-1 rounded bg-gray-200">Active</span>
+              ) : (
+                <Button onClick={() => onSetActive(c)}>Set active</Button>
+              )}
+            </div>
+          ))}
+          {clubs.length === 0 && !error && (
+            <div className="text-gray-500 text-sm">You’re not in any clubs yet.</div>
+          )}
+        </div>
+      </Card>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        <Card>
+          <h3 className="text-lg font-medium mb-3">Join another club</h3>
+          <div className="flex gap-2">
+            <TextInput placeholder="Enter club code" value={joinCode} onChange={e=>setJoinCode(e.target.value)} />
+            <Button onClick={join} disabled={!joinCode.trim()}>Join</Button>
+          </div>
+        </Card>
+
+        <Card>
+          <h3 className="text-lg font-medium mb-3">{isManager ? 'Create a new club' : 'Request a new club (manager only)'}</h3>
+          <div className="flex gap-2">
+            <TextInput placeholder="Club name" value={newName} onChange={e=>setNewName(e.target.value)} disabled={!isManager}/>
+            <Button onClick={create} disabled={!newName.trim() || !isManager}>Create</Button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}

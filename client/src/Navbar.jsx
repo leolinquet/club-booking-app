@@ -1,12 +1,7 @@
-import React from 'react';
+import React from "react";
 
-function Navbar() {
+function Navbar({ onBook, onHome, onClubs, isManager }) {
   const goBack = () => window.history.back();
-
-  const goHome = () => {
-    // simple “home”: reload current app state
-    location.reload();
-  };
 
   return (
     <div className="w-full flex items-center justify-between bg-gray-100 px-4 py-2 shadow">
@@ -14,8 +9,16 @@ function Navbar() {
         <button onClick={goBack} className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300">
           Back
         </button>
-        <button onClick={goHome} className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300">
-          Home
+        <button onClick={onBook} className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300">
+          Book
+        </button>
+        {isManager && (
+          <button onClick={onHome} className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300">
+            Home
+          </button>
+        )}
+        <button onClick={onClubs} className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300">
+          Clubs
         </button>
       </div>
       <h1 className="text-lg font-semibold">Club Booking</h1>
