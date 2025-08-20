@@ -2,8 +2,9 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  role TEXT CHECK(role IN ('user','manager')) NOT NULL
+  name TEXT NOT NULL UNIQUE,
+  role TEXT CHECK(role IN ('user','manager')) NOT NULL,
+  password_hash TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS clubs (

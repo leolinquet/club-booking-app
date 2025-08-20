@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import Database from 'better-sqlite3';
 import { customAlphabet } from 'nanoid';
+import bcrypt from 'bcryptjs';
+
 
 const nanoid = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 6);
 const db = new Database('./data.db');
@@ -101,6 +103,42 @@ app.post('/clubs/join', (req, res) => {
   if (!club) return res.status(404).json({ error: 'club not found' });
   db.prepare('INSERT OR IGNORE INTO club_members (user_id, club_id) VALUES (?, ?)').run(userId, club.id);
   res.json({ ok: true, club });
+});
+
+// Register
+app.post('/auth/register', async (req, res) => {
+  try {
+    const { name, role, password } = req.body || {};
+    if (!name || !role || !password) return res.status(400).json({ error: 'name, role, password required' });
+    if (!['user','manager'].includes(role)) return res.status(400).json({ error: 'role must be user|manager' });
+    const existing = db.prepare('SELECT id FROM users WHERE name = ?').get(name);
+    if (existing) return res.status(409).json({ error: 'username already taken' });
+
+    const password_hash = await bcrypt.hash(password, 10);
+    const info = db.prepare('INSERT INTO users (name, role, password_hash) VALUES (?, ?, ?)').run(name, role, password_hash);
+    const user = db.prepare('SELECT id, name, role FROM users WHERE id = ?').get(info.lastInsertRowid);
+    res.json(user);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// Login
+app.post('/auth/login', async (req, res) => {
+  try {
+    const { name, password } = req.body || {};
+    if (!name || !password) return res.status(400).json({ error: 'name and password required' });
+    const row = db.prepare('SELECT * FROM users WHERE name = ?').get(name);
+    if (!row) return res.status(401).json({ error: 'invalid credentials' });
+    const ok = await bcrypt.compare(password, row.password_hash);
+    if (!ok) return res.status(401).json({ error: 'invalid credentials' });
+    const user = { id: row.id, name: row.name, role: row.role };
+    res.json(user);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
 });
 
 // Configure sport for a club

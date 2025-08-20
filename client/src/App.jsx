@@ -23,7 +23,7 @@ export default function App(){
   function saveUser(u){ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }
   function saveClub(c){ setClub(c); localStorage.setItem('club', JSON.stringify(c)); }
 
-  if (!user) return <Onboarding onDone={saveUser} />;
+  if (!user) return (<Auth onLogin={(u)=>{ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }} onRegister={(u)=>{ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }} />);
   if (!club) return <ClubGate user={user} onJoin={saveClub} onCreate={saveClub} />;
   
   return (
@@ -49,31 +49,88 @@ export default function App(){
   );
 }
 
-function Onboarding({ onDone }){
+function Auth({ onLogin, onRegister }) {
+  const [mode, setMode] = useState('login'); // 'login' | 'register'
   const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
   const [role, setRole] = useState('user');
-  const create = async () => {
-    const res = await fetch(`${API}/users`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, role })});
-    const data = await res.json();
-    if (res.ok) onDone(data);
-    else alert(data.error || 'error');
+  const [busy, setBusy] = useState(false);
+
+  const login = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`${API}/auth/login`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ name, password })
+      });
+      const data = await res.json().catch(()=>null);
+      if (!res.ok) return alert((data && data.error) || 'Login failed');
+      onLogin(data);
+    } finally { setBusy(false); }
   };
+
+  const register = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`${API}/auth/register`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ name, role, password })
+      });
+      const data = await res.json().catch(()=>null);
+      if (!res.ok) return alert((data && data.error) || 'Register failed');
+      onRegister(data);
+    } finally { setBusy(false); }
+  };
+
   return (
     <div className="min-h-screen grid place-items-center p-4">
       <Card>
-        <div className="space-y-4 w-80">
-          <h2 className="text-xl font-medium">Create your profile</h2>
-          <TextInput placeholder="Your name" value={name} onChange={e=>setName(e.target.value)} />
-          <Select value={role} onChange={e=>setRole(e.target.value)}>
-            <option value="user">User</option>
-            <option value="manager">Manager</option>
-          </Select>
-          <Button onClick={create} disabled={!name}>Continue</Button>
+        <div className="space-y-4 w-96">
+          <h2 className="text-xl font-medium">{mode === 'login' ? 'Log in' : 'Create account'}</h2>
+
+          <div className="space-y-2">
+            <div className="text-sm text-gray-600">Username</div>
+            <TextInput placeholder="Your username" value={name} onChange={e=>setName(e.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-sm text-gray-600">Password</div>
+            <TextInput type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} />
+          </div>
+
+          {mode === 'register' && (
+            <div className="space-y-2">
+              <div className="text-sm text-gray-600">Role</div>
+              <Select value={role} onChange={e=>setRole(e.target.value)}>
+                <option value="user">User</option>
+                <option value="manager">Manager</option>
+              </Select>
+            </div>
+          )}
+
+          {mode === 'login' ? (
+            <>
+              <Button onClick={login} disabled={!name || !password || busy}>Log in</Button>
+              <div className="text-sm text-gray-600">
+                Don’t have an account?{' '}
+                <button className="underline" onClick={()=>setMode('register')}>Create one</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Button onClick={register} disabled={!name || !password || busy}>Create account</Button>
+              <div className="text-sm text-gray-600">
+                Already have an account?{' '}
+                <button className="underline" onClick={()=>setMode('login')}>Log in</button>
+              </div>
+            </>
+          )}
         </div>
       </Card>
     </div>
   );
 }
+
 
 function ClubGate({ user, onJoin, onCreate }){
   const [code, setCode] = useState('');
