@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS club_sports (
   FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE
 );
 
-
 CREATE TABLE IF NOT EXISTS bookings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   club_id INTEGER NOT NULL,
@@ -48,4 +47,52 @@ CREATE TABLE IF NOT EXISTS bookings (
   UNIQUE(club_id, sport, court_index, date, time),
   FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE,
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- who can be ranked (use user_id, but allow guest name too)
+CREATE TABLE IF NOT EXISTS players (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL,
+  user_id INTEGER,              -- nullable for guests
+  display_name TEXT NOT NULL,   -- cached name
+  UNIQUE (club_id, user_id),
+  FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE,
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- standings snapshot (recomputed from match_results, or updated incrementally)
+CREATE TABLE IF NOT EXISTS standings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL,
+  sport TEXT NOT NULL,
+  player_id INTEGER NOT NULL,
+  season TEXT DEFAULT 'default',
+  played INTEGER NOT NULL DEFAULT 0,
+  won INTEGER NOT NULL DEFAULT 0,
+  drawn INTEGER NOT NULL DEFAULT 0,
+  lost INTEGER NOT NULL DEFAULT 0,
+  gf INTEGER NOT NULL DEFAULT 0,   -- goals/games for
+  ga INTEGER NOT NULL DEFAULT 0,   -- against
+  points INTEGER NOT NULL DEFAULT 0,
+  rating INTEGER,                   -- optional Elo
+  UNIQUE (club_id, sport, season, player_id),
+  FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE,
+  FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
+);
+
+-- results that drive standings
+CREATE TABLE IF NOT EXISTS match_results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL,
+  sport TEXT NOT NULL,
+  date TEXT NOT NULL,
+  p1_id INTEGER NOT NULL,
+  p2_id INTEGER NOT NULL,
+  p1_score INTEGER NOT NULL,
+  p2_score INTEGER NOT NULL,
+  tournament_id INTEGER,        -- nullable if friendly/ladder
+  UNIQUE (club_id, sport, date, p1_id, p2_id, tournament_id),
+  FOREIGN KEY(club_id) REFERENCES clubs(id),
+  FOREIGN KEY(p1_id) REFERENCES players(id),
+  FOREIGN KEY(p2_id) REFERENCES players(id)
 );
