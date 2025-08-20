@@ -83,7 +83,7 @@ app.post('/users', (req, res) => {
 app.post('/clubs', (req, res) => {
   const { name, managerId } = req.body || {};
   if (!name || !managerId) return res.status(400).json({ error: 'name and managerId required' });
-  const manager = db.prepare('SELECT * FROM users WHERE id = ? AND role = "manager"').get(managerId);
+  const manager = db.prepare('SELECT * FROM users WHERE id = ? AND role = ?').get(managerId, 'manager');
   if (!manager) return res.status(403).json({ error: 'managerId invalid or not a manager' });
   const code = nanoid();
   const info = db.prepare('INSERT INTO clubs (name, code, manager_id) VALUES (?, ?, ?)').run(name, code, managerId);
