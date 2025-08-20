@@ -96,3 +96,41 @@ CREATE TABLE IF NOT EXISTS match_results (
   FOREIGN KEY(p1_id) REFERENCES players(id),
   FOREIGN KEY(p2_id) REFERENCES players(id)
 );
+CREATE TABLE IF NOT EXISTS tournaments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  club_id INTEGER NOT NULL,
+  sport TEXT NOT NULL,
+  name TEXT NOT NULL,
+  format TEXT NOT NULL CHECK(format IN ('single_elim','round_robin')),
+  start_date TEXT,
+  end_date TEXT,
+  block_courts INTEGER NOT NULL DEFAULT 0, -- 1 = block during matches
+  UNIQUE (club_id, sport, name),
+  FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tournament_players (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tournament_id INTEGER NOT NULL,
+  player_id INTEGER NOT NULL,
+  UNIQUE (tournament_id, player_id),
+  FOREIGN KEY(tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
+  FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS matches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tournament_id INTEGER NOT NULL,
+  round INTEGER NOT NULL DEFAULT 1,
+  group_name TEXT,                    -- for round-robin pools
+  scheduled_date TEXT,                -- YYYY-MM-DD
+  time TEXT,                          -- HH:mm
+  court_index INTEGER,                -- nullable until assigned
+  p1_id INTEGER NOT NULL,
+  p2_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','completed','walkover')),
+  p1_score INTEGER,                   -- nullable until completed
+  p2_score INTEGER,
+  winner_id INTEGER,                  -- nullable until completed
+  FOREIGN KEY(tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
+);
