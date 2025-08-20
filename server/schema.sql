@@ -26,15 +26,15 @@ CREATE TABLE IF NOT EXISTS club_members (
 CREATE TABLE IF NOT EXISTS club_sports (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   club_id INTEGER NOT NULL,
-  sport TEXT CHECK(sport IN ('tennis','basketball','football')) NOT NULL,
+  sport TEXT NOT NULL,                                        -- was CHECK(...list)
   courts INTEGER NOT NULL CHECK(courts > 0),
   open_hour INTEGER NOT NULL CHECK(open_hour BETWEEN 0 AND 23),
   close_hour INTEGER NOT NULL CHECK(close_hour BETWEEN 1 AND 24),
-  sport TEXT NOT NULL,
-  slot_minutes INTEGER NOT NULL CHECK(slot_minutes BETWEEN 5 AND 240),
+  slot_minutes INTEGER NOT NULL CHECK(slot_minutes BETWEEN 5 AND 240),  -- was IN (30,60,90,120)
   UNIQUE (club_id, sport),
   FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE
 );
+
 
 CREATE TABLE IF NOT EXISTS bookings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

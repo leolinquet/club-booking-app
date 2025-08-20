@@ -161,32 +161,40 @@ app.get('/users/:id/club', (req, res) => {
 });
 
 // Configure sport for a club
+// CREATE a sport config (allow any sport name + custom minutes)
 app.post('/clubs/:clubId/sports', (req, res) => {
   const clubId = Number(req.params.clubId);
   const { sport, courts, openHour, closeHour, slotMinutes, managerId } = req.body || {};
-  if (!sport || !['tennis','basketball','football'].includes(sport)) {
-    return res.status(400).json({ error: 'sport must be tennis|basketball|football' });
-  }
-  if (![30,60,90,120].includes(Number(slotMinutes))) {
-    return res.status(400).json({ error: 'slotMinutes must be 30,60,90,120' });
-  }
-  const club = db.prepare('SELECT * FROM clubs WHERE id = ?').get(clubId);
-  if (!club) return res.status(404).json({ error: 'club not found' });
-  if (club.manager_id !== Number(managerId)) return res.status(403).json({ error: 'only manager can configure' });
 
-  const upsert = db.prepare(`
-    INSERT INTO club_sports (club_id, sport, courts, open_hour, close_hour, slot_minutes)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(club_id, sport) DO UPDATE SET
-      courts=excluded.courts,
-      open_hour=excluded.open_hour,
-      close_hour=excluded.close_hour,
-      slot_minutes=excluded.slot_minutes
-  `);
-  upsert.run(clubId, sport, Number(courts), Number(openHour), Number(closeHour), Number(slotMinutes));
-  const row = db.prepare('SELECT * FROM club_sports WHERE club_id=? AND sport=?').get(clubId, sport);
-  res.json(row);
+  if (!managerId) return res.status(400).json({ error: 'managerId required' });
+  if (!sport || String(sport).trim().length === 0) {
+    return res.status(400).json({ error: 'sport is required' });
+  }
+  const minutes = Number(slotMinutes);
+  if (!Number.isFinite(minutes) || minutes < 5 || minutes > 240) {
+    return res.status(400).json({ error: 'slotMinutes must be between 5 and 240' });
+  }
+
+  // Optional: ensure the caller is the club manager
+  const club = db.prepare('SELECT manager_id FROM clubs WHERE id = ?').get(clubId);
+  if (!club) return res.status(404).json({ error: 'club not found' });
+  if (club.manager_id !== Number(managerId)) return res.status(403).json({ error: 'forbidden' });
+
+  try {
+    const info = db.prepare(`
+      INSERT INTO club_sports (club_id, sport, courts, open_hour, close_hour, slot_minutes)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(clubId, String(sport).trim(), Number(courts), Number(openHour), Number(closeHour), minutes);
+
+    const created = db.prepare('SELECT * FROM club_sports WHERE id = ?').get(info.lastInsertRowid);
+    res.json(created);
+  } catch (e) {
+    // likely UNIQUE (club_id, sport) violation
+    console.error(e);
+    res.status(400).json({ error: 'could not create sport (maybe already exists for this club)' });
+  }
 });
+
 
 // List sports configured for a club
 app.get('/clubs/:clubId/sports', (req, res) => {
