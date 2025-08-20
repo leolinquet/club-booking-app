@@ -228,6 +228,10 @@ function UserBooking({ user, club }){
   const [date, setDate] = useState(()=> new Date().toISOString().slice(0,10));
   const [grid, setGrid] = useState(null);
 
+  // NEW: modal + pending slot
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pending, setPending] = useState(null); // { courtIndex, time }
+
   useEffect(()=>{
     (async ()=>{
       const r = await fetch(`${API}/clubs/${club.id}/sports`);
@@ -237,28 +241,58 @@ function UserBooking({ user, club }){
     })();
   }, [club.id]);
 
+  // NOTE: pass userId so backend can mark "owned"
   useEffect(()=>{
     if (!sport || !date) return;
     (async ()=>{
-      const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}`);
+      const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`);
       const d = await r.json();
       if (r.ok) setGrid(d);
       else { setGrid(null); alert(d.error || 'error'); }
     })();
-  }, [sport, date, club.id]);
+  }, [sport, date, club.id, user.id]);
 
-  const book = async (courtIndex, time) => {
+  // Do I already have a booking?
+  const hasOwnBooking = grid?.slots?.some(row => row.courts.some(c => c.owned));
+
+  // Open/close confirm
+  const openConfirm = (courtIndex, time) => {
+    if (hasOwnBooking) return;
+    setPending({ courtIndex, time });
+    setConfirmOpen(true);
+  };
+  const closeConfirm = () => {
+    setConfirmOpen(false);
+    setPending(null);
+  };
+
+  // Confirm booking
+  const confirmBook = async () => {
+    if (!pending) return;
+    const { courtIndex, time } = pending;
     const res = await fetch(`${API}/book`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ clubId: club.id, sport, courtIndex, date, time, userId: user.id })
     });
-    const data = await res.json();
-    if (res.ok) {
-      const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}`);
-      setGrid(await r.json());
-    } else {
-      alert(data.error || 'error');
-    }
+    const data = await res.json().catch(()=>null);
+    if (!res.ok) alert((data && data.error) || 'Booking failed');
+    closeConfirm();
+    const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`);
+    setGrid(await r.json());
+  };
+
+  // Cancel my booking
+  const cancelOwn = async (bookingId) => {
+    const yes = confirm('Cancel your reservation?');
+    if (!yes) return;
+    const res = await fetch(`${API}/cancel`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ bookingId, userId: user.id })
+    });
+    const data = await res.json().catch(()=>null);
+    if (!res.ok) alert((data && data.error) || 'Cancel failed');
+    const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`);
+    setGrid(await r.json());
   };
 
   return (
@@ -275,8 +309,10 @@ function UserBooking({ user, club }){
             <div className="text-sm text-gray-600">Date</div>
             <TextInput type="date" value={date} onChange={e=>setDate(e.target.value)} />
           </div>
+          {/* Legend updated to include "Yours" */}
           <div className="flex items-center gap-3">
             <span className="inline-block w-4 h-4 rounded bg-green-500" /> <span className="text-sm">Available</span>
+            <span className="inline-block w-4 h-4 rounded bg-orange-500" /> <span className="text-sm">Yours</span>
             <span className="inline-block w-4 h-4 rounded bg-red-500" /> <span className="text-sm">Unavailable</span>
           </div>
         </div>
@@ -300,10 +336,23 @@ function UserBooking({ user, club }){
                     <td className="p-2 text-sm text-gray-700">{row.time}</td>
                     {row.courts.map(cell => (
                       <td key={cell.courtIndex} className="p-1">
-                        {cell.booked ? (
-                          <div className="h-10 rounded bg-red-500"></div>
+                        {cell.owned ? (
+                          // ORANGE: your booking → click to cancel
+                          <button
+                            onClick={() => cancelOwn(cell.bookingId)}
+                            className="h-10 w-full rounded bg-orange-500 hover:opacity-90"
+                            title="Click to cancel your reservation"
+                          />
+                        ) : cell.booked ? (
+                          // RED: someone else booked
+                          <div className="h-10 rounded bg-red-500" />
                         ) : (
-                          <button onClick={()=>book(cell.courtIndex, row.time)} className="h-10 w-full rounded bg-green-500 hover:opacity-90"></button>
+                          // GREEN: available
+                          <button
+                            onClick={() => openConfirm(cell.courtIndex, row.time)}
+                            className={`h-10 w-full rounded bg-green-500 hover:opacity-90 ${hasOwnBooking ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            disabled={hasOwnBooking}
+                          />
                         )}
                       </td>
                     ))}
@@ -316,6 +365,23 @@ function UserBooking({ user, club }){
       )}
 
       {!grid && <Card><div className="text-sm text-gray-600">Select a sport and date to see slots.</div></Card>}
+
+      {/* Confirm modal */}
+      {confirmOpen && pending && (
+        <div className="fixed inset-0 bg-black/40 grid place-items-center z-50">
+          <div className="bg-white rounded-xl shadow p-5 w-[320px]">
+            <div className="text-lg font-medium mb-3">Confirm reservation</div>
+            <div className="text-sm text-gray-700 mb-4">
+              Do you want to reserve at <b>{pending.time}</b> on <b>{date}</b>?
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={closeConfirm} className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300">Cancel</button>
+              <button onClick={confirmBook} className="px-4 py-2 rounded-lg bg-black text-white hover:opacity-90">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

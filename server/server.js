@@ -143,32 +143,50 @@ app.get('/availability', (req, res) => {
   const clubId = Number(req.query.clubId);
   const sport = String(req.query.sport || '');
   const date = String(req.query.date || '');
+  const userId = req.query.userId ? Number(req.query.userId) : null; // 👈 pass userId from client
   if (!clubId || !sport || !date) return res.status(400).json({ error: 'clubId, sport, date required' });
+
   const cfg = db.prepare('SELECT * FROM club_sports WHERE club_id=? AND sport=?').get(clubId, sport);
   if (!cfg) return res.status(404).json({ error: 'sport not configured for this club' });
 
+  // build times
   const slots = [];
   const step = cfg.slot_minutes;
-  for (let h = cfg.open_hour; h < cfg.close_hour; h += step/60) {
+  for (let h = cfg.open_hour; h < cfg.close_hour; h += step / 60) {
     const hour = Math.floor(h);
     const minute = Math.round((h - hour) * 60);
     const time = `${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
     slots.push(time);
   }
 
-  const bookings = db.prepare('SELECT court_index, time FROM bookings WHERE club_id=? AND sport=? AND date=?').all(clubId, sport, date);
+  // include user_id so frontend can color "yours" as orange
+  const bookings = db.prepare(
+    'SELECT id, court_index, time, user_id FROM bookings WHERE club_id=? AND sport=? AND date=?'
+  ).all(clubId, sport, date);
+
   const bookedSet = new Set(bookings.map(b => `${b.court_index}@${b.time}`));
+  const ownedSet  = userId != null
+    ? new Set(bookings.filter(b => b.user_id === userId).map(b => `${b.court_index}@${b.time}`))
+    : new Set();
+
+  const idMap = new Map(bookings.map(b => [`${b.court_index}@${b.time}`, b.id]));
 
   const grid = slots.map(t => ({
     time: t,
-    courts: Array.from({length: cfg.courts}).map((_, idx) => ({
-      courtIndex: idx,
-      booked: bookedSet.has(`${idx}@${t}`)
-    }))
+    courts: Array.from({ length: cfg.courts }).map((_, idx) => {
+      const key = `${idx}@${t}`;
+      return {
+        courtIndex: idx,
+        booked: bookedSet.has(key),
+        owned: ownedSet.has(key),
+        bookingId: idMap.get(key) || null,
+      };
+    })
   }));
 
   res.json({ slots: grid, cfg });
 });
+
 
 // Book a slot
 app.post('/book', (req, res) => {
@@ -176,8 +194,33 @@ app.post('/book', (req, res) => {
   if ([clubId, sport, courtIndex, date, time, userId].some(v => v === undefined)) {
     return res.status(400).json({ error: 'clubId, sport, courtIndex, date, time, userId required' });
   }
+
+  // must be a club member
   const member = db.prepare('SELECT 1 FROM club_members WHERE user_id=? AND club_id=?').get(userId, clubId);
   if (!member) return res.status(403).json({ error: 'user not in club' });
+
+  // enforce 1 active future booking (any sport) per user
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2,'0');
+  const dd = String(today.getDate()).padStart(2,'0');
+  const hh = String(today.getHours()).padStart(2,'0');
+  const min = String(today.getMinutes()).padStart(2,'0');
+  const curDate = `${yyyy}-${mm}-${dd}`;
+  const curTime = `${hh}:${min}`;
+
+  const hasActive = db.prepare(`
+    SELECT 1 FROM bookings
+    WHERE user_id = ?
+      AND club_id = ?
+      AND (date > ? OR (date = ? AND time >= ?))
+    LIMIT 1
+  `).get(userId, clubId, curDate, curDate, curTime);
+
+  if (hasActive) {
+    return res.status(409).json({ error: 'You already have an active booking. Cancel it or wait until it has passed.' });
+  }
+
   try {
     const info = db.prepare(`
       INSERT INTO bookings (club_id, sport, court_index, date, time, user_id)
@@ -187,12 +230,25 @@ app.post('/book', (req, res) => {
     res.json(booking);
   } catch (e) {
     if (String(e).includes('UNIQUE')) {
-      return res.status(409).json({ error: 'slot already booked' });
+      return res.status(409).json({ error: 'Slot already booked' });
     }
     console.error(e);
     res.status(500).json({ error: 'unexpected error' });
   }
 });
+
+app.post('/cancel', (req, res) => {
+  const { bookingId, userId } = req.body || {};
+  if (!bookingId || !userId) return res.status(400).json({ error: 'bookingId and userId required' });
+
+  const row = db.prepare('SELECT * FROM bookings WHERE id=?').get(bookingId);
+  if (!row) return res.status(404).json({ error: 'booking not found' });
+  if (row.user_id !== Number(userId)) return res.status(403).json({ error: 'you can only cancel your own booking' });
+
+  db.prepare('DELETE FROM bookings WHERE id=?').run(bookingId);
+  res.json({ ok: true });
+});
+
 
 const PORT = process.env.PORT || 5000;
 
