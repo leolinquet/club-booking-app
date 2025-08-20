@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS club_sports (
   courts INTEGER NOT NULL CHECK(courts > 0),
   open_hour INTEGER NOT NULL CHECK(open_hour BETWEEN 0 AND 23),
   close_hour INTEGER NOT NULL CHECK(close_hour BETWEEN 1 AND 24),
-  slot_minutes INTEGER NOT NULL CHECK(slot_minutes IN (30, 60, 90, 120)),
+  sport TEXT NOT NULL,
+  slot_minutes INTEGER NOT NULL CHECK(slot_minutes BETWEEN 5 AND 240),
   UNIQUE (club_id, sport),
   FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE
 );

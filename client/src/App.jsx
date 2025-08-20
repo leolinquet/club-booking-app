@@ -258,7 +258,26 @@ function ClubGate({ user, onJoin, onCreate }){
 /* -------------------- Manager Home (Dashboard) -------------------- */
 function ManagerDashboard({ user, club }){
   const [sports, setSports] = useState([]);
-  const [form, setForm] = useState({ sport:'tennis', courts:4, openHour:8, closeHour:22, slotMinutes:60 });
+  const [editingId, setEditingId] = useState(null);
+
+  // form state
+  const [form, setForm] = useState({
+    sportChoice: 'tennis',      // 'tennis' | ... | '__custom__'
+    customSport: '',
+    courts: 4,
+    openHour: 8,
+    closeHour: 22,
+    slotChoice: 60,             // 30 | 45 | 60 | 90 | 120 | '__custom__'
+    customMinutes: ''
+  });
+
+  const actualSport = form.sportChoice === '__custom__'
+    ? form.customSport.trim()
+    : form.sportChoice;
+
+  const actualMinutes = form.slotChoice === '__custom__'
+    ? Number(form.customMinutes)
+    : Number(form.slotChoice);
 
   const load = async ()=> {
     const r = await fetch(`${API}/clubs/${club.id}/sports`);
@@ -266,59 +285,162 @@ function ManagerDashboard({ user, club }){
   };
   useEffect(()=>{ load(); }, []);
 
-  const save = async ()=> {
-    const res = await fetch(`${API}/clubs/${club.id}/sports`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ ...form, managerId: user.id })
+  const resetForm = () => {
+    setEditingId(null);
+    setForm({
+      sportChoice: 'tennis',
+      customSport: '',
+      courts: 4,
+      openHour: 8,
+      closeHour: 22,
+      slotChoice: 60,
+      customMinutes: ''
     });
-    const data = await res.json();
-    if (res.ok) { await load(); }
-    else alert(data.error || 'error');
   };
+
+  const save = async ()=> {
+    if (!actualSport) return alert('Please enter a sport name');
+    if (!actualMinutes || actualMinutes < 5 || actualMinutes > 240) {
+      return alert('Time slots must be between 5 and 240 minutes.');
+    }
+
+    const payload = {
+      sport: actualSport,
+      courts: Number(form.courts),
+      openHour: Number(form.openHour),
+      closeHour: Number(form.closeHour),
+      slotMinutes: actualMinutes,
+      managerId: user.id
+    };
+
+    const url = editingId
+      ? `${API}/clubs/${club.id}/sports/${editingId}`
+      : `${API}/clubs/${club.id}/sports`;
+
+    const method = editingId ? 'PUT' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(()=>null);
+    if (!res.ok) return alert((data && data.error) || 'Save failed');
+
+    await load();
+    resetForm();
+  };
+
+  const startEdit = (s) => {
+    setEditingId(s.id);
+    setForm({
+      sportChoice: ['tennis','basketball','football','soccer','pickleball','padel','badminton','volleyball'].includes(s.sport.toLowerCase())
+        ? s.sport.toLowerCase()
+        : '__custom__',
+      customSport: ['tennis','basketball','football','soccer','pickleball','padel','badminton','volleyball'].includes(s.sport.toLowerCase()) ? '' : s.sport,
+      courts: s.courts,
+      openHour: s.open_hour,
+      closeHour: s.close_hour,
+      slotChoice: [30,45,60,90,120].includes(s.slot_minutes) ? s.slot_minutes : '__custom__',
+      customMinutes: [30,45,60,90,120].includes(s.slot_minutes) ? '' : String(s.slot_minutes)
+    });
+  };
+
+  const remove = async (s) => {
+    const yes = confirm(`Delete ${s.sport}? This will remove its booking grid (existing bookings remain).`);
+    if (!yes) return;
+    const res = await fetch(`${API}/clubs/${club.id}/sports/${s.id}`, {
+      method:'DELETE',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ managerId: user.id })
+    });
+    const data = await res.json().catch(()=>null);
+    if (!res.ok) return alert((data && data.error) || 'Delete failed');
+    await load();
+    if (editingId === s.id) resetForm();
+  };
+
+  // preset options + custom
+  const SPORT_PRESETS = ['tennis','basketball','football','soccer','pickleball','padel','badminton','volleyball'];
+  const SLOT_PRESETS  = [30,45,60,90,120];
 
   return (
     <div className="space-y-4">
       <Card>
-        <h3 className="text-lg font-medium mb-3">Add a sport</h3>
+        <h3 className="text-lg font-medium mb-3">
+          {editingId ? 'Edit sport' : 'Add a sport'}
+        </h3>
 
-        {/* Field labels above every input as requested */}
+        {/* Field labels on top as requested */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <div>
             <div className="text-xs text-gray-600 mb-1">Sport</div>
-            <Select value={form.sport} onChange={e=>setForm({...form, sport:e.target.value})}>
-              <option value="tennis">Tennis</option>
-              <option value="basketball">Basketball</option>
-              <option value="football">Football</option>
+            <Select
+              value={form.sportChoice}
+              onChange={e=>setForm(f=>({...f, sportChoice:e.target.value}))}
+            >
+              {SPORT_PRESETS.map(s => (
+                <option key={s} value={s}>{s[0].toUpperCase()+s.slice(1)}</option>
+              ))}
+              <option value="__custom__">Custom…</option>
             </Select>
+            {form.sportChoice === '__custom__' && (
+              <div className="mt-2">
+                <TextInput
+                  placeholder="Type sport name (e.g., Hockey)"
+                  value={form.customSport}
+                  onChange={e=>setForm(f=>({...f, customSport:e.target.value}))}
+                />
+              </div>
+            )}
           </div>
 
           <div>
             <div className="text-xs text-gray-600 mb-1">Courts / Fields</div>
-            <TextInput type="number" value={form.courts} onChange={e=>setForm({...form, courts:Number(e.target.value)})} />
+            <TextInput type="number" value={form.courts}
+              onChange={e=>setForm({...form, courts:Number(e.target.value)})}/>
           </div>
 
           <div>
             <div className="text-xs text-gray-600 mb-1">Open time (0–23)</div>
-            <TextInput type="number" value={form.openHour} onChange={e=>setForm({...form, openHour:Number(e.target.value)})} />
+            <TextInput type="number" value={form.openHour}
+              onChange={e=>setForm({...form, openHour:Number(e.target.value)})}/>
           </div>
 
           <div>
             <div className="text-xs text-gray-600 mb-1">Closing time (1–24)</div>
-            <TextInput type="number" value={form.closeHour} onChange={e=>setForm({...form, closeHour:Number(e.target.value)})} />
+            <TextInput type="number" value={form.closeHour}
+              onChange={e=>setForm({...form, closeHour:Number(e.target.value)})}/>
           </div>
 
           <div>
             <div className="text-xs text-gray-600 mb-1">Time slots (minutes)</div>
-            <Select value={form.slotMinutes} onChange={e=>setForm({...form, slotMinutes:Number(e.target.value)})}>
-              <option value={30}>30</option>
-              <option value={60}>60</option>
-              <option value={90}>90</option>
-              <option value={120}>120</option>
+            <Select
+              value={form.slotChoice}
+              onChange={e=>setForm(f=>({...f, slotChoice: isNaN(+e.target.value) ? e.target.value : Number(e.target.value)}))}
+            >
+              {SLOT_PRESETS.map(m => <option key={m} value={m}>{m}</option>)}
+              <option value="__custom__">Custom…</option>
             </Select>
+            {form.slotChoice === '__custom__' && (
+              <div className="mt-2">
+                <TextInput
+                  type="number"
+                  placeholder="Minutes (5–240)"
+                  value={form.customMinutes}
+                  onChange={e=>setForm(f=>({...f, customMinutes:e.target.value}))}
+                />
+              </div>
+            )}
           </div>
 
-          <div className="flex items-end">
-            <Button onClick={save}>Save</Button>
+          <div className="flex items-end gap-2">
+            <Button onClick={save}>{editingId ? 'Update' : 'Save'}</Button>
+            {editingId && (
+              <button className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300" onClick={resetForm}>
+                Cancel
+              </button>
+            )}
           </div>
         </div>
       </Card>
@@ -330,7 +452,23 @@ function ManagerDashboard({ user, club }){
             <div key={s.id} className="flex items-center justify-between border rounded-lg p-3">
               <div className="text-sm">
                 <div className="font-medium capitalize">{s.sport}</div>
-                <div className="text-gray-600">Courts {s.courts} • {s.open_hour}:00 - {s.close_hour}:00 • {s.slot_minutes} min</div>
+                <div className="text-gray-600">
+                  Courts {s.courts} • {s.open_hour}:00 - {s.close_hour}:00 • {s.slot_minutes} min
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300"
+                  onClick={() => startEdit(s)}
+                >
+                  Edit
+                </button>
+                <button
+                  className="px-3 py-1 rounded-lg bg-red-500 text-white hover:opacity-90"
+                  onClick={() => remove(s)}
+                >
+                  Delete
+                </button>
               </div>
             </div>
           ))}
@@ -340,6 +478,7 @@ function ManagerDashboard({ user, club }){
     </div>
   );
 }
+
 
 /* -------------------- Book (for both; managers have extra powers) -------------------- */
 function UserBooking({ user, club }){

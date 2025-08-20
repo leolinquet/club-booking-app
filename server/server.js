@@ -224,6 +224,50 @@ app.get('/users/:id/clubs', (req, res) => {
   res.json(rows);
 });
 
+// UPDATE a sport config
+app.put('/clubs/:clubId/sports/:id', (req, res) => {
+  const clubId = Number(req.params.clubId);
+  const id = Number(req.params.id);
+  const { sport, courts, openHour, closeHour, slotMinutes, managerId } = req.body || {};
+  if (!managerId) return res.status(400).json({ error: 'managerId required' });
+
+  // Optional: ensure the caller is the club manager
+  const club = db.prepare('SELECT * FROM clubs WHERE id = ?').get(clubId);
+  if (!club) return res.status(404).json({ error: 'club not found' });
+  if (club.manager_id !== managerId) return res.status(403).json({ error: 'forbidden' });
+
+  try {
+    db.prepare(`
+      UPDATE club_sports
+      SET sport = ?, courts = ?, open_hour = ?, close_hour = ?, slot_minutes = ?
+      WHERE id = ? AND club_id = ?
+    `).run(sport, Number(courts), Number(openHour), Number(closeHour), Number(slotMinutes), id, clubId);
+
+    const updated = db.prepare('SELECT * FROM club_sports WHERE id = ? AND club_id = ?').get(id, clubId);
+    if (!updated) return res.status(404).json({ error: 'sport not found' });
+    res.json(updated);
+  } catch (e) {
+    console.error(e);
+    res.status(400).json({ error: 'update failed' });
+  }
+});
+
+// DELETE a sport config
+app.delete('/clubs/:clubId/sports/:id', (req, res) => {
+  const clubId = Number(req.params.clubId);
+  const id = Number(req.params.id);
+  const { managerId } = req.body || {};
+  if (!managerId) return res.status(400).json({ error: 'managerId required' });
+
+  const club = db.prepare('SELECT * FROM clubs WHERE id = ?').get(clubId);
+  if (!club) return res.status(404).json({ error: 'club not found' });
+  if (club.manager_id !== managerId) return res.status(403).json({ error: 'forbidden' });
+
+  const info = db.prepare('DELETE FROM club_sports WHERE id = ? AND club_id = ?').run(id, clubId);
+  if (!info.changes) return res.status(404).json({ error: 'sport not found' });
+  res.json({ ok: true });
+});
+
 // Get availability grid for a date
 app.get('/availability', (req, res) => {
   const clubId = Number(req.query.clubId);
