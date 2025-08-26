@@ -489,6 +489,8 @@ function UserBooking({ user, club }){
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(null); // { courtIndex, time }
+  const [bookFor, setBookFor] = useState('');   // manager-only: username to assign booking
+
 
   useEffect(()=>{
     (async ()=>{
@@ -511,13 +513,16 @@ function UserBooking({ user, club }){
 
   // Managers can book multiple & can cancel anyone's booking
   const isManager = user.role === 'manager';
+  const isOwnClubManager = isManager && Number(club?.manager_id) === Number(user.id);
   const hasOwnBooking = isManager ? false : grid?.slots?.some(row => row.courts.some(c => c.owned));
 
   const openConfirm = (courtIndex, time) => {
-    if (hasOwnBooking && !isManager) return;
-    setPending({ courtIndex, time });
-    setConfirmOpen(true);
-  };
+  if (hasOwnBooking && !isManager) return;
+  setPending({ courtIndex, time });
+  setBookFor(''); // reset on open
+  setConfirmOpen(true);
+};
+
   const closeConfirm = () => { setConfirmOpen(false); setPending(null); };
 
   const refresh = async () => {
@@ -526,17 +531,33 @@ function UserBooking({ user, club }){
   };
 
   const confirmBook = async () => {
-    if (!pending) return;
-    const { courtIndex, time } = pending;
-    const res = await fetch(`${API}/book`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ clubId: club.id, sport, courtIndex, date, time, userId: user.id })
-    });
-    const data = await res.json().catch(()=>null);
-    if (!res.ok) alert((data && data.error) || 'Booking failed');
-    closeConfirm();
-    await refresh();
-  };
+  if (!pending) return;
+  const { courtIndex, time } = pending;
+
+  // Managers must enter a username to assign the booking
+  if (isManager && !bookFor.trim()) {
+    alert('Please enter the username to assign this booking to.');
+    return;
+  }
+
+  const res = await fetch(`${API}/book`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      clubId: club.id,
+      sport,
+      courtIndex,
+      date,
+      time,
+      userId: user.id,
+      ...(isManager ? { asUsername: bookFor.trim() } : {})
+    })
+  });
+  const data = await res.json().catch(()=>null);
+  if (!res.ok) alert((data && data.error) || 'Booking failed');
+  closeConfirm();
+  await refresh();
+};
+
 
   const cancelBooking = async (bookingId) => {
     const yes = confirm('Cancel this reservation?');
@@ -589,36 +610,48 @@ function UserBooking({ user, club }){
                   <tr key={row.time}>
                     <td className="p-2 text-sm text-gray-700">{row.time}</td>
                     {row.courts.map(cell => (
-                      <td key={cell.courtIndex} className="p-1">
-                        {cell.owned ? (
-                          // ORANGE: your booking → cancel
+                    <td key={cell.courtIndex} className="p-1">
+                      {cell.owned ? (
+                        // ORANGE: your booking → cancel (owner; managers see label too)
+                        <button
+                          onClick={() => cancelBooking(cell.bookingId)}
+                          className="h-10 w-full rounded bg-orange-500 hover:opacity-90 relative"
+                          title="Click to cancel your reservation"
+                        >
+                          {isOwnClubManager && cell.bookedBy && (
+                            <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium">
+                              {cell.bookedBy}
+                            </span>
+                          )}
+                        </button>
+                      ) : cell.booked ? (
+                        isManager ? (
+                          // RED: someone else booked → managers can cancel any; managers see label
                           <button
                             onClick={() => cancelBooking(cell.bookingId)}
-                            className="h-10 w-full rounded bg-orange-500 hover:opacity-90"
-                            title="Click to cancel your reservation"
-                          />
-                        ) : cell.booked ? (
-                          // RED: someone else booked
-                          isManager ? (
-                            // Managers can cancel any booking
-                            <button
-                              onClick={() => cancelBooking(cell.bookingId)}
-                              className="h-10 w-full rounded bg-red-500 hover:opacity-90"
-                              title="Manager: click to cancel this booking"
-                            />
-                          ) : (
-                            <div className="h-10 rounded bg-red-500" />
-                          )
+                            className="h-10 w-full rounded bg-red-500 hover:opacity-90 relative"
+                            title="Manager: click to cancel this booking"
+                          >
+                            {isOwnClubManager && cell.bookedBy && (
+                              <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium">
+                                {cell.bookedBy}
+                              </span>
+                            )}
+                          </button>
                         ) : (
-                          // GREEN: available
-                          <button
-                            onClick={() => openConfirm(cell.courtIndex, row.time)}
-                            className={`h-10 w-full rounded bg-green-500 hover:opacity-90 ${hasOwnBooking ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            disabled={hasOwnBooking && !isManager}
-                          />
-                        )}
-                      </td>
-                    ))}
+                          // regular users just see solid red block
+                          <div className="h-10 rounded bg-red-500" />
+                        )
+                      ) : (
+                        // GREEN: available
+                        <button
+                          onClick={() => openConfirm(cell.courtIndex, row.time)}
+                          className={`h-10 w-full rounded bg-green-500 hover:opacity-90 ${hasOwnBooking ? 'opacity-50 cursor-not-allowed' : ''} relative`}
+                          disabled={hasOwnBooking && !isManager}
+                        />
+                      )}
+                    </td>
+                  ))}
                   </tr>
                 ))}
               </tbody>
@@ -636,6 +669,20 @@ function UserBooking({ user, club }){
             <div className="text-sm text-gray-700 mb-4">
               Do you want to reserve at <b>{pending.time}</b> on <b>{date}</b>?
             </div>
+
+            {/* Manager-only: assign to a username */}
+            {isManager && (
+              <div className="mb-3">
+                <div className="text-xs text-gray-600 mb-1">Username to assign booking</div>
+                <input
+                  className="border rounded-lg px-3 py-2 w-full"
+                  placeholder="Exact username (e.g., alice)"
+                  value={bookFor}
+                  onChange={e=>setBookFor(e.target.value)}
+                />
+              </div>
+            )}
+
             <div className="flex justify-end gap-2">
               <button onClick={closeConfirm} className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300">Cancel</button>
               <button onClick={confirmBook} className="px-4 py-2 rounded-lg bg-black text-white hover:opacity-90">Confirm</button>
