@@ -19,7 +19,7 @@ function Select(props) {
 export default function App(){
   const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user')||'null'));
   const [club, setClub] = useState(() => JSON.parse(localStorage.getItem('club')||'null'));
-  const [page, setPage] = useState('book'); // 'book' | 'home' | 'clubs'
+  const [view, setView] = useState('book'); // 'book' | 'clubs' | 'home' | 'tournaments' | 'rankings'
 
   function saveUser(u){ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }
   function saveClub(c){ setClub(c); localStorage.setItem('club', JSON.stringify(c)); }
@@ -34,7 +34,7 @@ export default function App(){
           const c = await r.json();
           localStorage.setItem('club', JSON.stringify(c));
           setClub(c);
-          setPage('book');                 // land on Book
+          setView('book');                 // land on Book
         } else {
           localStorage.removeItem('club');
           setClub(null);
@@ -46,25 +46,29 @@ export default function App(){
     return <Auth onLogin={handleAuthed} onRegister={handleAuthed} />;
   }
 
-  if (!club) return <ClubGate user={user} onJoin={(c)=>{saveClub(c); setPage('book');}} onCreate={(c)=>{saveClub(c); setPage('home');}} />;
+  if (!club) return <ClubGate user={user} onJoin={(c)=>{saveClub(c); setView('book');}} onCreate={(c)=>{saveClub(c); setView('home');}} />;
 
-  // If a non-manager ever hits "home", bounce them back to Book
-  const effectivePage = user.role === 'manager' ? page : (page === 'home' ? 'book' : page);
+  // Manager flag + page guard
+  const isManager = user.role === 'manager';
+  const effectivePage = isManager ? view : (view === 'home' ? 'book' : view);
+
 
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar
-        isManager={user.role === 'manager'}
-        onBook={() => setPage('book')}
-        onHome={() => setPage('home')}
-        onClubs={() => setPage('clubs')}
+        onBook={() => setView('book')}
+        onHome={() => setView('home')}
+        onClubs={() => setView('clubs')}
+        onTournaments={() => setView('tournaments')}
+        onRankings={() => setView('rankings')}
+        isManager={isManager}
       />
       <div className="max-w-5xl mx-auto p-4 space-y-4 flex-1">
         {effectivePage === 'clubs' ? (
           <ClubsPage
             user={user}
             club={club}
-            onSetActive={(c) => { saveClub(c); setPage('book'); }}
+            onSetActive={(c) => { saveClub(c); setView('book'); }}
           />
         ) : effectivePage === 'home' ? (
           <>
@@ -78,6 +82,34 @@ export default function App(){
               </div>
             </header>
             <ManagerDashboard user={user} club={club} />
+          </>
+        ) : effectivePage === 'tournaments' ? (
+          <>
+            <header className="flex items-center justify-between">
+              <h1 className="text-2xl font-semibold">Tournaments</h1>
+              <div className="text-sm text-gray-600 flex items-center gap-2">
+                <span>{user.name} ({user.role})</span>
+                <span className="mx-2">•</span>
+                <span>{club.name} (code {club.code})</span>
+                <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
+              </div>
+            </header>
+            {/* ⬇️ Use the component we added earlier */}
+            <TournamentsView API={API} club={club} user={user} isManager={isManager} />
+          </>
+        ) : effectivePage === 'rankings' ? (
+          <>
+            <header className="flex items-center justify-between">
+              <h1 className="text-2xl font-semibold">Rankings</h1>
+              <div className="text-sm text-gray-600 flex items-center gap-2">
+                <span>{user.name} ({user.role})</span>
+                <span className="mx-2">•</span>
+                <span>{club.name} (code {club.code})</span>
+                <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
+              </div>
+            </header>
+            {/* ⬇️ Use the component we added earlier */}
+            <RankingsView API={API} club={club} sportDefault="tennis" />
           </>
         ) : (
           <>
@@ -209,13 +241,12 @@ function ClubGate({ user, onJoin, onCreate }){
   };
 
   const goBack = () => {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      localStorage.removeItem('user');
-      location.reload();
-    }
-  };
+  // clear any stored user
+  localStorage.removeItem('user');
+  // force reload at root (your login/creation page)
+  window.location.href = '/';
+};
+
 
   const goHome = () => {
     if (user.clubId) {
@@ -796,6 +827,363 @@ function ClubsPage({ user, club, onSetActive }) {
             <Button onClick={create} disabled={!newName.trim() || !isManager}>Create</Button>
           </div>
         </Card>
+      </div>
+    </div>
+  );
+}
+
+function TournamentsView({ API, club, user, isManager }) {
+  const [list, setList] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('active'); // 'active' | 'completed' | 'all'
+  const [loading, setLoading] = useState(false);
+
+  // creation form (manager)
+  const [name, setName] = useState('');
+  const [sport, setSport] = useState('tennis');
+  const [drawSize, setDrawSize] = useState(16);
+  const [seedCount, setSeedCount] = useState(4);
+  const [pointsByRound, setPointsByRound] = useState({
+    R128: 0, R64: 0, R32: 10, R16: 20, QF: 40, SF: 70, F: 120
+  });
+
+  // selected tournament details
+  const [selectedId, setSelectedId] = useState(null);
+  const [detail, setDetail] = useState(null); // { tournament, players, matches, points }
+
+  const roundLabelsFor = (sz) => {
+    const map = [
+      { label: 'R128', size: 128 },
+      { label: 'R64',  size:  64 },
+      { label: 'R32',  size:  32 },
+      { label: 'R16',  size:  16 },
+      { label: 'QF',   size:   8 },
+      { label: 'SF',   size:   4 },
+      { label: 'F',    size:   2 },
+    ];
+    return map.filter(x => x.size <= sz).map(x => x.label);
+  };
+
+  const loadList = async () => {
+    if (!club) return;
+    setLoading(true);
+    const q = statusFilter === 'all' ? '' : `?status=${statusFilter}`;
+    const r = await fetch(`${API}/clubs/${club.id}/tournaments${q}`);
+    const data = await r.json();
+    setList(Array.isArray(data) ? data : []);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadList(); }, [club?.id, statusFilter]);
+
+  const createTournament = async () => {
+    if (!isManager) return;
+    if (!name.trim()) return alert('Name required');
+    // Build points only for the necessary rounds based on drawSize
+    const needed = roundLabelsFor(Number(drawSize));
+    const pts = {};
+    needed.forEach(lbl => { pts[lbl] = Number(pointsByRound[lbl] || 0); });
+
+    const r = await fetch(`${API}/clubs/${club.id}/tournaments`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name.trim(), sport, drawSize: Number(drawSize),
+        seedCount: Number(seedCount),
+        pointsByRound: pts,
+        managerId: user.id
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) return alert(data.error || 'Create failed');
+    setName('');
+    await loadList();
+  };
+
+  const openDetail = async (id) => {
+    setSelectedId(id);
+    const r = await fetch(`${API}/tournaments/${id}`);
+    const data = await r.json();
+    setDetail(data);
+  };
+
+  // Managers: add players (by player IDs, comma-separated) and generate bracket.
+  // NOTE: This assumes players already exist for the club (players table). If you instead
+  // select by usernames, we can add a helper later. For now, minimal changes as requested.
+  const [playerIdsText, setPlayerIdsText] = useState('');
+  const addPlayers = async () => {
+  if (!selectedId) return;
+  const names = playerIdsText
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (!names.length) return alert('Enter usernames separated by commas');
+  const r = await fetch(`${API}/tournaments/${selectedId}/players`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ usernames: names, managerId: user.id })
+  });
+  const data = await r.json();
+  if (!r.ok) return alert(data.error || 'Add players failed');
+  setPlayerIdsText('');
+  await openDetail(selectedId);
+};
+
+  const generateBracket = async () => {
+    if (!selectedId) return;
+    const r = await fetch(`${API}/tournaments/${selectedId}/generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ drawSize: Number(drawSize), seedCount: Number(seedCount), managerId: user.id })
+    });
+    const data = await r.json();
+    if (!r.ok) return alert(data.error || 'Generate failed');
+    await openDetail(selectedId);
+  };
+
+  // Report result
+  const reportResult = async (matchId, p1_score, p2_score) => {
+    const r = await fetch(`${API}/matches/${matchId}/result`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ managerId: user.id, p1_score, p2_score })
+    });
+    const data = await r.json();
+    if (!r.ok) return alert(data.error || 'Save failed');
+    await openDetail(selectedId);
+  };
+
+  // Render bracket columns grouped by round (DESC -> left to right)
+  const renderBracket = () => {
+    if (!detail || !detail.matches?.length) return <div className="text-sm text-gray-500">No matches yet.</div>;
+    const rounds = [...new Set(detail.matches.map(m => m.round))].sort((a,b) => b - a);
+    const playersById = new Map(detail.players.map(p => [p.id, p.display_name]));
+
+    return (
+      <div className="w-full overflow-x-auto">
+        <div className="flex gap-6">
+          {rounds.map(rnd => {
+            const ms = detail.matches.filter(m => m.round === rnd);
+            const title = rnd === 1 ? 'Final' : rnd === 2 ? 'Semifinal' : rnd === 3 ? 'Quarterfinal' : `Round ${rnd}`;
+            return (
+              <div key={rnd} className="min-w-[240px]">
+                <div className="text-sm font-semibold mb-2">{title}</div>
+                <div className="flex flex-col gap-3">
+                  {ms.map(m => {
+                    const p1 = playersById.get(m.p1_id) || 'TBD';
+                    const p2 = playersById.get(m.p2_id) || 'TBD';
+                    const completed = m.status === 'completed';
+                    return (
+                      <div key={m.id} className="border rounded-lg p-3 bg-white shadow-sm">
+                        <div className="flex justify-between">
+                          <div className={`truncate ${m.winner_id === m.p1_id ? 'font-semibold' : ''}`}>{p1}</div>
+                          <div className="text-xs text-gray-500">{completed ? m.p1_score : ''}</div>
+                        </div>
+                        <div className="flex justify-between">
+                          <div className={`truncate ${m.winner_id === m.p2_id ? 'font-semibold' : ''}`}>{p2}</div>
+                          <div className="text-xs text-gray-500">{completed ? m.p2_score : ''}</div>
+                        </div>
+
+                        {isManager && m.status !== 'completed' && m.p1_id && m.p2_id && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <input
+                              type="number"
+                              placeholder="P1"
+                              className="border rounded px-2 py-1 w-16"
+                              onChange={(e) => (m._p1 = Number(e.target.value))}
+                            />
+                            <input
+                              type="number"
+                              placeholder="P2"
+                              className="border rounded px-2 py-1 w-16"
+                              onChange={(e) => (m._p2 = Number(e.target.value))}
+                            />
+                            <button
+                              className="px-3 py-1 rounded bg-black text-white"
+                              onClick={() => reportResult(m.id, m._p1 ?? 0, m._p2 ?? 0)}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="p-4 space-y-6">
+      {/* Filters and list */}
+      <div className="flex items-center gap-3">
+        <select
+          className="border rounded px-2 py-1"
+          value={statusFilter}
+          onChange={(e)=> setStatusFilter(e.target.value)}
+        >
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
+          <option value="all">All</option>
+        </select>
+        <button onClick={loadList} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">
+          Refresh
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-gray-500">Loading…</div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-3">
+          {list.map(t => (
+            <div key={t.id} className="border rounded-lg p-3 bg-white shadow-sm">
+              <div className="text-sm font-semibold">{t.name} · {t.sport} {t.end_date ? '· Completed' : '· Active'}</div>
+              <div className="mt-2">
+                <button className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300" onClick={()=> openDetail(t.id)}>
+                  View
+                </button>
+              </div>
+            </div>
+          ))}
+          {list.length === 0 && <div className="text-sm text-gray-500">No tournaments yet.</div>}
+        </div>
+      )}
+
+      {/* Manager: create tournament */}
+      {isManager && (
+        <div className="border rounded-lg p-4 bg-white shadow-sm">
+          <div className="text-base font-semibold mb-3">Create Tournament</div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input className="border rounded px-3 py-2" placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
+            <input className="border rounded px-3 py-2" placeholder="Sport (e.g., tennis)" value={sport} onChange={e=>setSport(e.target.value)} />
+            <select className="border rounded px-3 py-2" value={drawSize} onChange={e=>setDrawSize(Number(e.target.value))}>
+              {[4,8,16,32,64,128].map(n=> <option key={n} value={n}>{n} draw</option>)}
+            </select>
+            <select className="border rounded px-3 py-2" value={seedCount} onChange={e=>setSeedCount(Number(e.target.value))}>
+              {[2,4,8,16,32].map(n=> <option key={n} value={n}>{n} seeds</option>)}
+            </select>
+          </div>
+
+          {/* Points by round (only show labels needed for drawSize) */}
+          <div className="mt-3 grid grid-cols-3 sm:grid-cols-7 gap-2">
+            {roundLabelsFor(Number(drawSize)).map(lbl => (
+              <div key={lbl} className="flex items-center gap-2">
+                <span className="text-xs w-10 text-gray-600">{lbl}</span>
+                <input
+                  type="number"
+                  className="border rounded px-2 py-1 w-20"
+                  value={pointsByRound[lbl] ?? 0}
+                  onChange={e => setPointsByRound(prev => ({ ...prev, [lbl]: Number(e.target.value) }))}
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3">
+            <button className="px-4 py-2 rounded bg-black text-white" onClick={createTournament}>
+              Create
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Detail / Bracket */}
+      {detail && (
+        <div className="border rounded-lg p-4 bg-white shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="text-base font-semibold">{detail.tournament.name} · {detail.tournament.sport}</div>
+            <button className="text-sm text-gray-500 hover:underline" onClick={()=> setDetail(null)}>Close</button>
+          </div>
+
+          {isManager && !detail.tournament.end_date && (
+            <div className="mt-3 grid md:grid-cols-2 gap-3">
+              <div className="border rounded p-3">
+                <div className="text-sm font-medium mb-2">Add Players (usernames, comma-separated)</div>
+                <input
+                  className="border rounded px-2 py-1 w-full"
+                  placeholder="e.g., 12, 15, 23, 31"
+                  value={playerIdsText}
+                  onChange={e=>setPlayerIdsText(e.target.value)}
+                />
+                <button className="mt-2 px-3 py-1 rounded bg-gray-200 hover:bg-gray-300" onClick={addPlayers}>
+                  Add
+                </button>
+              </div>
+
+              <div className="border rounded p-3">
+                <div className="text-sm font-medium mb-2">Generate Bracket</div>
+                <div className="flex gap-2 items-center">
+                  <select className="border rounded px-2 py-1" value={drawSize} onChange={e=>setDrawSize(Number(e.target.value))}>
+                    {[4,8,16,32,64,128].map(n=> <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <select className="border rounded px-2 py-1" value={seedCount} onChange={e=>setSeedCount(Number(e.target.value))}>
+                    {[2,4,8,16,32].map(n=> <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <button className="px-3 py-1 rounded bg-black text-white" onClick={generateBracket}>
+                    Generate
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4">{renderBracket()}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RankingsView({ API, club, sportDefault = 'tennis' }) {
+  const [rows, setRows] = useState([]);
+  const [sport, setSport] = useState(sportDefault);
+
+  const load = async () => {
+    if (!club) return;
+    const r = await fetch(`${API}/clubs/${club.id}/standings?sport=${encodeURIComponent(sport)}`);
+    const data = await r.json();
+    setRows(Array.isArray(data) ? data : []);
+  };
+
+  useEffect(() => { load(); }, [club?.id, sport]);
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="flex items-center gap-2">
+        <input
+          className="border rounded px-3 py-2"
+          placeholder="Sport"
+          value={sport}
+          onChange={e=>setSport(e.target.value)}
+        />
+        <button className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300" onClick={load}>
+          Refresh
+        </button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-[480px] w-full border">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="text-left p-2 border-r">Player</th>
+              <th className="text-left p-2 border-r">Tournaments Played</th>
+              <th className="text-left p-2">Points</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.player_id} className="border-t">
+                <td className="p-2 border-r">{r.name}</td>
+                <td className="p-2 border-r">{r.tournaments_played}</td>
+                <td className="p-2">{r.points}</td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr><td className="p-3 text-sm text-gray-500" colSpan={3}>No standings yet.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
