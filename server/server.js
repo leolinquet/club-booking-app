@@ -19,14 +19,34 @@ const DB_FILE = path.join(__dirname, 'data.db');
 const db = new Database(DB_FILE);
 db.pragma('foreign_keys = ON');
 
+// Ensure standings has points & tournaments_played
 try {
-  const cols = db.prepare('PRAGMA table_info(matches)').all().map(c => c.name);
-  if (!cols.includes('slot')) {
-    db.prepare('ALTER TABLE matches ADD COLUMN slot INTEGER').run();
-    console.log('Added matches.slot column');
+  const sCols = new Set(db.prepare('PRAGMA table_info(standings)').all().map(c => c.name));
+  if (!sCols.has('points')) {
+    db.prepare(`ALTER TABLE standings ADD COLUMN points INTEGER DEFAULT 0`).run();
+    console.log('Added standings.points column');
+  }
+  if (!sCols.has('tournaments_played')) {
+    db.prepare(`ALTER TABLE standings ADD COLUMN tournaments_played INTEGER DEFAULT 0`).run();
+    console.log('Added standings.tournaments_played column');
   }
 } catch (e) {
-  console.error('Error ensuring matches.slot column:', e.message);
+  console.error('Could not ensure standings columns:', e.message);
+}
+
+// Ensure tournament_points has expected columns (round columns + finalist f, champion c)
+try {
+  const tpCols = new Set(db.prepare('PRAGMA table_info(tournament_points)').all().map(c => c.name));
+  const need = ['r128','r64','r32','r16','qf','sf','f','c'];
+  for (const col of need) {
+    if (!tpCols.has(col)) {
+      db.prepare(`ALTER TABLE tournament_points ADD COLUMN ${col} INTEGER DEFAULT 0`).run();
+      console.log(`Added tournament_points.${col} column`);
+    }
+  }
+  // we do NOT remove/alter existing 'round' if your table has it; we’ll just include it in inserts.
+} catch (e) {
+  console.error('Could not ensure tournament_points columns:', e.message);
 }
 
 // Points config per tournament + round (keeps your schema file unchanged)
@@ -243,6 +263,7 @@ function awardPointsToChampion({ tournamentId, clubId, sport, winnerPlayerId }) 
 
 // Create a single-elim tournament with per-round points config
 // body: { name, sport, drawSize, seedCount, pointsByRound: { R128,R64,R32,R16,QF,SF,F } , managerId }
+// Create a tournament (manager only) + store points config (finalist=f, champion=c)
 app.post('/clubs/:clubId/tournaments', (req, res) => {
   try {
     const clubId = Number(req.params.clubId);
@@ -252,10 +273,10 @@ app.post('/clubs/:clubId/tournaments', (req, res) => {
     if (!name || !sport || !drawSize || !seedCount || !managerId) {
       return res.status(400).json({ error: 'missing fields' });
     }
-    if (![4,8,16,32,64,128].includes(Number(drawSize))) {
+    if (![4, 8, 16, 32, 64, 128].includes(Number(drawSize))) {
       return res.status(400).json({ error: 'drawSize must be 4,8,16,32,64,128' });
     }
-    if (![2,4,8,16,32].includes(Number(seedCount))) {
+    if (![2, 4, 8, 16, 32].includes(Number(seedCount))) {
       return res.status(400).json({ error: 'seedCount must be 2,4,8,16,32' });
     }
 
@@ -266,56 +287,142 @@ app.post('/clubs/:clubId/tournaments', (req, res) => {
     }
 
     // detect tournaments table columns
-    const cols = db.prepare(`PRAGMA table_info(tournaments)`).all().map(c => c.name);
+    const tCols = db.prepare('PRAGMA table_info(tournaments)').all().map(c => c.name);
 
-    // always include these if present
+    // build payload only with columns that exist (keeps changes minimal)
     const payload = {};
-    if (cols.includes('club_id')) payload.club_id = clubId;
-    if (cols.includes('sport'))   payload.sport   = String(sport);
-    if (cols.includes('name'))    payload.name    = String(name);
+    if (tCols.includes('club_id'))     payload.club_id     = clubId;
+    if (tCols.includes('sport'))       payload.sport       = String(sport);
+    if (tCols.includes('name'))        payload.name        = String(name);
+    if (tCols.includes('status'))      payload.status      = 'active';
+    if (tCols.includes('format'))      payload.format      = 'single_elim';
+    if (tCols.includes('start_date'))  payload.start_date  = null;
+    if (tCols.includes('end_date'))    payload.end_date    = null;
+    if (tCols.includes('block_courts'))payload.block_courts= 0;
+    // optional config if your schema has them
+    if (tCols.includes('draw_size'))   payload.draw_size   = Number(drawSize);
+    if (tCols.includes('seed_count'))  payload.seed_count  = Number(seedCount);
 
-    // optional columns (only set if they exist)
-    if (cols.includes('format'))       payload.format       = 'single_elim';
-    if (cols.includes('status'))       payload.status       = 'active';
-    if (cols.includes('start_date'))   payload.start_date   = null;
-    if (cols.includes('end_date'))     payload.end_date     = null;
-    if (cols.includes('block_courts')) payload.block_courts = 0;
-
-    // build dynamic insert
     const keys = Object.keys(payload);
-    if (keys.length === 0) {
+    if (!keys.length) {
       return res.status(500).json({ error: 'tournaments table has no compatible columns' });
     }
-    const placeholders = keys.map(() => '?').join(', ');
-    const stmt = db.prepare(`INSERT INTO tournaments (${keys.join(', ')}) VALUES (${placeholders})`);
-    const info = stmt.run(...keys.map(k => payload[k]));
-    const tId = info.lastInsertRowid;
 
-    // points config → tournament_points (we created this table at boot)
-    const rounds = canonicalRounds(Number(drawSize));
-    for (const r of rounds) {
-      const pts = pointsByRound?.[r.label] ?? 0;
-      db.prepare(`
-        INSERT INTO tournament_points (tournament_id, round, points)
-        VALUES (?, ?, ?)
-      `).run(tId, r.round, Number(pts));
+    // Duplicate guard (same club + sport + name)
+    try {
+      const dup = db
+        .prepare('SELECT id FROM tournaments WHERE club_id=? AND sport=? AND name=?')
+        .get(payload.club_id, payload.sport, payload.name);
+      if (dup) {
+        return res.status(409).json({ error: 'A tournament with this name and sport already exists for this club.' });
+      }
+    } catch (_e) {
+      // If any of these columns don't exist in your schema, skip the guard.
     }
 
-    // response mirrors what the UI needs
+    const qMarks = keys.map(() => '?').join(', ');
+    let info;
+    try {
+      info = db.prepare(
+        `INSERT INTO tournaments (${keys.join(', ')}) VALUES (${qMarks})`
+      ).run(...keys.map(k => payload[k]));
+    } catch (e) {
+      const msg = String(e && e.message || '');
+      if (e && (e.code === 'SQLITE_CONSTRAINT_UNIQUE' || msg.includes('UNIQUE constraint failed'))) {
+        return res.status(409).json({ error: 'A tournament with this name and sport already exists for this club.' });
+      }
+      throw e; // bubble up unexpected errors
+    }
+    const tId = info.lastInsertRowid;
+
+
+// --- points config → tournament_points ---------------------------------
+(() => {
+  const tpInfo = db.prepare('PRAGMA table_info(tournament_points)').all();
+  const tpCols = tpInfo.map(c => c.name);
+
+  if (!tpCols.includes('tournament_id')) {
+    console.warn('[tournaments] tournament_points missing tournament_id column; skipping points seed');
+    return;
+  }
+
+  const ptsIn = pointsByRound || {};
+  const desired = {
+    r128: Number(ptsIn.R128 || 0),
+    r64:  Number(ptsIn.R64  || 0),
+    r32:  Number(ptsIn.R32  || 0),
+    r16:  Number(ptsIn.R16  || 0),
+    qf:   Number(ptsIn.QF   || 0),
+    sf:   Number(ptsIn.SF   || 0),
+    f:    Number(ptsIn.F    || 0),
+    c:    Number(ptsIn.C    || 0),
+  };
+
+  const hasPerRoundCols = ['r128','r64','r32','r16','qf','sf','f','c'].some(c => tpCols.includes(c));
+  const hasRoundCol  = tpCols.includes('round');
+  const hasPointsCol = tpCols.includes('points');
+
+  try {
+    if (hasPerRoundCols) {
+      // (A) Wide schema → single row of per-round columns.
+      const colNames = ['tournament_id'];
+      const values   = [tId];
+
+      if (hasRoundCol) { colNames.push('round'); values.push(0); }
+      for (const [k, v] of Object.entries(desired)) {
+        if (tpCols.includes(k)) { colNames.push(k); values.push(Number(v) || 0); }
+      }
+      // Some DBs also have an aggregate NOT NULL "points" alongside per-round cols → seed 0
+      if (hasPointsCol) { colNames.push('points'); values.push(0); }
+
+      const qMarks = colNames.map(() => '?').join(', ');
+      db.prepare(
+        `INSERT INTO tournament_points (${colNames.join(', ')}) VALUES (${qMarks})`
+      ).run(...values);
+
+    } else if (hasPointsCol && hasRoundCol) {
+      // (B) Normalized rows → one row per round
+      const ins = db.prepare(
+        `INSERT INTO tournament_points (tournament_id, round, points) VALUES (?, ?, ?)`
+      );
+      const labelMap = { r128: 'R128', r64: 'R64', r32: 'R32', r16: 'R16', qf: 'QF', sf: 'SF', f: 'F', c: 'C' };
+
+      const tx = db.transaction((entries) => {
+        for (const [col, pts] of entries) {
+          const lbl = labelMap[col];
+          if (!lbl) continue;
+          ins.run(tId, lbl, Number(pts) || 0);
+        }
+      });
+      tx(Object.entries(desired));
+
+    } else if (hasPointsCol && !hasRoundCol) {
+      // (C) Minimal aggregate → (tournament_id, points)
+      const total = 0; // or sum of desired if you prefer
+      db.prepare(
+        `INSERT INTO tournament_points (tournament_id, points) VALUES (?, ?)`
+      ).run(tId, total);
+
+    } else {
+      console.warn('[tournaments] tournament_points schema not recognized; skipping points seed');
+    }
+  } catch (e) {
+    console.warn('[tournaments] failed to seed tournament_points:', e?.message || e);
+  }
+})();
+// -----------------------------------------------------------------------
+
+
     res.json({
-      id: tId,
-      club_id: clubId,
-      sport: String(sport),
-      name: String(name),
-      format: payload.format || 'single_elim',
-      drawSize: Number(drawSize),
-      seedCount: Number(seedCount)
+      ok: true,
+      tournament: { id: tId, name: String(name), sport: String(sport) }
     });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'unexpected error' });
   }
 });
+
 
 // body: { playerIds?: number[], userIds?: number[], managerId }
 app.post('/tournaments/:id/players', (req, res) => {
@@ -400,11 +507,9 @@ app.post('/tournaments/:id/generate', (req, res) => {
     const tId = Number(req.params.id);
     const { drawSize, seedCount, managerId } = req.body || {};
 
-    // Validate tournament
     const t = db.prepare('SELECT id, club_id FROM tournaments WHERE id=?').get(tId);
     if (!t) return res.status(404).json({ error: 'tournament not found' });
 
-    // Only club manager can generate
     const clubRow = db.prepare('SELECT manager_id FROM clubs WHERE id=?').get(t.club_id);
     if (!clubRow || Number(clubRow.manager_id) !== Number(managerId)) {
       return res.status(403).json({ error: 'only club manager can generate bracket' });
@@ -412,15 +517,9 @@ app.post('/tournaments/:id/generate', (req, res) => {
 
     const N = Number(drawSize);
     const S = Number(seedCount);
+    if (![4,8,16,32,64,128].includes(N)) return res.status(400).json({ error: 'drawSize must be 4,8,16,32,64,128' });
+    if (![2,4,8,16,32].includes(S) || S > N) return res.status(400).json({ error: 'seedCount must be 2,4,8,16,32 and ≤ drawSize' });
 
-    if (![4,8,16,32,64,128].includes(N)) {
-      return res.status(400).json({ error: 'drawSize must be one of 4,8,16,32,64,128' });
-    }
-    if (![2,4,8,16,32].includes(S) || S > N) {
-      return res.status(400).json({ error: 'seedCount must be 2,4,8,16,32 and ≤ drawSize' });
-    }
-
-    // Pull entrants added to this tournament (players are club-scoped; show nice names)
     const entrants = db.prepare(`
       SELECT tp.player_id, COALESCE(p.display_name, u.name) AS display_name
       FROM tournament_players tp
@@ -429,22 +528,16 @@ app.post('/tournaments/:id/generate', (req, res) => {
       WHERE tp.tournament_id=?
       ORDER BY display_name COLLATE NOCASE ASC
     `).all(tId);
+    if (entrants.length !== N) return res.status(400).json({ error: `need exactly ${N} players; have ${entrants.length}` });
 
-    if (entrants.length !== N) {
-      return res.status(400).json({ error: `need exactly ${N} players; have ${entrants.length}` });
-    }
-
-    // Top S are seeds by current order; rest are unseeded
     const seeds = entrants.slice(0, S).map(e => e.player_id);
     const rest  = entrants.slice(S).map(e => e.player_id);
 
-    // Deterministic shuffle of unseeded so order is stable
     for (let i = 0; i < rest.length - 1; i++) {
       const j = (rest[i] + i * 31) % (rest.length - i) + i;
       [rest[i], rest[j]] = [rest[j], rest[i]];
     }
 
-    // Snake seeding positions for 1..N (e.g., 8 -> [1,8,4,5,3,6,2,7])
     const positions = (size) => {
       const build = (n) => {
         if (n === 2) return [1, 2];
@@ -460,7 +553,6 @@ app.post('/tournaments/:id/generate', (req, res) => {
     };
     const snake = positions(N);
 
-    // Fill bracket slots 0..N-1: seed numbers go in; others filled from rest[]
     const slots = new Array(N).fill(null);
     for (let i = 0; i < N; i++) {
       const seedNo = snake[i];
@@ -469,30 +561,23 @@ app.post('/tournaments/:id/generate', (req, res) => {
     let rIdx = 0;
     for (let i = 0; i < N; i++) if (slots[i] == null) slots[i] = rest[rIdx++];
 
-    if (slots.some(v => v == null)) {
-      return res.status(500).json({ error: 'internal seeding error (missing player)' });
-    }
+    if (slots.some(v => v == null)) return res.status(500).json({ error: 'internal seeding error (missing player)' });
 
-    // Wipe old matches for this tournament
     db.prepare('DELETE FROM matches WHERE tournament_id=?').run(tId);
 
-    // Insert ONLY the first round; later rounds are created when both feeder matches finish
     const firstRound = Math.log2(N);
-
-    // EXACTLY 5 placeholders (tId, round, slot, p1_id, p2_id). Others are constants.
-    const insertMatch = db.prepare(`
-      INSERT INTO matches (
-        tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status
-      )
-      VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'scheduled')
-    `);
+    const mCols = new Set(db.prepare('PRAGMA table_info(matches)').all().map(c => c.name));
+    const insertWithStatus = mCols.has('status');
+    const insertSQL = insertWithStatus
+      ? `INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status)
+         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'scheduled')`
+      : `INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id)
+         VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`;
+    const insertMatch = db.prepare(insertSQL);
 
     for (let s = 0; s < N / 2; s++) {
       const p1 = slots[2 * s];
       const p2 = slots[2 * s + 1];
-      if (p1 == null || p2 == null) {
-        return res.status(500).json({ error: `internal seeding error (missing player in pair ${s})` });
-      }
       insertMatch.run(tId, firstRound, s, p1, p2);
     }
 
@@ -503,97 +588,107 @@ app.post('/tournaments/:id/generate', (req, res) => {
   }
 });
 
-// Save result, auto-advance only when both feeder matches are completed
 app.put('/matches/:id/result', (req, res) => {
   try {
     const mId = Number(req.params.id);
-    const { p1_score, p2_score, managerId } = req.body || {};
+    const { managerId, p1_score, p2_score } = req.body || {};
+    if (!managerId) return res.status(400).json({ error: 'managerId required' });
 
-    // Load match + club (for manager check)
-    const m = db.prepare(`
-      SELECT m.id, m.tournament_id, m.round, m.slot, m.p1_id, m.p2_id, t.club_id
-      FROM matches m
-      JOIN tournaments t ON t.id = m.tournament_id
-      WHERE m.id = ?
-    `).get(mId);
-
+    const m = db.prepare('SELECT * FROM matches WHERE id=?').get(mId);
     if (!m) return res.status(404).json({ error: 'match not found' });
 
-    // Only the club's manager can report results
-    const clubRow = db.prepare('SELECT manager_id FROM clubs WHERE id = ?').get(m.club_id);
-    if (!clubRow || Number(clubRow.manager_id) !== Number(managerId)) {
-      return res.status(403).json({ error: 'only club manager can report results' });
-    }
-
-    // Guard: this match must have both players (schema has NOT NULL p1_id/p2_id)
-    if (!m.p1_id || !m.p2_id) {
-      return res.status(500).json({ error: 'cannot save result: match has missing players' });
-    }
-
-    const s1 = Number(p1_score) || 0;
-    const s2 = Number(p2_score) || 0;
+    const s1 = Number(p1_score);
+    const s2 = Number(p2_score);
+    if (!Number.isFinite(s1) || !Number.isFinite(s2)) return res.status(400).json({ error: 'invalid scores' });
     if (s1 === s2) return res.status(400).json({ error: 'scores must not tie' });
 
-    const winner = s1 > s2 ? m.p1_id : m.p2_id;
+    const winnerId = s1 > s2 ? m.p1_id : m.p2_id;
 
-    // Update current match
-    db.prepare(`
-      UPDATE matches
-      SET p1_score = ?, p2_score = ?, winner_id = ?, status = 'completed'
-      WHERE id = ?
-    `).run(s1, s2, winner, mId);
+    const mColsInfo = db.prepare('PRAGMA table_info(matches)').all();
+    const mCols = new Set(mColsInfo.map(c => c.name));
+    const notnull = Object.fromEntries(mColsInfo.map(c => [c.name, c.notnull]));
 
-    // If this was the final, we're done
-    if (m.round === 1) {
-      return res.json({ ok: true, final: true });
-    }
+    const setParts = [];
+    const vals = [];
+    if (mCols.has('p1_score')) { setParts.push('p1_score=?'); vals.push(s1); }
+    if (mCols.has('p2_score')) { setParts.push('p2_score=?'); vals.push(s2); }
+    if (mCols.has('winner_id')) { setParts.push('winner_id=?'); vals.push(winnerId); }
+    if (mCols.has('status')) setParts.push("status='completed'");
+    if (mCols.has('updated_at')) setParts.push('updated_at=CURRENT_TIMESTAMP');
+    if (!setParts.length) return res.status(500).json({ error: 'matches table missing expected columns' });
+    db.prepare(`UPDATE matches SET ${setParts.join(', ')} WHERE id=?`).run(...vals, mId);
 
-    // Need sibling match in same round, by slot
-    if (m.slot == null) {
-      // This should never happen for newly generated brackets; prevents bad inserts.
-      return res.json({ ok: true, progressed: false, note: 'no slot set on match; cannot pair winners' });
-    }
+    const nextRound = Number(m.round) - 1;
+    if (Number.isFinite(nextRound) && nextRound >= 1) {
+      const hasNextMatchId = mCols.has('next_match_id');
+      const hasNextSlot = mCols.has('next_slot');
+      const hasP1Id = mCols.has('p1_id');
+      const hasP2Id = mCols.has('p2_id');
 
-    const siblingSlot = (m.slot % 2 === 0) ? m.slot + 1 : m.slot - 1;
-    const sibling = db.prepare(`
-      SELECT id, winner_id
-      FROM matches
-      WHERE tournament_id = ? AND round = ? AND slot = ?
-    `).get(m.tournament_id, m.round, siblingSlot);
+      if (hasNextMatchId && hasNextSlot && hasP1Id && hasP2Id && m.next_match_id) {
+        const slot = Number(m.next_slot) === 2 ? 2 : 1;
+        const next = db.prepare('SELECT * FROM matches WHERE id=?').get(m.next_match_id);
+        if (next) {
+          const field = slot === 1 ? 'p1_id' : 'p2_id';
+          if (next[field] == null) db.prepare(`UPDATE matches SET ${field}=? WHERE id=?`).run(winnerId, m.next_match_id);
+        }
+      } else {
+        const nextSlot = Math.floor(Number(m.slot) / 2);
+        let next = db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?')
+          .get(m.tournament_id, nextRound, nextSlot);
 
-    // If sibling not found or not completed yet → stop here (no partial next match)
-    if (!sibling || !sibling.winner_id) {
-      return res.json({ ok: true, progressed: false });
-    }
+        const myField = (Number(m.slot) % 2 === 0) ? 'p1_id' : 'p2_id';
+        const otherField = myField === 'p1_id' ? 'p2_id' : 'p1_id';
+        const myNN = notnull[myField] === 1;
+        const otherNN = notnull[otherField] === 1;
 
-    // Both winners known → create next-round match at nextSlot if it doesn't exist
-    const nextRound = m.round - 1;
-    const nextSlot  = Math.floor(m.slot / 2);
+        if (!next) {
+          const siblingSlot = (Number(m.slot) % 2 === 0) ? Number(m.slot) + 1 : Number(m.slot) - 1;
+          const sibling = db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?')
+            .get(m.tournament_id, m.round, siblingSlot);
+          const siblingWinner = sibling && Number(sibling.winner_id) ? Number(sibling.winner_id) : null;
 
-    const existing = db.prepare(`
-      SELECT id FROM matches
-      WHERE tournament_id = ? AND round = ? AND slot = ?
-    `).get(m.tournament_id, nextRound, nextSlot);
-
-    if (!existing) {
-      // Order winners consistently so each feeder supplies the right side:
-      // even slot feeds as p1; odd slot feeds as p2
-      const p1 = (m.slot % 2 === 0) ? winner : sibling.winner_id;
-      const p2 = (m.slot % 2 === 0) ? sibling.winner_id : winner;
-
-      if (!p1 || !p2) {
-        return res.status(500).json({ error: 'auto-advance pairing error (missing winner)' });
+          if (siblingWinner != null) {
+            const p1 = myField === 'p1_id' ? winnerId : siblingWinner;
+            const p2 = myField === 'p1_id' ? siblingWinner : winnerId;
+            if (mCols.has('status')) {
+              db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status)
+                          VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'scheduled')`)
+                .run(m.tournament_id, nextRound, nextSlot, p1, p2);
+            } else {
+              db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id)
+                          VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`)
+                .run(m.tournament_id, nextRound, nextSlot, p1, p2);
+            }
+          } else if (!myNN || !otherNN) {
+            const p1 = myField === 'p1_id' ? winnerId : null;
+            const p2 = myField === 'p1_id' ? null : winnerId;
+            if (mCols.has('status')) {
+              db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status)
+                          VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'scheduled')`)
+                .run(m.tournament_id, nextRound, nextSlot, p1, p2);
+            } else {
+              db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id)
+                          VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`)
+                .run(m.tournament_id, nextRound, nextSlot, p1, p2);
+            }
+          }
+        } else {
+          const field = myField;
+          if (next[field] == null) db.prepare(`UPDATE matches SET ${field}=? WHERE id=?`).run(winnerId, next.id);
+        }
       }
-
-      db.prepare(`
-        INSERT INTO matches (
-          tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status
-        )
-        VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'scheduled')
-      `).run(m.tournament_id, nextRound, nextSlot, Number(p1), Number(p2));
+    } else {
+      const tCols = new Set(db.prepare('PRAGMA table_info(tournaments)').all().map(c => c.name));
+      const tParts = [];
+      const tVals = [];
+      if (tCols.has('status')) tParts.push("status=?"), tVals.push('completed');
+      if (tCols.has('end_date')) tParts.push("end_date=COALESCE(end_date, datetime('now'))");
+      if (tParts.length) db.prepare(`UPDATE tournaments SET ${tParts.join(', ')} WHERE id=?`).run(...tVals, m.tournament_id);
+      awardTournamentPoints(m.tournament_id);
     }
 
-    res.json({ ok: true, progressed: true });
+    res.json({ ok: true, winner_id: winnerId });
   } catch (e) {
     console.error('Save result error:', e);
     res.status(500).json({ error: 'unexpected error' });
@@ -648,45 +743,245 @@ app.get('/tournaments/:id', (req, res) => {
   }
 });
 
-// Rankings table for a club & sport
+// Get standings (rankings) for a club
 app.get('/clubs/:clubId/standings', (req, res) => {
   try {
     const clubId = Number(req.params.clubId);
-    const sport = String(req.query.sport || '');
-    if (!sport) return res.status(400).json({ error: 'sport required' });
-
     const rows = db.prepare(`
-      SELECT s.player_id, s.points, COALESCE(p.display_name, 'Unknown') AS name,
-             s.played, s.won, s.drawn, s.lost
+      SELECT
+        s.player_id,
+        COALESCE(p.display_name, u.name) AS name,
+        s.played AS tournaments_played,    -- alias so UI matches
+        s.points
       FROM standings s
-      LEFT JOIN players p ON p.id = s.player_id
-      WHERE s.club_id=? AND s.sport=? AND s.season='default'
+      JOIN players p ON p.id = s.player_id
+      LEFT JOIN users u ON u.id = p.user_id
+      WHERE s.club_id = ?
       ORDER BY s.points DESC, name ASC
-    `).all(clubId, sport);
+    `).all(clubId);
 
-    // optional: tournaments played (count of unique tournaments the player appeared in)
-    const playedCounts = db.prepare(`
-      SELECT tp.player_id, COUNT(DISTINCT t.id) AS tcount
-      FROM tournament_players tp
-      JOIN tournaments t ON t.id = tp.tournament_id
-      WHERE t.club_id=? AND t.sport=?
-      GROUP BY tp.player_id
-    `).all(clubId, sport);
-    const tCount = new Map(playedCounts.map(r => [r.player_id, r.tcount]));
-
-    const result = rows.map(r => ({
-      player_id: r.player_id,
-      name: r.name,
-      tournaments_played: tCount.get(r.player_id) || 0,
-      points: r.points
-    }));
-
-    res.json(result);
+    res.json(rows);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'unexpected error' });
   }
 });
+
+// Reset all standings for a club (manager only). Body: { managerId, confirm: "reset" }
+app.post('/clubs/:clubId/standings/reset', (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const { managerId, confirm } = req.body || {};
+    if (confirm !== 'reset') {
+      return res.status(400).json({ error: 'type "reset" to confirm' });
+    }
+    const clubRow = db.prepare('SELECT manager_id FROM clubs WHERE id=?').get(clubId);
+    if (!clubRow || Number(clubRow.manager_id) !== Number(managerId)) {
+      return res.status(403).json({ error: 'only club manager can reset standings' });
+    }
+
+    // You asked to have "no players there anymore" after reset
+    db.prepare(`DELETE FROM standings WHERE club_id=?`).run(clubId);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+function addStandingPoints(clubId, playerId, pts) {
+  db.prepare(
+    `INSERT OR IGNORE INTO standings (club_id, player_id, tournaments_played, points)
+     VALUES (?, ?, 0, 0)`
+  ).run(clubId, playerId);
+
+  if (pts && pts > 0) {
+    db.prepare(
+      `UPDATE standings
+       SET points = points + ?, tournaments_played = tournaments_played + 1
+       WHERE club_id = ? AND player_id = ?`
+    ).run(pts, clubId, playerId);
+  } else {
+    db.prepare(
+      `UPDATE standings
+       SET tournaments_played = tournaments_played + 1
+       WHERE club_id = ? AND player_id = ?`
+    ).run(clubId, playerId);
+  }
+}
+
+function roundKeyForLoser(roundNum) {
+  if (roundNum === 1) return 'f';
+  if (roundNum === 2) return 'sf';
+  if (roundNum === 3) return 'qf';
+  const size = 1 << roundNum;
+  return `r${size}`;
+}
+
+function loadPointsMap(tournamentId) {
+  const info = db.prepare('PRAGMA table_info(tournament_points)').all();
+  const cols = new Set(info.map(c => c.name));
+  const keys = ['r128','r64','r32','r16','qf','sf','f','c'];
+  const out = { r128:0, r64:0, r32:0, r16:0, qf:0, sf:0, f:0, c:0 };
+
+  if (keys.some(k => cols.has(k))) {
+    const row = db.prepare('SELECT * FROM tournament_points WHERE tournament_id=? ORDER BY rowid ASC LIMIT 1').get(tournamentId);
+    if (row) for (const k of keys) out[k] = Number(row[k] || 0);
+    if (cols.has('points') && out.c === 0 && row && row.points != null) out.c = Number(row.points) || 0;
+    return out;
+  }
+
+  if (cols.has('round') && cols.has('points')) {
+    const rows = db.prepare('SELECT round, points FROM tournament_points WHERE tournament_id=?').all(tournamentId);
+    for (const r of rows) {
+      const val = Number(r.points) || 0;
+      const tag = String(r.round).toUpperCase();
+      if (tag === 'C') out.c = val;
+      else if (tag === 'F') out.f = val;
+      else if (tag === 'SF') out.sf = val;
+      else if (tag === 'QF') out.qf = val;
+      else if (tag.startsWith('R')) {
+        const n = parseInt(tag.slice(1), 10);
+        if (n === 128) out.r128 = val;
+        else if (n === 64) out.r64 = val;
+        else if (n === 32) out.r32 = val;
+        else if (n === 16) out.r16 = val;
+      } else {
+        const n = Number(tag);
+        if (n === 1) out.f = val;
+        else if (n === 2) out.sf = val;
+        else if (n === 3) out.qf = val;
+        else if (n >= 4) out[`r${1 << n}`] = val;
+      }
+    }
+    return out;
+  }
+
+  if (cols.has('points') && !cols.has('round')) {
+    const row = db.prepare('SELECT points FROM tournament_points WHERE tournament_id=? ORDER BY rowid ASC LIMIT 1').get(tournamentId);
+    if (row) out.c = Number(row.points) || 0;
+    return out;
+  }
+
+  return out;
+}
+
+function awardTournamentPoints(tournamentId) {
+  // 1) Load tournament context (no draw_size)
+  const t = db.prepare(`
+    SELECT t.id, t.club_id, t.sport
+    FROM tournaments t
+    WHERE t.id = ?
+  `).get(tournamentId);
+  if (!t) return;
+
+  // 2) Read points per round (supports wide or normalized tournament_points schema)
+  let pts = { R128:0, R64:0, R32:0, R16:0, QF:0, SF:0, F:0, C:0 };
+
+  const tpCols = db.prepare('PRAGMA table_info(tournament_points)').all().map(c => c.name);
+  if (['r128','r64','r32','r16','qf','sf','f','c'].some(c => tpCols.includes(c))) {
+    const row = db.prepare(`
+      SELECT r128, r64, r32, r16, qf, sf, f, c
+      FROM tournament_points WHERE tournament_id = ?
+    `).get(tournamentId) || {};
+    pts.R128 = Number(row.r128 || 0);
+    pts.R64  = Number(row.r64  || 0);
+    pts.R32  = Number(row.r32  || 0);
+    pts.R16  = Number(row.r16  || 0);
+    pts.QF   = Number(row.qf   || 0);
+    pts.SF   = Number(row.sf   || 0);
+    pts.F    = Number(row.f    || 0);
+    pts.C    = Number(row.c    || 0);
+  } else if (tpCols.includes('round') && tpCols.includes('points')) {
+    const rows = db.prepare(`
+      SELECT round, points FROM tournament_points WHERE tournament_id = ?
+    `).all(tournamentId);
+    for (const r of rows) {
+      const key = String(r.round).toUpperCase(); // 'R32','SF','F','C'
+      if (key in pts) pts[key] = Number(r.points || 0);
+    }
+  } // else: keep defaults (0s)
+
+  // 3) Completed matches → losers' points + champion's C
+  const matches = db.prepare(`
+    SELECT id, round, slot, p1_id, p2_id, winner_id
+    FROM matches
+    WHERE tournament_id = ? AND winner_id IS NOT NULL
+  `).all(tournamentId);
+
+  const agg = new Map();
+  const add = (pid, deltaPts, playedFlag=0) => {
+    if (!pid) return;
+    const cur = agg.get(pid) || { points:0, played:0 };
+    cur.points += Number(deltaPts || 0);
+    cur.played = Math.max(cur.played, playedFlag ? 1 : 0);
+    agg.set(pid, cur);
+  };
+
+  // Round number → label (no draw_size fallback needed)
+  const labelForRound = (roundNum) => {
+    switch (Number(roundNum)) {
+      case 1: return 'F';
+      case 2: return 'SF';
+      case 3: return 'QF';
+      case 4: return 'R16';
+      case 5: return 'R32';
+      case 6: return 'R64';
+      case 7: return 'R128';
+      default: return 'F';
+    }
+  };
+
+  for (const m of matches) {
+    // mark participation
+    add(m.p1_id, 0, 1);
+    add(m.p2_id, 0, 1);
+
+    const loser = Number(m.winner_id) === Number(m.p1_id) ? m.p2_id : m.p1_id;
+    const lbl = labelForRound(m.round);
+    add(loser, pts[lbl] || 0, 1);
+  }
+
+  // champion = winner of final
+  const final = matches.find(x => Number(x.round) === 1);
+  if (final?.winner_id) add(final.winner_id, pts.C || 0, 1);
+
+  // 4) Upsert into your standings schema (played/points columns)
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS standings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      club_id INTEGER NOT NULL,
+      sport TEXT NOT NULL,
+      player_id INTEGER NOT NULL,
+      season TEXT DEFAULT 'default',
+      played INTEGER NOT NULL DEFAULT 0,
+      won INTEGER NOT NULL DEFAULT 0,
+      drawn INTEGER NOT NULL DEFAULT 0,
+      lost INTEGER NOT NULL DEFAULT 0,
+      gf INTEGER NOT NULL DEFAULT 0,
+      ga INTEGER NOT NULL DEFAULT 0,
+      points INTEGER NOT NULL DEFAULT 0,
+      rating INTEGER,
+      UNIQUE (club_id, sport, season, player_id)
+    )
+  `).run();
+
+  const upsert = db.prepare(`
+    INSERT INTO standings (club_id, sport, player_id, season, played, points)
+    VALUES (?, ?, ?, 'default', ?, ?)
+    ON CONFLICT (club_id, sport, season, player_id)
+    DO UPDATE SET
+      played = played + excluded.played,
+      points = points + excluded.points
+  `);
+
+  const tx = db.transaction((entries) => {
+    for (const [pid, v] of entries) {
+      upsert.run(t.club_id, t.sport, pid, v.played, v.points);
+    }
+  });
+  tx(agg.entries());
+}
 
 // -------------------------------
 // Clubs & Membership

@@ -108,8 +108,7 @@ export default function App(){
                 <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
               </div>
             </header>
-            {/* ⬇️ Use the component we added earlier */}
-            <RankingsView API={API} club={club} sportDefault="tennis" />
+            <RankingsView API={API} club={club} user={user} isManager={isManager} />
           </>
         ) : (
           <>
@@ -843,7 +842,7 @@ function TournamentsView({ API, club, user, isManager }) {
   const [drawSize, setDrawSize] = useState(16);
   const [seedCount, setSeedCount] = useState(4);
   const [pointsByRound, setPointsByRound] = useState({
-    R128: 0, R64: 0, R32: 10, R16: 20, QF: 40, SF: 70, F: 120
+    R128: 0, R64: 0, R32: 10, R16: 20, QF: 40, SF: 70, F: 120, C: 150
   });
 
   // selected tournament details
@@ -859,6 +858,7 @@ function TournamentsView({ API, club, user, isManager }) {
       { label: 'QF',   size:   8 },
       { label: 'SF',   size:   4 },
       { label: 'F',    size:   2 },
+      { label: 'C',    size:   1 }
     ];
     return map.filter(x => x.size <= sz).map(x => x.label);
   };
@@ -938,81 +938,121 @@ function TournamentsView({ API, club, user, isManager }) {
     await openDetail(selectedId);
   };
 
-  // Report result
+  // Report result (frontend validation)
   const reportResult = async (matchId, p1_score, p2_score) => {
+    const s1 = Number(p1_score);
+    const s2 = Number(p2_score);
+
+    if (!Number.isFinite(s1) || !Number.isFinite(s2)) {
+      alert('Enter both scores');
+      return;
+    }
+    if (s1 === s2) {
+      alert('Scores must not tie');
+      return;
+    }
+
     const r = await fetch(`${API}/matches/${matchId}/result`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ managerId: user.id, p1_score, p2_score })
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ managerId: user.id, p1_score: s1, p2_score: s2 })
     });
-    const data = await r.json();
-    if (!r.ok) return alert(data.error || 'Save failed');
+    const data = await r.json().catch(()=>null);
+    if (!r.ok) return alert((data && data.error) || 'Save failed');
     await openDetail(selectedId);
   };
 
   // Render bracket columns grouped by round (DESC -> left to right)
-  const renderBracket = () => {
-    if (!detail || !detail.matches?.length) return <div className="text-sm text-gray-500">No matches yet.</div>;
-    const rounds = [...new Set(detail.matches.map(m => m.round))].sort((a,b) => b - a);
-    const playersById = new Map(detail.players.map(p => [p.id, p.display_name]));
+  // Render bracket columns grouped by round (DESC -> left to right)
+const renderBracket = () => {
+  if (!detail || !detail.matches?.length) {
+    return <div className="text-sm text-gray-500">No matches yet.</div>;
+  }
 
-    return (
-      <div className="w-full overflow-x-auto">
-        <div className="flex gap-6">
-          {rounds.map(rnd => {
-            const ms = detail.matches.filter(m => m.round === rnd);
-            const title = rnd === 1 ? 'Final' : rnd === 2 ? 'Semifinal' : rnd === 3 ? 'Quarterfinal' : `Round ${rnd}`;
-            return (
-              <div key={rnd} className="min-w-[240px]">
-                <div className="text-sm font-semibold mb-2">{title}</div>
-                <div className="flex flex-col gap-3">
-                  {ms.map(m => {
-                    const p1 = playersById.get(m.p1_id) || 'TBD';
-                    const p2 = playersById.get(m.p2_id) || 'TBD';
-                    const completed = m.status === 'completed';
-                    return (
-                      <div key={m.id} className="border rounded-lg p-3 bg-white shadow-sm">
-                        <div className="flex justify-between">
-                          <div className={`truncate ${m.winner_id === m.p1_id ? 'font-semibold' : ''}`}>{p1}</div>
-                          <div className="text-xs text-gray-500">{completed ? m.p1_score : ''}</div>
-                        </div>
-                        <div className="flex justify-between">
-                          <div className={`truncate ${m.winner_id === m.p2_id ? 'font-semibold' : ''}`}>{p2}</div>
-                          <div className="text-xs text-gray-500">{completed ? m.p2_score : ''}</div>
-                        </div>
+  const rounds = [...new Set(detail.matches.map(m => m.round))].sort((a, b) => b - a);
+  const playersById = new Map(detail.players.map(p => [p.id, p.display_name]));
 
-                        {isManager && m.status !== 'completed' && m.p1_id && m.p2_id && (
-                          <div className="mt-2 flex items-center gap-2">
-                            <input
-                              type="number"
-                              placeholder="P1"
-                              className="border rounded px-2 py-1 w-16"
-                              onChange={(e) => (m._p1 = Number(e.target.value))}
-                            />
-                            <input
-                              type="number"
-                              placeholder="P2"
-                              className="border rounded px-2 py-1 w-16"
-                              onChange={(e) => (m._p2 = Number(e.target.value))}
-                            />
-                            <button
-                              className="px-3 py-1 rounded bg-black text-white"
-                              onClick={() => reportResult(m.id, m._p1 ?? 0, m._p2 ?? 0)}
-                            >
-                              Save
-                            </button>
-                          </div>
-                        )}
+  // compute final winner (if any) to show Champion box
+  const finalMatchWithWinner = detail.matches.find(m => m.round === 1 && m.winner_id);
+  const championId = finalMatchWithWinner?.winner_id ?? null;
+  const championName = championId ? (playersById.get(championId) || 'Champion') : null;
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <div className="flex gap-6 items-start">
+        {/* Bracket rounds (left → right) */}
+        {rounds.map(rnd => {
+          const ms = detail.matches.filter(m => m.round === rnd);
+          const title =
+            rnd === 1 ? 'Final' :
+            rnd === 2 ? 'Semifinal' :
+            rnd === 3 ? 'Quarterfinal' :
+            `Round ${rnd}`;
+
+          return (
+            <div key={rnd} className="min-w-[240px]">
+              <div className="text-sm font-semibold mb-2">{title}</div>
+              <div className="flex flex-col gap-3">
+                {ms.map(m => {
+                  const p1 = playersById.get(m.p1_id) || 'TBD';
+                  const p2 = playersById.get(m.p2_id) || 'TBD';
+                  const completed = m.status === 'completed';
+                  return (
+                    <div key={m.id} className="border rounded-lg p-3 bg-white shadow-sm">
+                      <div className="flex justify-between">
+                        <div className={`truncate ${m.winner_id === m.p1_id ? 'font-semibold' : ''}`}>{p1}</div>
+                        <div className="text-xs text-gray-500">{completed ? m.p1_score : ''}</div>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="flex justify-between">
+                        <div className={`truncate ${m.winner_id === m.p2_id ? 'font-semibold' : ''}`}>{p2}</div>
+                        <div className="text-xs text-gray-500">{completed ? m.p2_score : ''}</div>
+                      </div>
+
+                      {isManager && m.status !== 'completed' && m.p1_id && m.p2_id && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <input
+                            type="number"
+                            placeholder="P1"
+                            className="border rounded px-2 py-1 w-16"
+                            onChange={(e) => (m._p1 = Number(e.target.value))}
+                          />
+                          <input
+                            type="number"
+                            placeholder="P2"
+                            className="border rounded px-2 py-1 w-16"
+                            onChange={(e) => (m._p2 = Number(e.target.value))}
+                          />
+                          <button
+                            className="px-3 py-1 rounded bg-black text-white"
+                            onClick={() => reportResult(m.id, m._p1 ?? 0, m._p2 ?? 0)}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
+
+        {/* Champion panel (appears when final has a winner) */}
+        {championName && (
+          <div className="min-w-[220px]">
+            <div className="text-sm font-semibold mb-2">Champion</div>
+            <div className="rounded-lg border p-4 bg-white shadow-sm">
+              <div className="text-base font-medium">{championName}</div>
+              <div className="text-xs text-gray-500 mt-1">Awarded Final points</div>
+            </div>
+          </div>
+        )}
       </div>
-    );
-  };
+    </div>
+  );
+};
+
 
   return (
     <div className="p-4 space-y-6">
@@ -1135,56 +1175,124 @@ function TournamentsView({ API, club, user, isManager }) {
   );
 }
 
-function RankingsView({ API, club, sportDefault = 'tennis' }) {
-  const [rows, setRows] = useState([]);
-  const [sport, setSport] = useState(sportDefault);
+function RankingsView({ API, club, user, isManager }) {
+  const [rows, setRows] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [confirm1, setConfirm1] = React.useState(false);
+  const [typed, setTyped] = React.useState('');
 
   const load = async () => {
     if (!club) return;
-    const r = await fetch(`${API}/clubs/${club.id}/standings?sport=${encodeURIComponent(sport)}`);
+    setLoading(true);
+    const r = await fetch(`${API}/clubs/${club.id}/standings`);
     const data = await r.json();
     setRows(Array.isArray(data) ? data : []);
+    setLoading(false);
   };
 
-  useEffect(() => { load(); }, [club?.id, sport]);
+  React.useEffect(() => { load(); }, [club?.id]);
+
+  const doReset = async () => {
+    if (!club) return;
+    const r = await fetch(`${API}/clubs/${club.id}/standings/reset`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ managerId: user.id, confirm: 'reset' })
+    });
+    const data = await r.json();
+    if (!r.ok) return alert(data.error || 'Reset failed');
+    setConfirm1(false);
+    setTyped('');
+    await load();
+  };
 
   return (
-    <div className="p-4 space-y-4">
-      <div className="flex items-center gap-2">
-        <input
-          className="border rounded px-3 py-2"
-          placeholder="Sport"
-          value={sport}
-          onChange={e=>setSport(e.target.value)}
-        />
-        <button className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300" onClick={load}>
-          Refresh
-        </button>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-base font-semibold">Rankings</div>
+
+        <div className="flex items-center gap-2">
+          {/* New Refresh button */}
+          <button
+            className="px-3 py-1 rounded bg-gray-200"
+            onClick={load}
+            title="Reload standings"
+          >
+            Refresh
+          </button>
+
+          {isManager && (
+            <div>
+              {!confirm1 ? (
+                <button
+                  className="px-3 py-1 rounded bg-red-600 text-white"
+                  onClick={() => setConfirm1(true)}
+                >
+                  Reset rankings
+                </button>
+              ) : (
+                <div className="p-3 border rounded bg-red-50">
+                  <div className="text-sm font-medium">Are you sure you want to reset the rankings?</div>
+                  <div className="text-xs text-red-700 mt-1">
+                    This will set all the points back to 0 for everyone (and remove the list).
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      className="border rounded px-2 py-1"
+                      placeholder='type "reset"'
+                      value={typed}
+                      onChange={(e)=> setTyped(e.target.value)}
+                    />
+                    <button
+                      className="px-3 py-1 rounded bg-red-600 text-white disabled:opacity-50"
+                      disabled={typed !== 'reset'}
+                      onClick={doReset}
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      className="px-3 py-1 rounded bg-gray-200"
+                      onClick={() => { setConfirm1(false); setTyped(''); }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-[480px] w-full border">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="text-left p-2 border-r">Player</th>
-              <th className="text-left p-2 border-r">Tournaments Played</th>
-              <th className="text-left p-2">Points</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(r => (
-              <tr key={r.player_id} className="border-t">
-                <td className="p-2 border-r">{r.name}</td>
-                <td className="p-2 border-r">{r.tournaments_played}</td>
-                <td className="p-2">{r.points}</td>
+      {loading ? (
+        <div className="text-sm text-gray-500">Loading…</div>
+      ) : rows.length === 0 ? (
+        <div className="text-sm text-gray-500">No rankings yet.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-[520px] text-sm">
+            <thead>
+              <tr className="text-left border-b">
+                <th className="py-2 pr-4">#</th>
+                <th className="py-2 pr-4">Player</th>
+                <th className="py-2 pr-4">Tournaments</th>
+                <th className="py-2 pr-4">Points</th>
               </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr><td className="p-3 text-sm text-gray-500" colSpan={3}>No standings yet.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.player_id} className="border-b">
+                  <td className="py-2 pr-4">{i + 1}</td>
+                  <td className="py-2 pr-4">{r.name}</td>
+                  <td className="py-2 pr-4">{r.tournaments_played}</td>
+                  <td className="py-2 pr-4">{r.points}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
+
+
