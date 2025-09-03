@@ -12,7 +12,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173',                     // local Vite
+    'https://club-booking-app-1.onrender.com'    // ← your Render Static Site URL
+  ]
+}));
 app.use(express.json());
 
 const DB_FILE = path.join(__dirname, 'data.db');

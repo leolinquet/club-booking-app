@@ -1,7 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from "./Navbar";
 
-const API = window.API_BASE;
+const API = (() => {
+  const h = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isRender = /\.onrender\.com$/i.test(h);
+  let base = typeof window !== 'undefined' ? window.API_BASE : '';
+  if (isRender && (!base || /localhost/.test(base))) {
+    base = 'https://club-booking-app.onrender.com';   // same API URL as above
+    if (typeof window !== 'undefined') window.API_BASE = base;
+  }
+  return base || 'http://localhost:5051';
+})();
+
 
 function Card({ children }) {
   return <div className="bg-white rounded-xl shadow p-4">{children}</div>;
