@@ -648,50 +648,56 @@ function UserBooking({ user, club }){
               <tbody>
                 {grid.slots.map(row => (
                   <tr key={row.time}>
-                    <td className="p-2 text-sm text-gray-700">{row.time}</td>
-                    {row.courts.map(cell => (
-                    <td key={cell.courtIndex} className="p-1">
-                      {cell.owned ? (
-                        // ORANGE: your booking → cancel (owner; managers see label too)
-                        <button
-                          onClick={() => cancelBooking(cell.bookingId)}
-                          className="h-10 w-full rounded bg-orange-500 hover:opacity-90 relative"
-                          title="Click to cancel your reservation"
-                        >
-                          {isOwnClubManager && cell.bookedBy && (
-                            <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium">
-                              {cell.bookedBy}
-                            </span>
-                          )}
-                        </button>
-                      ) : cell.booked ? (
-                        isManager ? (
-                          // RED: someone else booked → managers can cancel any; managers see label
+                    <td data-label="Time" className="p-2 text-sm text-gray-700">{row.time}</td>
+                    {row.courts.map((cell, i) => (
+                      <td data-label={`Court ${i+1}`} key={cell.courtIndex} className="p-1">
+                        {cell.owned ? (
                           <button
                             onClick={() => cancelBooking(cell.bookingId)}
-                            className="h-10 w-full rounded bg-red-500 hover:opacity-90 relative"
-                            title="Manager: click to cancel this booking"
+                            className="w-full rounded bg-orange-500 hover:opacity-90 relative
+                                      min-h-12 sm:h-10 active:scale-[.98] transition"
+                            title="Click to cancel your reservation"
                           >
+                            {/* helper label on small screens (shows username if manager) */}
                             {isOwnClubManager && cell.bookedBy && (
-                              <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium">
+                              <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium select-none">
                                 {cell.bookedBy}
                               </span>
                             )}
+                            <span className="sr-only">Cancel your reservation</span>
                           </button>
+                        ) : cell.booked ? (
+                          isManager ? (
+                            <button
+                              onClick={() => cancelBooking(cell.bookingId)}
+                              className="w-full rounded bg-red-500 hover:opacity-90 relative
+                                        min-h-12 sm:h-10 active:scale-[.98] transition"
+                              title="Manager: click to cancel this booking"
+                            >
+                              {isOwnClubManager && cell.bookedBy && (
+                                <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium select-none">
+                                  {cell.bookedBy}
+                                </span>
+                              )}
+                              <span className="sr-only">Cancel booking</span>
+                            </button>
+                          ) : (
+                            <div className="rounded bg-red-500 min-h-12 sm:h-10" />
+                          )
                         ) : (
-                          // regular users just see solid red block
-                          <div className="h-10 rounded bg-red-500" />
-                        )
-                      ) : (
-                        // GREEN: available
-                        <button
-                          onClick={() => openConfirm(cell.courtIndex, row.time)}
-                          className={`h-10 w-full rounded bg-green-500 hover:opacity-90 ${hasOwnBooking ? 'opacity-50 cursor-not-allowed' : ''} relative`}
-                          disabled={hasOwnBooking && !isManager}
-                        />
-                      )}
-                    </td>
-                  ))}
+                          <button
+                            onClick={() => openConfirm(cell.courtIndex, row.time)}
+                            className={`w-full rounded bg-green-500 hover:opacity-90 relative
+                                        min-h-12 sm:h-10 active:scale-[.98] transition
+                                        ${hasOwnBooking ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            disabled={hasOwnBooking && !isManager}
+                            aria-pressed="false"
+                          >
+                            <span className="sr-only">Book this slot</span>
+                          </button>
+                        )}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -1396,10 +1402,10 @@ function RankingsView({ API, club, user, isManager }) {
             <tbody>
               {rows.map((r, i) => (
                 <tr key={r.player_id} className="border-b">
-                  <td className="py-2 pr-4">{i + 1}</td>
-                  <td className="py-2 pr-4">{r.name}</td>
-                  <td className="py-2 pr-4">{r.tournaments_played}</td>
-                  <td className="py-2 pr-4">{r.points}</td>
+                  <td data-label="#" className="py-2 pr-4">{i + 1}</td>
+                  <td data-label="Player" className="py-2 pr-4">{r.name}</td>
+                  <td data-label="Tournaments" className="py-2 pr-4">{r.tournaments_played}</td>
+                  <td data-label="Points" className="py-2 pr-4">{r.points}</td>
                 </tr>
               ))}
             </tbody>
