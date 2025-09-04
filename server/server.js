@@ -299,6 +299,16 @@ function awardPointsToChampion({ tournamentId, clubId, sport, winnerPlayerId }) 
   }
 }
 
+function deleteTournamentById(tId) {
+  // Delete children first; do NOT modify standings table
+  db.prepare(`DELETE FROM matches WHERE tournament_id=?`).run(tId);
+  // tournament_points is optional in some installs
+  const hasTP = !!db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='tournament_points'`).get();
+  if (hasTP) db.prepare(`DELETE FROM tournament_points WHERE tournament_id=?`).run(tId);
+  db.prepare(`DELETE FROM tournament_players WHERE tournament_id=?`).run(tId);
+  db.prepare(`DELETE FROM tournaments WHERE id=?`).run(tId);
+}
+
 // -------------------------------
 // Tournaments & Rankings
 // -------------------------------
@@ -1203,6 +1213,59 @@ app.delete('/tournaments/:id/players/:playerId', (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('remove entrant error', e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// DELETE /tournaments/:id?managerId=123
+app.delete('/tournaments/:id', (req, res) => {
+  try {
+    const tId = Number(req.params.id);
+    const managerId = Number(req.query.managerId);
+    const t = db.prepare(`SELECT id, club_id, name FROM tournaments WHERE id=?`).get(tId);
+    if (!t) return res.status(404).json({ error: 'tournament not found' });
+
+    const clubRow = db.prepare(`SELECT manager_id FROM clubs WHERE id=?`).get(t.club_id);
+    if (!clubRow || Number(clubRow.manager_id) !== managerId) {
+      return res.status(403).json({ error: 'only club manager can delete tournaments' });
+    }
+
+    deleteTournamentById(tId);
+    res.json({ ok: true, deleted: 1, ids: [tId] });
+  } catch (e) {
+    console.error('delete tournament error', e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// DELETE /clubs/:clubId/tournaments?status=active|completed|all&managerId=123
+app.delete('/clubs/:clubId/tournaments', (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const status = String(req.query.status || 'all').toLowerCase();
+    const managerId = Number(req.query.managerId);
+
+    const clubRow = db.prepare(`SELECT manager_id FROM clubs WHERE id=?`).get(clubId);
+    if (!clubRow || Number(clubRow.manager_id) !== managerId) {
+      return res.status(403).json({ error: 'only club manager can delete tournaments' });
+    }
+
+    let where = `club_id = ?`;
+    if (status === 'active') where += ` AND end_date IS NULL`;
+    else if (status === 'completed') where += ` AND end_date IS NOT NULL`;
+    // 'all' = no extra filter
+
+    const ids = db.prepare(`SELECT id FROM tournaments WHERE ${where}`).all(clubId).map(r => r.id);
+    if (ids.length === 0) return res.json({ ok: true, deleted: 0, ids: [] });
+
+    const tx = db.transaction((arr) => {
+      for (const id of arr) deleteTournamentById(id);
+    });
+    tx(ids);
+
+    res.json({ ok: true, deleted: ids.length, ids });
+  } catch (e) {
+    console.error('bulk delete tournaments error', e);
     res.status(500).json({ error: 'unexpected error' });
   }
 });

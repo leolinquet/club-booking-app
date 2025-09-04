@@ -844,7 +844,7 @@ function ClubsPage({ user, club, onSetActive }) {
 function TournamentsView({ API, club, user, isManager }) {
   const [list, setList] = useState([]);
   const [joined, setJoined] = useState({}); // { [tournamentId]: boolean }
-  const [statusFilter, setStatusFilter] = useState('active');
+  const [statusFilter, setStatusFilter] = useState('active'); // 'active' | 'completed' | 'all'
   const [loading, setLoading] = useState(false);
 
   // creation form
@@ -862,14 +862,9 @@ function TournamentsView({ API, club, user, isManager }) {
 
   const roundLabelsFor = (sz) => {
     const map = [
-      { label: 'R128', size: 128 },
-      { label: 'R64',  size:  64 },
-      { label: 'R32',  size:  32 },
-      { label: 'R16',  size:  16 },
-      { label: 'QF',   size:   8 },
-      { label: 'SF',   size:   4 },
-      { label: 'F',    size:   2 },
-      { label: 'C',    size:   1 }
+      { label: 'R128', size: 128 }, { label: 'R64', size: 64 }, { label: 'R32', size: 32 },
+      { label: 'R16', size: 16 }, { label: 'QF', size: 8 }, { label: 'SF', size: 4 },
+      { label: 'F', size: 2 }, { label: 'C', size: 1 }
     ];
     return map.filter(x => x.size <= sz).map(x => x.label);
   };
@@ -883,7 +878,6 @@ function TournamentsView({ API, club, user, isManager }) {
     const arr = Array.isArray(data) ? data : [];
     setList(arr);
 
-    // also fetch "joined" flags for the current user (non-manager UX)
     if (user && !isManager) {
       const entries = await Promise.all(arr.map(async (t) => {
         const jr = await fetch(`${API}/tournaments/${t.id}/joined?userId=${user.id}`);
@@ -903,7 +897,6 @@ function TournamentsView({ API, club, user, isManager }) {
   const createTournament = async () => {
     if (!isManager) return;
     if (!name.trim()) return alert('Name required');
-
     const needed = roundLabelsFor(Number(drawSize));
     const pts = {};
     needed.forEach(lbl => { pts[lbl] = Number(pointsByRound[lbl] || 0); });
@@ -912,8 +905,7 @@ function TournamentsView({ API, club, user, isManager }) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: name.trim(), sport, drawSize: Number(drawSize),
-        seedCount: Number(seedCount), pointsByRound: pts,
-        managerId: user.id
+        seedCount: Number(seedCount), pointsByRound: pts, managerId: user.id
       })
     });
     const data = await r.json();
@@ -929,7 +921,7 @@ function TournamentsView({ API, club, user, isManager }) {
     setDetail(data);
   };
 
-  // Sign in / Withdraw (for normal users)
+  // Sign in / Withdraw (non-managers)
   const signIn = async (tid, tname) => {
     if (!user) return alert('Please sign in first');
     const ok = window.confirm(`Do you want to sign in for "${tname}"?`);
@@ -957,20 +949,41 @@ function TournamentsView({ API, club, user, isManager }) {
     if (selectedId === tid) await openDetail(tid);
   };
 
-  // Manager: remove an entrant from the list
+  // Manager: remove an entrant from the list (pre-draw)
   const removeEntrant = async (playerId) => {
     if (!selectedId) return;
     const ok = window.confirm('Remove this player from the tournament?');
     if (!ok) return;
-    const r = await fetch(`${API}/tournaments/${selectedId}/players/${playerId}?managerId=${user.id}`, {
-      method: 'DELETE'
-    });
+    const r = await fetch(`${API}/tournaments/${selectedId}/players/${playerId}?managerId=${user.id}`, { method: 'DELETE' });
     const data = await r.json().catch(()=>null);
     if (!r.ok) return alert((data && data.error) || 'Remove failed');
     await openDetail(selectedId);
   };
 
-  // Add players (manager legacy flow)
+  // Manager: delete ONE tournament (confirm yes/cancel)
+  const deleteTournament = async (tid, tname) => {
+    const ok = window.confirm(`Are you sure you want to delete "${tname}"?`);
+    if (!ok) return;
+    const r = await fetch(`${API}/tournaments/${tid}?managerId=${user.id}`, { method: 'DELETE' });
+    const data = await r.json().catch(()=>null);
+    if (!r.ok) return alert((data && data.error) || 'Delete failed');
+    if (selectedId === tid) setDetail(null);
+    await loadList();
+  };
+
+  // Manager: delete ALL tournaments in current section (type "delete")
+  const deleteAllInSection = async () => {
+    if (!list.length) return alert('There are no tournaments to delete in this section.');
+    const word = window.prompt(`Are you sure you want to delete all tournaments in "${statusFilter}"? Type "delete" to confirm.`);
+    if (word !== 'delete') return;
+    const r = await fetch(`${API}/clubs/${club.id}/tournaments?status=${statusFilter}&managerId=${user.id}`, { method: 'DELETE' });
+    const data = await r.json().catch(()=>null);
+    if (!r.ok) return alert((data && data.error) || 'Bulk delete failed');
+    setDetail(null);
+    await loadList();
+  };
+
+  // Manager legacy add-players
   const [playerIdsText, setPlayerIdsText] = useState('');
   const addPlayers = async () => {
     if (!selectedId) return;
@@ -1016,11 +1029,9 @@ function TournamentsView({ API, club, user, isManager }) {
   }
 
   const reportResult = async (matchId, p1_score, p2_score) => {
-    const s1 = Number(p1_score);
-    const s2 = Number(p2_score);
+    const s1 = Number(p1_score), s2 = Number(p2_score);
     if (!Number.isFinite(s1) || !Number.isFinite(s2)) return alert('Enter both scores');
     if (s1 === s2) return alert('Scores must not tie');
-
     const r = await fetch(`${API}/matches/${matchId}/result`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ managerId: user.id, p1_score: s1, p2_score: s2 })
@@ -1044,12 +1055,7 @@ function TournamentsView({ API, club, user, isManager }) {
         <div className="flex gap-6 items-start">
           {rounds.map(rnd => {
             const ms = detail.matches.filter(m => m.round === rnd).sort((a,b)=>a.slot - b.slot);
-            const title =
-              rnd === 1 ? 'Final' :
-              rnd === 2 ? 'Semifinal' :
-              rnd === 3 ? 'Quarterfinal' :
-              `Round ${rnd}`;
-
+            const title = rnd === 1 ? 'Final' : rnd === 2 ? 'Semifinal' : rnd === 3 ? 'Quarterfinal' : `Round ${rnd}`;
             return (
               <div key={rnd} className="min-w-[240px]">
                 <div className="text-sm font-semibold mb-2">{title}</div>
@@ -1114,7 +1120,7 @@ function TournamentsView({ API, club, user, isManager }) {
 
   return (
     <div className="p-4 space-y-6">
-      {/* Filters and list */}
+      {/* Filters + actions */}
       <div className="flex items-center gap-3">
         <select className="border rounded px-2 py-1" value={statusFilter} onChange={(e)=> setStatusFilter(e.target.value)}>
           <option value="active">Active</option>
@@ -1122,6 +1128,16 @@ function TournamentsView({ API, club, user, isManager }) {
           <option value="all">All</option>
         </select>
         <button onClick={loadList} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Refresh</button>
+
+        {isManager && (
+          <button
+            className="ml-auto px-3 py-1 rounded bg-red-100 hover:bg-red-200"
+            onClick={deleteAllInSection}
+            title={`Delete all tournaments in "${statusFilter}"`}
+          >
+            Delete all in {statusFilter}
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -1135,6 +1151,7 @@ function TournamentsView({ API, club, user, isManager }) {
                 <button className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300" onClick={()=> openDetail(t.id)}>
                   View
                 </button>
+
                 {!isManager && !t.end_date && (
                   joined[t.id] ? (
                     <button className="px-3 py-1 rounded bg-red-100 hover:bg-red-200"
@@ -1143,6 +1160,16 @@ function TournamentsView({ API, club, user, isManager }) {
                     <button className="px-3 py-1 rounded bg-black text-white"
                             onClick={()=> signIn(t.id, t.name)}>Sign in</button>
                   )
+                )}
+
+                {isManager && (
+                  <button
+                    className="ml-auto px-3 py-1 rounded bg-red-100 hover:bg-red-200"
+                    onClick={()=> deleteTournament(t.id, t.name)}
+                    title="Delete this tournament"
+                  >
+                    Delete
+                  </button>
                 )}
               </div>
             </div>
@@ -1198,35 +1225,27 @@ function TournamentsView({ API, club, user, isManager }) {
               {/* Add players (usernames) */}
               <div className="border rounded p-3">
                 <div className="text-sm font-medium mb-2">Add Players (usernames, comma-separated)</div>
-                <input
-                  className="border rounded px-2 py-1 w-full"
-                  placeholder="e.g., alice, bob, charlie"
-                  value={playerIdsText}
-                  onChange={e=>setPlayerIdsText(e.target.value)}
-                />
+                <input className="border rounded px-2 py-1 w-full"
+                       placeholder="e.g., alice, bob, charlie"
+                       value={playerIdsText}
+                       onChange={e=>setPlayerIdsText(e.target.value)} />
                 <button className="mt-2 px-3 py-1 rounded bg-gray-200 hover:bg-gray-300" onClick={addPlayers}>
                   Add
                 </button>
               </div>
 
-              {/* Registered players (remove) */}
+              {/* Registered players */}
               <div className="border rounded p-3">
                 <div className="text-sm font-medium mb-2">Registered Players</div>
                 <ul className="space-y-1 max-h-48 overflow-auto">
                   {detail.players.map(p => (
                     <li key={p.id} className="flex items-center justify-between">
                       <span>{p.display_name}</span>
-                      <button
-                        className="text-xs px-2 py-0.5 rounded bg-red-100 hover:bg-red-200"
-                        onClick={()=> removeEntrant(p.id)}
-                      >
-                        Remove
-                      </button>
+                      <button className="text-xs px-2 py-0.5 rounded bg-red-100 hover:bg-red-200"
+                              onClick={()=> removeEntrant(p.id)}>Remove</button>
                     </li>
                   ))}
-                  {detail.players.length === 0 && (
-                    <li className="text-xs text-gray-500">No one has signed in yet.</li>
-                  )}
+                  {detail.players.length === 0 && <li className="text-xs text-gray-500">No one has signed in yet.</li>}
                 </ul>
               </div>
 
@@ -1234,29 +1253,17 @@ function TournamentsView({ API, club, user, isManager }) {
               <div className="border rounded p-3">
                 <div className="text-sm font-medium mb-2">Generate Bracket</div>
                 <div className="flex gap-2 items-center">
-                  <select
-                    className="border rounded px-2 py-1"
-                    value={drawSize}
-                    onChange={e=>setDrawSize(Number(e.target.value))}
-                  >
+                  <select className="border rounded px-2 py-1" value={drawSize} onChange={e=>setDrawSize(Number(e.target.value))}>
                     {[4,8,16,32,64,128].map(n=> <option key={n} value={n}>{n}</option>)}
                   </select>
-                  <input
-                    type="number"
-                    min={0}
-                    max={Math.min(32, Number(drawSize))}
-                    className="border rounded px-2 py-1 w-20"
-                    value={seedCount}
-                    onChange={e=>setSeedCount(Number(e.target.value))}
-                  />
-                  <button className="px-3 py-1 rounded bg-black text-white" onClick={generateBracket}>
-                    Generate
-                  </button>
+                  <input type="number" min={0} max={Math.min(32, Number(drawSize))}
+                         className="border rounded px-2 py-1 w-20"
+                         value={seedCount} onChange={e=>setSeedCount(Number(e.target.value))} />
+                  <button className="px-3 py-1 rounded bg-black text-white" onClick={generateBracket}>Generate</button>
                 </div>
               </div>
             </div>
           )}
-
 
           <div className="mt-4">{renderBracket()}</div>
         </div>
@@ -1264,7 +1271,6 @@ function TournamentsView({ API, club, user, isManager }) {
     </div>
   );
 }
-
 
 function RankingsView({ API, club, user, isManager }) {
   const [rows, setRows] = React.useState([]);
