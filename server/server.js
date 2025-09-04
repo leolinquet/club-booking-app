@@ -7,6 +7,29 @@ import bcrypt from 'bcryptjs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
+import helmet from "helmet";
+
+// If you're behind a proxy (Render/Heroku), enable this so req.secure works:
+app.enable('trust proxy');
+
+// Redirect http -> https in production only
+app.use((req, res, next) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  if (!isProd) return next();
+
+  // If already secure OR forwarded as https, continue
+  const xfProto = req.get('x-forwarded-proto');
+  if (req.secure || xfProto === 'https') return next();
+
+  // otherwise redirect
+  const host = req.headers.host;
+  return res.redirect(301, `https://${host}${req.originalUrl}`);
+});
+
+// Security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +42,30 @@ app.use(cors({
   ]
 }));
 app.use(express.json());
+
+const allowed = new Set(
+  [process.env.CLIENT_URL, process.env.ADMIN_URL, 'capacitor://localhost']
+    .filter(Boolean)
+);
+
+// Optional: allow any onrender hostname for quick tests
+const allowOnrenderRegex = /^https:\/\/.+\.onrender\.com$/;
+
+const corsOptions = {
+  origin(origin, cb) {
+    // Allow non-browser tools (curl/postman) that send no Origin
+    if (!origin) return cb(null, true);
+
+    if (allowed.has(origin) || allowOnrenderRegex.test(origin)) {
+      return cb(null, true);
+    }
+    return cb(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // preflight
 
 const DB_FILE = path.join(__dirname, 'data.db');
 const db = new Database(DB_FILE);
