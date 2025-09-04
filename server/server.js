@@ -7,58 +7,61 @@ import bcrypt from 'bcryptjs';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
-import helmet from "helmet";
-
-// If you're behind a proxy (Render/Heroku), enable this so req.secure works:
-app.enable('trust proxy');
-
-// Redirect http -> https in production only
-app.use((req, res, next) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  if (!isProd) return next();
-
-  // If already secure OR forwarded as https, continue
-  const xfProto = req.get('x-forwarded-proto');
-  if (req.secure || xfProto === 'https') return next();
-
-  // otherwise redirect
-  const host = req.headers.host;
-  return res.redirect(301, `https://${host}${req.originalUrl}`);
-});
-
-// Security headers
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" },
-}));
+import helmet from 'helmet';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(cors({
-  origin: [
-    'http://localhost:5173',                     // local Vite
-    'https://club-booking-app-1.onrender.com'    // ← your Render Static Site URL
-  ]
-}));
-app.use(express.json());
 
-const allowed = new Set(
-  [process.env.CLIENT_URL, process.env.ADMIN_URL, 'capacitor://localhost']
-    .filter(Boolean)
+// ----- Security & platform basics -----
+app.enable('trust proxy'); // so req.secure works behind Render/Heroku/etc.
+
+// Security headers early
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
 );
 
-// Optional: allow any onrender hostname for quick tests
+// Environment
+const isProd = process.env.NODE_ENV === 'production';
+
+// Force HTTPS in production only
+app.use((req, res, next) => {
+  if (!isProd) return next();
+  const xfProto = req.get('x-forwarded-proto');
+  if (req.secure || xfProto === 'https') return next();
+  return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
+});
+
+// ----- CORS (dev-friendly; strict in prod) -----
+const allowed = new Set(
+  [
+    process.env.CLIENT_URL,         // e.g. https://your-site.onrender.com
+    process.env.ADMIN_URL,
+    'capacitor://localhost',
+    // If you have a known static site domain, you can also hardcode it here:
+    'https://club-booking-app-1.onrender.com',
+  ].filter(Boolean)
+);
 const allowOnrenderRegex = /^https:\/\/.+\.onrender\.com$/;
+
+// Allow localhost and common LAN IP ranges in dev (so phones on Wi-Fi can test)
+const devRegex =
+  /^(http:\/\/(localhost|127\.0\.0\.1)(:\d+)?|http:\/\/(?:10|172\.(1[6-9]|2\d|3[01])|192\.168)\.\d+\.\d+(?::\d+)?)/;
 
 const corsOptions = {
   origin(origin, cb) {
-    // Allow non-browser tools (curl/postman) that send no Origin
+    // Non-browser clients like curl/postman send no Origin
     if (!origin) return cb(null, true);
 
-    if (allowed.has(origin) || allowOnrenderRegex.test(origin)) {
-      return cb(null, true);
-    }
+    // Dev: allow localhost + LAN IPs
+    if (!isProd && devRegex.test(origin)) return cb(null, true);
+
+    // Prod: only explicit allowlist + *.onrender.com
+    if (allowed.has(origin) || allowOnrenderRegex.test(origin)) return cb(null, true);
+
     return cb(new Error(`CORS blocked for origin: ${origin}`));
   },
   credentials: true,
@@ -67,27 +70,35 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // preflight
 
+// Body parser
+app.use(express.json());
+
+// -------------------------------
+// SQLite setup / schema
+// -------------------------------
 const DB_FILE = path.join(__dirname, 'data.db');
 const db = new Database(DB_FILE);
 db.pragma('foreign_keys = ON');
 
+// Helpful unique indexes
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_unique
   ON matches (tournament_id, round, slot);
 `);
-
-// Ensure only one (tournament_id, player_id) row exists
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_tp_unique
   ON tournament_players (tournament_id, player_id);
 `);
 
+// Ensure base tables/columns exist
 function ensureSchema() {
+  // tournament_players.seed
   const tpCols = db.prepare(`PRAGMA table_info(tournament_players)`).all();
   if (!tpCols.some(c => c.name === 'seed')) {
     db.exec(`ALTER TABLE tournament_players ADD COLUMN seed INTEGER`);
   }
 
+  // tournaments.seeds_count
   const tCols = db.prepare(`PRAGMA table_info(tournaments)`).all();
   if (!tCols.some(c => c.name === 'seeds_count')) {
     db.exec(`ALTER TABLE tournaments ADD COLUMN seeds_count INTEGER DEFAULT 0`);
@@ -95,7 +106,7 @@ function ensureSchema() {
 }
 ensureSchema();
 
-// Ensure standings has points & tournaments_played
+// standings.points, standings.tournaments_played
 try {
   const sCols = new Set(db.prepare('PRAGMA table_info(standings)').all().map(c => c.name));
   if (!sCols.has('points')) {
@@ -110,7 +121,18 @@ try {
   console.error('Could not ensure standings columns:', e.message);
 }
 
-// Ensure tournament_points has expected columns (round columns + finalist f, champion c)
+// tournament_points table (idempotent)
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS tournament_points (
+    tournament_id INTEGER NOT NULL,
+    round INTEGER NOT NULL,   -- 1=Final, 2=SF, 3=QF, ... (larger number = earlier round)
+    points INTEGER NOT NULL,
+    PRIMARY KEY (tournament_id, round),
+    FOREIGN KEY(tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
+  )
+`).run();
+
+// Ensure tournament_points expected round columns (if you keep a wide format elsewhere)
 try {
   const tpCols = new Set(db.prepare('PRAGMA table_info(tournament_points)').all().map(c => c.name));
   const need = ['r128','r64','r32','r16','qf','sf','f','c'];
@@ -120,22 +142,9 @@ try {
       console.log(`Added tournament_points.${col} column`);
     }
   }
-  // we do NOT remove/alter existing 'round' if your table has it; we’ll just include it in inserts.
 } catch (e) {
   console.error('Could not ensure tournament_points columns:', e.message);
 }
-
-// Points config per tournament + round (keeps your schema file unchanged)
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS tournament_points (
-    tournament_id INTEGER NOT NULL,
-    round INTEGER NOT NULL,      -- 1=Final, 2=SF, 3=QF, ... (larger number = earlier round)
-    points INTEGER NOT NULL,
-    PRIMARY KEY (tournament_id, round),
-    FOREIGN KEY(tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
-  )
-`).run();
-
 
 // -------------------------------
 // Utilities
