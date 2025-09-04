@@ -570,16 +570,12 @@ app.post('/tournaments/:id/generate', (req, res) => {
       return res.status(400).json({ error: 'drawSize must be 4,8,16,32,64,128' });
     }
 
-    let S = Number(seedCount);
-    if (!Number.isInteger(S) || S < 0) S = 0;
-    S = Math.min(S, 32, N);
-
-    // Entrants + standings points for ranking
+    // Entrants with points for ranking (0 if none)
     const entrants = db.prepare(`
       SELECT
-        tp.player_id                                              AS player_id,
-        COALESCE(p.display_name, u.name)                          AS display_name,
-        COALESCE(s.points, 0)                                     AS pts
+        tp.player_id                                   AS player_id,
+        COALESCE(p.display_name, u.name)               AS display_name,
+        COALESCE(s.points, 0)                          AS pts
       FROM tournament_players tp
       JOIN players p ON p.id = tp.player_id
       LEFT JOIN users u ON u.id = p.user_id
@@ -588,27 +584,30 @@ app.post('/tournaments/:id/generate', (req, res) => {
       WHERE tp.tournament_id = ?
     `).all(t.club_id, t.sport, tId);
 
-    if (entrants.length !== N) {
-      return res.status(400).json({ error: `need exactly ${N} players; have ${entrants.length}` });
-    }
+    const M = entrants.length;
+    if (M === 0) return res.status(400).json({ error: 'need at least 1 player' });
+    if (M > N)   return res.status(400).json({ error: `too many players (${M}); increase draw size or remove players` });
 
-    // Rank by points desc; stable tie-breakers by name then id
+    // Rank entrants
     const ranked = [...entrants].sort((a,b) =>
-      b.pts - a.pts ||
+      (b.pts ?? 0) - (a.pts ?? 0) ||
       a.display_name.localeCompare(b.display_name, undefined, { sensitivity: 'base' }) ||
       (a.player_id - b.player_id)
     );
 
+    // Seed count actually used (cannot exceed entrants)
+    let S = Math.min(Number(seedCount) || 0, 32, N, M);
+
     const seeds = ranked.slice(0, S).map(e => e.player_id);
     const rest  = ranked.slice(S).map(e => e.player_id);
 
-    // Fisher–Yates shuffle for unseeded players
+    // Shuffle unseeded (Fisher–Yates)
     for (let i = rest.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [rest[i], rest[j]] = [rest[j], rest[i]];
     }
 
-    // Canonical bracket order: 1, N, N/4+1, ...
+    // Canonical bracket order builder (1 top, 2 bottom, etc.)
     function positions(size) {
       function build(n) {
         if (n === 2) return [1, 2];
@@ -622,56 +621,45 @@ app.post('/tournaments/:id/generate', (req, res) => {
       }
       return build(size);
     }
+    const order = positions(N);
 
-    const order = positions(N);          // e.g., N=4 -> [1,4,2,3]
-    const slots = new Array(N).fill(0);  // sentinel 0 (player ids are >0)
+    // 0 = empty, -1 = reserved BYE for a top seed’s opponent
+    const slots = new Array(N).fill(0);
 
-    // Place seeds by seed index -> slot (so #2 goes to bottom)
+    // place seeds by seed index -> slot
     for (let i = 0; i < S; i++) {
       const slotIndex = order[i] - 1;
       slots[slotIndex] = seeds[i];
     }
 
-    // Fill remaining with unseeded
-    const empties = [];
-    for (let i = 0; i < N; i++) if (!slots[i]) empties.push(i);
-    if (empties.length !== rest.length) {
-      console.error('Seeding mismatch', { N, S, empties: empties.length, rest: rest.length });
-      return res.status(500).json({ error: `internal seeding error (need ${empties.length} unseeded, have ${rest.length})` });
+    // Reserve BYEs for top seeds first
+    const byes = N - M;
+    let byeAssigned = 0;
+    for (let i = 0; i < S && byeAssigned < byes; i++) {
+      const sIdx = order[i] - 1;
+      const oppIdx = sIdx ^ 1;
+      if (slots[oppIdx] === 0) { slots[oppIdx] = -1; byeAssigned++; }
     }
-    for (let k = 0; k < empties.length; k++) slots[empties[k]] = rest[k];
 
-    if (slots.some(v => !Number.isInteger(v))) {
-      console.error('Slots still have non-integers:', slots);
-      return res.status(500).json({ error: 'internal seeding error (missing player)' });
+    // Fill remaining with unseeded; any leftover empties remain BYEs
+    let rIdx = 0;
+    for (let i = 0; i < N && rIdx < rest.length; i++) {
+      if (slots[i] === 0) slots[i] = rest[rIdx++];
     }
 
     // Wipe old matches
     db.prepare('DELETE FROM matches WHERE tournament_id=?').run(tId);
 
-    // Persist seeds so frontend can render them
+    // Persist seeds so UI can render badges
     db.prepare(`UPDATE tournament_players SET seed = NULL WHERE tournament_id = ?`).run(tId);
-    const setSeed = db.prepare(`
-      UPDATE tournament_players SET seed = ? WHERE tournament_id = ? AND player_id = ?
-    `);
-    seeds.forEach((pid, idx) => setSeed.run(idx + 1, tId, pid)); // seeds 1..S
-
-    // Verify we saved them
-    const saved = db.prepare(`
-      SELECT COUNT(*) AS c FROM tournament_players WHERE tournament_id=? AND seed IS NOT NULL
-    `).get(tId).c;
-    if (saved !== S) {
-      console.error('Seed persist mismatch', { expected: S, saved });
-      return res.status(500).json({ error: `internal seeding error (saved ${saved}/${S} seeds)` });
-    }
-
-    // Remember chosen seed count (optional)
+    const setSeed = db.prepare(`UPDATE tournament_players SET seed = ? WHERE tournament_id = ? AND player_id = ?`);
+    seeds.forEach((pid, idx) => setSeed.run(idx + 1, tId, pid)); // 1..S
     db.prepare(`UPDATE tournaments SET seeds_count = ? WHERE id = ?`).run(S, tId);
 
     // Insert first round
     const firstRound = Math.log2(N);
-    const mCols = new Set(db.prepare('PRAGMA table_info(matches)').all().map(c => c.name));
-    const insertSQL = mCols.has('status')
+    const hasStatus = new Set(db.prepare('PRAGMA table_info(matches)').all().map(c => c.name)).has('status');
+    const insertSQL = hasStatus
       ? `INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status)
          VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'scheduled')`
       : `INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id)
@@ -679,8 +667,15 @@ app.post('/tournaments/:id/generate', (req, res) => {
     const insertMatch = db.prepare(insertSQL);
 
     for (let s = 0; s < N / 2; s++) {
-      insertMatch.run(tId, firstRound, s, slots[2*s], slots[2*s + 1]);
+      const left  = slots[2 * s];
+      const right = slots[2 * s + 1];
+      const p1 = left  > 0 ? left  : null;  // -1/0 -> NULL (BYE)
+      const p2 = right > 0 ? right : null;
+      insertMatch.run(tId, firstRound, s, p1, p2);
     }
+
+    // Auto-advance BYEs
+    autoAdvanceByes(tId);
 
     res.json({ ok: true, round: firstRound, matches: N / 2 });
   } catch (e) {
@@ -688,6 +683,7 @@ app.post('/tournaments/:id/generate', (req, res) => {
     res.status(500).json({ error: 'unexpected error' });
   }
 });
+
 
 app.put('/matches/:id/result', (req, res) => {
   try {
@@ -816,21 +812,23 @@ app.get('/clubs/:clubId/tournaments', (req, res) => {
 });
 
 // Full bracket snapshot
+// GET /tournaments/:id
 app.get('/tournaments/:id', (req, res) => {
   try {
     const tId = Number(req.params.id);
-    const t = db.prepare('SELECT * FROM tournaments WHERE id=?').get(tId);
-    if (!t) return res.status(404).json({ error: 'tournament not found' });
 
-    const points = db.prepare(`
-      SELECT round, points FROM tournament_points WHERE tournament_id=?
-    `).all(tId);
+    const tournament = db.prepare(`
+      SELECT id, club_id, name, sport, seeds_count, end_date
+      FROM tournaments
+      WHERE id = ?
+    `).get(tId);
+    if (!tournament) return res.status(404).json({ error: 'tournament not found' });
 
-    // players: include tp.seed so the UI can render seed badges
     const players = db.prepare(`
-      SELECT tp.player_id AS id,
-            COALESCE(p.display_name, u.name) AS display_name,
-            tp.seed
+      SELECT
+        tp.player_id AS id,
+        COALESCE(p.display_name, u.name) AS display_name,
+        tp.seed
       FROM tournament_players tp
       JOIN players p ON p.id = tp.player_id
       LEFT JOIN users u ON u.id = p.user_id
@@ -838,23 +836,28 @@ app.get('/tournaments/:id', (req, res) => {
       ORDER BY (tp.seed IS NULL), tp.seed, display_name COLLATE NOCASE
     `).all(tId);
 
-    // matches: fixed order (top→bottom) per round
     const matches = db.prepare(`
-      SELECT id, tournament_id, round, slot, p1_id, p2_id,
-            p1_score, p2_score, winner_id,
-            COALESCE(status,'scheduled') AS status
+      SELECT id, tournament_id, round, slot,
+             p1_id, p2_id, p1_score, p2_score, winner_id,
+             COALESCE(status,'scheduled') AS status
       FROM matches
       WHERE tournament_id = ?
       ORDER BY round DESC, slot ASC
     `).all(tId);
 
+    const hasTP = !!db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='tournament_points'`).get();
+    const points = hasTP
+      ? db.prepare(`SELECT round, points FROM tournament_points WHERE tournament_id=? ORDER BY round ASC`).all(tId)
+      : [];
 
-    res.json({ tournament: t, points, players, matches });
+    res.json({ tournament, players, matches, points });
   } catch (e) {
-    console.error(e);
+    console.error('Tournament detail error:', e);
     res.status(500).json({ error: 'unexpected error' });
   }
 });
+
+
 
 // Get standings (rankings) for a club
 app.get('/clubs/:clubId/standings', (req, res) => {
@@ -1191,6 +1194,43 @@ app.delete('/tournaments/:id/signin', (req, res) => {
     res.status(500).json({ error: 'unexpected error' });
   }
 });
+
+// after you've built `slots` with some empty holes (0 or null = BYE):
+function autoAdvanceByes(tId) {
+  const hasStatus = new Set(db.prepare('PRAGMA table_info(matches)').all().map(c=>c.name)).has('status');
+  const updSQL = hasStatus
+    ? `UPDATE matches SET winner_id=?, status='completed' WHERE id=?`
+    : `UPDATE matches SET winner_id=? WHERE id=?`;
+
+  const ms = db.prepare(`SELECT id, round, slot, p1_id, p2_id FROM matches WHERE tournament_id=? ORDER BY round DESC, slot ASC`).all(tId);
+  for (const m of ms) {
+    const byeP1 = !m.p1_id, byeP2 = !m.p2_id;
+    if ((byeP1 ^ byeP2)) { // exactly one is bye
+      const winner = m.p1_id || m.p2_id;
+      db.prepare(updSQL).run(winner, m.id);
+      // feed forward deterministically
+      const nextRound = m.round - 1;
+      if (nextRound >= 1) {
+        const nextSlot = Math.floor(m.slot/2);
+        let next = db.prepare(`SELECT id,p1_id,p2_id FROM matches WHERE tournament_id=? AND round=? AND slot=?`)
+          .get(tId, nextRound, nextSlot);
+        if (!next) {
+          const ins = hasStatus
+            ? `INSERT INTO matches (tournament_id,round,slot,p1_id,p2_id,p1_score,p2_score,winner_id,status)
+               VALUES (?,?,?,?,?,NULL,NULL,NULL,'scheduled')`
+            : `INSERT INTO matches (tournament_id,round,slot,p1_id,p2_id,p1_score,p2_score,winner_id)
+               VALUES (?,?,?,?,?,NULL,NULL,NULL)`;
+          db.prepare(ins).run(tId, nextRound, nextSlot, null, null);
+          next = db.prepare(`SELECT id,p1_id,p2_id FROM matches WHERE tournament_id=? AND round=? AND slot=?`)
+            .get(tId, nextRound, nextSlot);
+        }
+        const field = (m.slot % 2 === 0) ? 'p1_id' : 'p2_id';
+        if (next[field] == null) db.prepare(`UPDATE matches SET ${field}=? WHERE id=?`).run(winner, next.id);
+      }
+    }
+  }
+}
+
 
 // DELETE /tournaments/:id/players/:playerId?managerId=999
 app.delete('/tournaments/:id/players/:playerId', (req, res) => {

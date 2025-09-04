@@ -1013,20 +1013,39 @@ function TournamentsView({ API, club, user, isManager }) {
   // ======== Seed-aware name rendering ========
   let playersById = new Map();
   if (detail?.players) {
-    playersById = new Map(detail.players.map(p => [p.id, { name: p.display_name, seed: p.seed ?? null }]));
+    playersById = new Map(
+      detail.players.map(p => [
+        p.id,
+        { name: p.display_name, seed: p.seed == null ? null : Number(p.seed) }
+      ])
+    );
   }
-  function NameWithSeed({ pid }) {
+
+  function NameWithSeed({ pid, nullLabel }) {
+    if (pid == null) {
+      return <span className="truncate italic text-gray-400">{nullLabel || 'TBD'}</span>;
+    }
     const info = playersById.get(pid);
     if (!info) return <span className="truncate">TBD</span>;
+
+    const hasSeed = info.seed !== null && info.seed !== undefined;
     return (
       <span className="inline-flex items-baseline gap-1 truncate">
-        {info.seed ? (
-          <span className="text-[10px] leading-none opacity-70 w-3 text-right">{info.seed}</span>
-        ) : <span className="w-3" />}
+        {hasSeed ? (
+          <span className="text-[10px] leading-none opacity-70 w-3 text-right">
+            {String(info.seed)}
+          </span>
+        ) : (
+          <span className="w-3" />
+        )}
         <span className="truncate">{info.name}</span>
       </span>
     );
   }
+
+
+
+
 
   const reportResult = async (matchId, p1_score, p2_score) => {
     const s1 = Number(p1_score), s2 = Number(p2_score);
@@ -1046,6 +1065,7 @@ function TournamentsView({ API, club, user, isManager }) {
       return <div className="text-sm text-gray-500">No matches yet.</div>;
     }
     const rounds = [...new Set(detail.matches.map(m => m.round))].sort((a, b) => b - a);
+    const firstRound = Math.max(...rounds);
     const finalMatchWithWinner = detail.matches.find(m => m.round === 1 && m.winner_id);
     const championId = finalMatchWithWinner?.winner_id ?? null;
     const championInfo = championId ? playersById.get(championId) : null;
@@ -1098,19 +1118,15 @@ function TournamentsView({ API, club, user, isManager }) {
           })}
 
           {championInfo && (
-            <div className="min-w-[220px]">
-              <div className="text-sm font-semibold mb-2">Champion</div>
-              <div className="rounded-lg border p-4 bg-white shadow-sm">
-                <div className="text-base font-medium">
-                  <span className="inline-flex items-baseline gap-1">
-                    {championInfo.seed ? (
-                      <span className="text-[10px] leading-none opacity-70 w-3 text-right">{championInfo.seed}</span>
-                    ) : <span className="w-3" />}
-                    <span>{championInfo.name}</span>
+            <div className="text-base font-medium">
+              <span className="inline-flex items-baseline gap-1">
+                {championInfo.seed != null ? (
+                  <span className="text-[10px] leading-none opacity-70 w-3 text-right">
+                    {String(championInfo.seed)}
                   </span>
-                </div>
-                <div className="text-xs text-gray-500 mt-1">Awarded Final points</div>
-              </div>
+                ) : <span className="w-3" />}
+                <span>{championInfo.name}</span>
+              </span>
             </div>
           )}
         </div>
@@ -1271,6 +1287,8 @@ function TournamentsView({ API, club, user, isManager }) {
     </div>
   );
 }
+
+
 
 function RankingsView({ API, club, user, isManager }) {
   const [rows, setRows] = React.useState([]);
