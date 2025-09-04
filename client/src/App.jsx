@@ -843,10 +843,11 @@ function ClubsPage({ user, club, onSetActive }) {
 
 function TournamentsView({ API, club, user, isManager }) {
   const [list, setList] = useState([]);
-  const [statusFilter, setStatusFilter] = useState('active'); // 'active' | 'completed' | 'all'
+  const [joined, setJoined] = useState({}); // { [tournamentId]: boolean }
+  const [statusFilter, setStatusFilter] = useState('active');
   const [loading, setLoading] = useState(false);
 
-  // creation form (manager)
+  // creation form
   const [name, setName] = useState('');
   const [sport, setSport] = useState('tennis');
   const [drawSize, setDrawSize] = useState(16);
@@ -855,9 +856,9 @@ function TournamentsView({ API, club, user, isManager }) {
     R128: 0, R64: 0, R32: 10, R16: 20, QF: 40, SF: 70, F: 120, C: 150
   });
 
-  // selected tournament details
+  // selected tournament
   const [selectedId, setSelectedId] = useState(null);
-  const [detail, setDetail] = useState(null); // { tournament, players:[{id,display_name,seed}], matches, points }
+  const [detail, setDetail] = useState(null);
 
   const roundLabelsFor = (sz) => {
     const map = [
@@ -879,7 +880,21 @@ function TournamentsView({ API, club, user, isManager }) {
     const q = statusFilter === 'all' ? '' : `?status=${statusFilter}`;
     const r = await fetch(`${API}/clubs/${club.id}/tournaments${q}`);
     const data = await r.json();
-    setList(Array.isArray(data) ? data : []);
+    const arr = Array.isArray(data) ? data : [];
+    setList(arr);
+
+    // also fetch "joined" flags for the current user (non-manager UX)
+    if (user && !isManager) {
+      const entries = await Promise.all(arr.map(async (t) => {
+        const jr = await fetch(`${API}/tournaments/${t.id}/joined?userId=${user.id}`);
+        const jd = await jr.json().catch(()=>({joined:false}));
+        return [t.id, !!jd.joined];
+      }));
+      setJoined(Object.fromEntries(entries));
+    } else {
+      setJoined({});
+    }
+
     setLoading(false);
   };
 
@@ -888,7 +903,7 @@ function TournamentsView({ API, club, user, isManager }) {
   const createTournament = async () => {
     if (!isManager) return;
     if (!name.trim()) return alert('Name required');
-    // Build points only for the necessary rounds based on drawSize
+
     const needed = roundLabelsFor(Number(drawSize));
     const pts = {};
     needed.forEach(lbl => { pts[lbl] = Number(pointsByRound[lbl] || 0); });
@@ -897,8 +912,7 @@ function TournamentsView({ API, club, user, isManager }) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: name.trim(), sport, drawSize: Number(drawSize),
-        seedCount: Number(seedCount),
-        pointsByRound: pts,
+        seedCount: Number(seedCount), pointsByRound: pts,
         managerId: user.id
       })
     });
@@ -915,18 +929,55 @@ function TournamentsView({ API, club, user, isManager }) {
     setDetail(data);
   };
 
-  // Managers: add players (by usernames, comma-separated)
+  // Sign in / Withdraw (for normal users)
+  const signIn = async (tid, tname) => {
+    if (!user) return alert('Please sign in first');
+    const ok = window.confirm(`Do you want to sign in for "${tname}"?`);
+    if (!ok) return;
+    const r = await fetch(`${API}/tournaments/${tid}/signin`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id })
+    });
+    const data = await r.json();
+    if (!r.ok) return alert(data.error || 'Sign in failed');
+    await loadList();
+    if (selectedId === tid) await openDetail(tid);
+  };
+
+  const withdraw = async (tid, tname) => {
+    const ok = window.confirm(`Withdraw from "${tname}"?`);
+    if (!ok) return;
+    const r = await fetch(`${API}/tournaments/${tid}/signin`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.id })
+    });
+    const data = await r.json().catch(()=>null);
+    if (!r.ok) return alert((data && data.error) || 'Withdraw failed');
+    await loadList();
+    if (selectedId === tid) await openDetail(tid);
+  };
+
+  // Manager: remove an entrant from the list
+  const removeEntrant = async (playerId) => {
+    if (!selectedId) return;
+    const ok = window.confirm('Remove this player from the tournament?');
+    if (!ok) return;
+    const r = await fetch(`${API}/tournaments/${selectedId}/players/${playerId}?managerId=${user.id}`, {
+      method: 'DELETE'
+    });
+    const data = await r.json().catch(()=>null);
+    if (!r.ok) return alert((data && data.error) || 'Remove failed');
+    await openDetail(selectedId);
+  };
+
+  // Add players (manager legacy flow)
   const [playerIdsText, setPlayerIdsText] = useState('');
   const addPlayers = async () => {
     if (!selectedId) return;
-    const names = playerIdsText
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
+    const names = playerIdsText.split(',').map(s => s.trim()).filter(Boolean);
     if (!names.length) return alert('Enter usernames separated by commas');
     const r = await fetch(`${API}/tournaments/${selectedId}/players`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ usernames: names, managerId: user.id })
     });
     const data = await r.json();
@@ -951,7 +1002,6 @@ function TournamentsView({ API, club, user, isManager }) {
   if (detail?.players) {
     playersById = new Map(detail.players.map(p => [p.id, { name: p.display_name, seed: p.seed ?? null }]));
   }
-
   function NameWithSeed({ pid }) {
     const info = playersById.get(pid);
     if (!info) return <span className="truncate">TBD</span>;
@@ -959,24 +1009,32 @@ function TournamentsView({ API, club, user, isManager }) {
       <span className="inline-flex items-baseline gap-1 truncate">
         {info.seed ? (
           <span className="text-[10px] leading-none opacity-70 w-3 text-right">{info.seed}</span>
-        ) : (
-          <span className="w-3" />
-        )}
+        ) : <span className="w-3" />}
         <span className="truncate">{info.name}</span>
       </span>
     );
   }
 
+  const reportResult = async (matchId, p1_score, p2_score) => {
+    const s1 = Number(p1_score);
+    const s2 = Number(p2_score);
+    if (!Number.isFinite(s1) || !Number.isFinite(s2)) return alert('Enter both scores');
+    if (s1 === s2) return alert('Scores must not tie');
 
-  // Render bracket columns grouped by round (DESC -> left to right)
+    const r = await fetch(`${API}/matches/${matchId}/result`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ managerId: user.id, p1_score: s1, p2_score: s2 })
+    });
+    const data = await r.json().catch(()=>null);
+    if (!r.ok) return alert((data && data.error) || 'Save failed');
+    await openDetail(selectedId);
+  };
+
   const renderBracket = () => {
     if (!detail || !detail.matches?.length) {
       return <div className="text-sm text-gray-500">No matches yet.</div>;
     }
-
     const rounds = [...new Set(detail.matches.map(m => m.round))].sort((a, b) => b - a);
-
-    // compute final winner (if any) to show Champion box
     const finalMatchWithWinner = detail.matches.find(m => m.round === 1 && m.winner_id);
     const championId = finalMatchWithWinner?.winner_id ?? null;
     const championInfo = championId ? playersById.get(championId) : null;
@@ -984,9 +1042,8 @@ function TournamentsView({ API, club, user, isManager }) {
     return (
       <div className="w-full overflow-x-auto">
         <div className="flex gap-6 items-start">
-          {/* Bracket rounds (left → right) */}
           {rounds.map(rnd => {
-            const ms = detail.matches.filter(m => m.round === rnd);
+            const ms = detail.matches.filter(m => m.round === rnd).sort((a,b)=>a.slot - b.slot);
             const title =
               rnd === 1 ? 'Final' :
               rnd === 2 ? 'Semifinal' :
@@ -1016,22 +1073,12 @@ function TournamentsView({ API, club, user, isManager }) {
 
                         {isManager && m.status !== 'completed' && m.p1_id && m.p2_id && (
                           <div className="mt-2 flex items-center gap-2">
-                            <input
-                              type="number"
-                              placeholder="P1"
-                              className="border rounded px-2 py-1 w-16"
-                              onChange={(e) => (m._p1 = Number(e.target.value))}
-                            />
-                            <input
-                              type="number"
-                              placeholder="P2"
-                              className="border rounded px-2 py-1 w-16"
-                              onChange={(e) => (m._p2 = Number(e.target.value))}
-                            />
-                            <button
-                              className="px-3 py-1 rounded bg-black text-white"
-                              onClick={() => reportResult(m.id, m._p1 ?? 0, m._p2 ?? 0)}
-                            >
+                            <input type="number" placeholder="P1" className="border rounded px-2 py-1 w-16"
+                                   onChange={(e) => (m._p1 = Number(e.target.value))} />
+                            <input type="number" placeholder="P2" className="border rounded px-2 py-1 w-16"
+                                   onChange={(e) => (m._p2 = Number(e.target.value))} />
+                            <button className="px-3 py-1 rounded bg-black text-white"
+                                    onClick={() => reportResult(m.id, m._p1 ?? 0, m._p2 ?? 0)}>
                               Save
                             </button>
                           </div>
@@ -1044,7 +1091,6 @@ function TournamentsView({ API, club, user, isManager }) {
             );
           })}
 
-          {/* Champion panel (appears when final has a winner) */}
           {championInfo && (
             <div className="min-w-[220px]">
               <div className="text-sm font-semibold mb-2">Champion</div>
@@ -1066,46 +1112,16 @@ function TournamentsView({ API, club, user, isManager }) {
     );
   };
 
-  // Report result (frontend validation)
-  const reportResult = async (matchId, p1_score, p2_score) => {
-    const s1 = Number(p1_score);
-    const s2 = Number(p2_score);
-
-    if (!Number.isFinite(s1) || !Number.isFinite(s2)) {
-      alert('Enter both scores');
-      return;
-    }
-    if (s1 === s2) {
-      alert('Scores must not tie');
-      return;
-    }
-
-    const r = await fetch(`${API}/matches/${matchId}/result`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ managerId: user.id, p1_score: s1, p2_score: s2 })
-    });
-    const data = await r.json().catch(()=>null);
-    if (!r.ok) return alert((data && data.error) || 'Save failed');
-    await openDetail(selectedId);
-  };
-
   return (
     <div className="p-4 space-y-6">
       {/* Filters and list */}
       <div className="flex items-center gap-3">
-        <select
-          className="border rounded px-2 py-1"
-          value={statusFilter}
-          onChange={(e)=> setStatusFilter(e.target.value)}
-        >
+        <select className="border rounded px-2 py-1" value={statusFilter} onChange={(e)=> setStatusFilter(e.target.value)}>
           <option value="active">Active</option>
           <option value="completed">Completed</option>
           <option value="all">All</option>
         </select>
-        <button onClick={loadList} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">
-          Refresh
-        </button>
+        <button onClick={loadList} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Refresh</button>
       </div>
 
       {loading ? (
@@ -1115,10 +1131,19 @@ function TournamentsView({ API, club, user, isManager }) {
           {list.map(t => (
             <div key={t.id} className="border rounded-lg p-3 bg-white shadow-sm">
               <div className="text-sm font-semibold">{t.name} · {t.sport} {t.end_date ? '· Completed' : '· Active'}</div>
-              <div className="mt-2">
+              <div className="mt-2 flex items-center gap-2">
                 <button className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300" onClick={()=> openDetail(t.id)}>
                   View
                 </button>
+                {!isManager && !t.end_date && (
+                  joined[t.id] ? (
+                    <button className="px-3 py-1 rounded bg-red-100 hover:bg-red-200"
+                            onClick={()=> withdraw(t.id, t.name)}>Withdraw</button>
+                  ) : (
+                    <button className="px-3 py-1 rounded bg-black text-white"
+                            onClick={()=> signIn(t.id, t.name)}>Sign in</button>
+                  )
+                )}
               </div>
             </div>
           ))}
@@ -1136,37 +1161,25 @@ function TournamentsView({ API, club, user, isManager }) {
             <select className="border rounded px-3 py-2" value={drawSize} onChange={e=>setDrawSize(Number(e.target.value))}>
               {[4,8,16,32,64,128].map(n=> <option key={n} value={n}>{n} draw</option>)}
             </select>
-
-            {/* If your backend allows any integer up to 32: use input. Otherwise keep your old select. */}
-            <input
-              type="number"
-              min={0}
-              max={Math.min(32, Number(drawSize))}
-              className="border rounded px-3 py-2"
-              value={seedCount}
-              onChange={e=>setSeedCount(Number(e.target.value))}
-            />
+            <input type="number" min={0} max={Math.min(32, Number(drawSize))}
+                   className="border rounded px-3 py-2" value={seedCount}
+                   onChange={e=>setSeedCount(Number(e.target.value))} />
           </div>
 
-          {/* Points by round (only show labels needed for drawSize) */}
+          {/* Points by round */}
           <div className="mt-3 grid grid-cols-3 sm:grid-cols-7 gap-2">
             {roundLabelsFor(Number(drawSize)).map(lbl => (
               <div key={lbl} className="flex items-center gap-2">
                 <span className="text-xs w-10 text-gray-600">{lbl}</span>
-                <input
-                  type="number"
-                  className="border rounded px-2 py-1 w-20"
-                  value={pointsByRound[lbl] ?? 0}
-                  onChange={e => setPointsByRound(prev => ({ ...prev, [lbl]: Number(e.target.value) }))}
-                />
+                <input type="number" className="border rounded px-2 py-1 w-20"
+                       value={pointsByRound[lbl] ?? 0}
+                       onChange={e => setPointsByRound(prev => ({ ...prev, [lbl]: Number(e.target.value) }))} />
               </div>
             ))}
           </div>
 
           <div className="mt-3">
-            <button className="px-4 py-2 rounded bg-black text-white" onClick={createTournament}>
-              Create
-            </button>
+            <button className="px-4 py-2 rounded bg-black text-white" onClick={createTournament}>Create</button>
           </div>
         </div>
       )}
@@ -1179,8 +1192,10 @@ function TournamentsView({ API, club, user, isManager }) {
             <button className="text-sm text-gray-500 hover:underline" onClick={()=> setDetail(null)}>Close</button>
           </div>
 
-          {isManager && !detail.tournament.end_date && (
-            <div className="mt-3 grid md:grid-cols-2 gap-3">
+          {/* Manager pre-draw controls */}
+          {isManager && !detail.tournament.end_date && detail.matches?.length === 0 && (
+            <div className="mt-3 grid md:grid-cols-3 gap-3">
+              {/* Add players (usernames) */}
               <div className="border rounded p-3">
                 <div className="text-sm font-medium mb-2">Add Players (usernames, comma-separated)</div>
                 <input
@@ -1194,10 +1209,36 @@ function TournamentsView({ API, club, user, isManager }) {
                 </button>
               </div>
 
+              {/* Registered players (remove) */}
+              <div className="border rounded p-3">
+                <div className="text-sm font-medium mb-2">Registered Players</div>
+                <ul className="space-y-1 max-h-48 overflow-auto">
+                  {detail.players.map(p => (
+                    <li key={p.id} className="flex items-center justify-between">
+                      <span>{p.display_name}</span>
+                      <button
+                        className="text-xs px-2 py-0.5 rounded bg-red-100 hover:bg-red-200"
+                        onClick={()=> removeEntrant(p.id)}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                  {detail.players.length === 0 && (
+                    <li className="text-xs text-gray-500">No one has signed in yet.</li>
+                  )}
+                </ul>
+              </div>
+
+              {/* Generate bracket */}
               <div className="border rounded p-3">
                 <div className="text-sm font-medium mb-2">Generate Bracket</div>
                 <div className="flex gap-2 items-center">
-                  <select className="border rounded px-2 py-1" value={drawSize} onChange={e=>setDrawSize(Number(e.target.value))}>
+                  <select
+                    className="border rounded px-2 py-1"
+                    value={drawSize}
+                    onChange={e=>setDrawSize(Number(e.target.value))}
+                  >
                     {[4,8,16,32,64,128].map(n=> <option key={n} value={n}>{n}</option>)}
                   </select>
                   <input
@@ -1216,12 +1257,14 @@ function TournamentsView({ API, club, user, isManager }) {
             </div>
           )}
 
+
           <div className="mt-4">{renderBracket()}</div>
         </div>
       )}
     </div>
   );
 }
+
 
 function RankingsView({ API, club, user, isManager }) {
   const [rows, setRows] = React.useState([]);

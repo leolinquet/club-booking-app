@@ -29,6 +29,12 @@ db.exec(`
   ON matches (tournament_id, round, slot);
 `);
 
+// Ensure only one (tournament_id, player_id) row exists
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_tp_unique
+  ON tournament_players (tournament_id, player_id);
+`);
+
 function ensureSchema() {
   const tpCols = db.prepare(`PRAGMA table_info(tournament_players)`).all();
   if (!tpCols.some(c => c.name === 'seed')) {
@@ -1079,6 +1085,127 @@ function awardTournamentPoints(tournamentId) {
   });
   tx(agg.entries());
 }
+
+// GET /tournaments/:id/joined?userId=123
+app.get('/tournaments/:id/joined', (req, res) => {
+  try {
+    const tId = Number(req.params.id);
+    const userId = Number(req.query.userId);
+    if (!userId) return res.status(400).json({ joined: false });
+
+    const t = db.prepare(`SELECT id, club_id FROM tournaments WHERE id=?`).get(tId);
+    if (!t) return res.status(404).json({ error: 'tournament not found' });
+
+    // find or create the player's club profile
+    let player = db.prepare(`SELECT id FROM players WHERE club_id=? AND user_id=?`)
+      .get(t.club_id, userId);
+
+    if (!player) return res.json({ joined: false });
+
+    const row = db.prepare(`
+      SELECT 1 FROM tournament_players WHERE tournament_id=? AND player_id=? LIMIT 1
+    `).get(tId, player.id);
+
+    res.json({ joined: !!row });
+  } catch (e) {
+    console.error('joined error', e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// POST /tournaments/:id/signin  { userId }
+app.post('/tournaments/:id/signin', (req, res) => {
+  try {
+    const tId = Number(req.params.id);
+    const { userId } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+
+    const t = db.prepare(`SELECT id, club_id, end_date FROM tournaments WHERE id=?`).get(tId);
+    if (!t) return res.status(404).json({ error: 'tournament not found' });
+
+    const hasMatches = db.prepare(`SELECT COUNT(*) AS c FROM matches WHERE tournament_id=?`).get(tId).c > 0;
+    if (hasMatches) return res.status(400).json({ error: 'sign-ups are closed (draw already generated)' });
+    if (t.end_date) return res.status(400).json({ error: 'tournament is completed' });
+
+    // find or create player profile in this club
+    let player = db.prepare(`SELECT id FROM players WHERE club_id=? AND user_id=?`)
+      .get(t.club_id, Number(userId));
+    if (!player) {
+      const u = db.prepare(`SELECT name FROM users WHERE id=?`).get(Number(userId));
+      const pCols = new Set(db.prepare(`PRAGMA table_info(players)`).all().map(c => c.name));
+      const ins = pCols.has('display_name')
+        ? db.prepare(`INSERT INTO players (club_id, user_id, display_name) VALUES (?, ?, ?)`)
+        : db.prepare(`INSERT INTO players (club_id, user_id) VALUES (?, ?)`);
+
+      const result = pCols.has('display_name')
+        ? ins.run(t.club_id, Number(userId), u?.name ?? `user${userId}`)
+        : ins.run(t.club_id, Number(userId));
+      player = { id: Number(result.lastInsertRowid) };
+    }
+
+    // add to tournament
+    db.prepare(`
+      INSERT OR IGNORE INTO tournament_players (tournament_id, player_id) VALUES (?, ?)
+    `).run(tId, player.id);
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('signin error', e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// DELETE /tournaments/:id/signin  { userId }
+app.delete('/tournaments/:id/signin', (req, res) => {
+  try {
+    const tId = Number(req.params.id);
+    const { userId } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+
+    const t = db.prepare(`SELECT id, club_id FROM tournaments WHERE id=?`).get(tId);
+    if (!t) return res.status(404).json({ error: 'tournament not found' });
+
+    const hasMatches = db.prepare(`SELECT COUNT(*) AS c FROM matches WHERE tournament_id=?`).get(tId).c > 0;
+    if (hasMatches) return res.status(400).json({ error: 'cannot withdraw (draw already generated)' });
+
+    const player = db.prepare(`SELECT id FROM players WHERE club_id=? AND user_id=?`)
+      .get(t.club_id, Number(userId));
+    if (!player) return res.json({ ok: true }); // nothing to do
+
+    db.prepare(`DELETE FROM tournament_players WHERE tournament_id=? AND player_id=?`)
+      .run(tId, player.id);
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('withdraw error', e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// DELETE /tournaments/:id/players/:playerId?managerId=999
+app.delete('/tournaments/:id/players/:playerId', (req, res) => {
+  try {
+    const tId = Number(req.params.id);
+    const playerId = Number(req.params.playerId);
+    const managerId = Number(req.query.managerId);
+
+    const t = db.prepare(`SELECT id, club_id FROM tournaments WHERE id=?`).get(tId);
+    if (!t) return res.status(404).json({ error: 'tournament not found' });
+    const clubRow = db.prepare(`SELECT manager_id FROM clubs WHERE id=?`).get(t.club_id);
+    if (!clubRow || Number(clubRow.manager_id) !== managerId) {
+      return res.status(403).json({ error: 'only club manager can modify entrants' });
+    }
+
+    const hasMatches = db.prepare(`SELECT COUNT(*) AS c FROM matches WHERE tournament_id=?`).get(tId).c > 0;
+    if (hasMatches) return res.status(400).json({ error: 'cannot remove after draw is generated' });
+
+    db.prepare(`DELETE FROM tournament_players WHERE tournament_id=? AND player_id=?`).run(tId, playerId);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('remove entrant error', e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
 
 // -------------------------------
 // Clubs & Membership
