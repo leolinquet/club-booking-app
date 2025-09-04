@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS players (
   club_id INTEGER NOT NULL,
   user_id INTEGER,              -- nullable for guests
   display_name TEXT NOT NULL,   -- cached name
+  ALTER TABLE tournament_players ADD COLUMN seed INTEGER; -- NULL for unseeded
   UNIQUE (club_id, user_id),
   FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE,
   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
@@ -103,6 +104,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
   name TEXT NOT NULL,
   format TEXT NOT NULL CHECK(format IN ('single_elim','round_robin')),
   start_date TEXT,
+  ALTER TABLE tournaments ADD COLUMN seeds_count INTEGER DEFAULT 0;
   end_date TEXT,
   block_courts INTEGER NOT NULL DEFAULT 0, -- 1 = block during matches
   UNIQUE (club_id, sport, name),
@@ -113,6 +115,7 @@ CREATE TABLE IF NOT EXISTS tournament_players (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   tournament_id INTEGER NOT NULL,
   player_id INTEGER NOT NULL,
+  ALTER TABLE tournaments ADD COLUMN seeds_count INTEGER DEFAULT 0;
   UNIQUE (tournament_id, player_id),
   FOREIGN KEY(tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
   FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE

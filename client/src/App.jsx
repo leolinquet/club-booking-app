@@ -857,7 +857,7 @@ function TournamentsView({ API, club, user, isManager }) {
 
   // selected tournament details
   const [selectedId, setSelectedId] = useState(null);
-  const [detail, setDetail] = useState(null); // { tournament, players, matches, points }
+  const [detail, setDetail] = useState(null); // { tournament, players:[{id,display_name,seed}], matches, points }
 
   const roundLabelsFor = (sz) => {
     const map = [
@@ -915,27 +915,25 @@ function TournamentsView({ API, club, user, isManager }) {
     setDetail(data);
   };
 
-  // Managers: add players (by player IDs, comma-separated) and generate bracket.
-  // NOTE: This assumes players already exist for the club (players table). If you instead
-  // select by usernames, we can add a helper later. For now, minimal changes as requested.
+  // Managers: add players (by usernames, comma-separated)
   const [playerIdsText, setPlayerIdsText] = useState('');
   const addPlayers = async () => {
-  if (!selectedId) return;
-  const names = playerIdsText
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-  if (!names.length) return alert('Enter usernames separated by commas');
-  const r = await fetch(`${API}/tournaments/${selectedId}/players`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ usernames: names, managerId: user.id })
-  });
-  const data = await r.json();
-  if (!r.ok) return alert(data.error || 'Add players failed');
-  setPlayerIdsText('');
-  await openDetail(selectedId);
-};
+    if (!selectedId) return;
+    const names = playerIdsText
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    if (!names.length) return alert('Enter usernames separated by commas');
+    const r = await fetch(`${API}/tournaments/${selectedId}/players`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usernames: names, managerId: user.id })
+    });
+    const data = await r.json();
+    if (!r.ok) return alert(data.error || 'Add players failed');
+    setPlayerIdsText('');
+    await openDetail(selectedId);
+  };
 
   const generateBracket = async () => {
     if (!selectedId) return;
@@ -946,6 +944,126 @@ function TournamentsView({ API, club, user, isManager }) {
     const data = await r.json();
     if (!r.ok) return alert(data.error || 'Generate failed');
     await openDetail(selectedId);
+  };
+
+  // ======== Seed-aware name rendering ========
+  let playersById = new Map();
+  if (detail?.players) {
+    playersById = new Map(detail.players.map(p => [p.id, { name: p.display_name, seed: p.seed ?? null }]));
+  }
+
+  function NameWithSeed({ pid }) {
+    const info = playersById.get(pid);
+    if (!info) return <span className="truncate">TBD</span>;
+    return (
+      <span className="inline-flex items-baseline gap-1 truncate">
+        {info.seed ? (
+          <span className="text-[10px] leading-none opacity-70 w-3 text-right">{info.seed}</span>
+        ) : (
+          <span className="w-3" />
+        )}
+        <span className="truncate">{info.name}</span>
+      </span>
+    );
+  }
+
+
+  // Render bracket columns grouped by round (DESC -> left to right)
+  const renderBracket = () => {
+    if (!detail || !detail.matches?.length) {
+      return <div className="text-sm text-gray-500">No matches yet.</div>;
+    }
+
+    const rounds = [...new Set(detail.matches.map(m => m.round))].sort((a, b) => b - a);
+
+    // compute final winner (if any) to show Champion box
+    const finalMatchWithWinner = detail.matches.find(m => m.round === 1 && m.winner_id);
+    const championId = finalMatchWithWinner?.winner_id ?? null;
+    const championInfo = championId ? playersById.get(championId) : null;
+
+    return (
+      <div className="w-full overflow-x-auto">
+        <div className="flex gap-6 items-start">
+          {/* Bracket rounds (left → right) */}
+          {rounds.map(rnd => {
+            const ms = detail.matches.filter(m => m.round === rnd);
+            const title =
+              rnd === 1 ? 'Final' :
+              rnd === 2 ? 'Semifinal' :
+              rnd === 3 ? 'Quarterfinal' :
+              `Round ${rnd}`;
+
+            return (
+              <div key={rnd} className="min-w-[240px]">
+                <div className="text-sm font-semibold mb-2">{title}</div>
+                <div className="flex flex-col gap-3">
+                  {ms.map(m => {
+                    const completed = m.status === 'completed';
+                    return (
+                      <div key={m.id} className="border rounded-lg p-3 bg-white shadow-sm">
+                        <div className="flex justify-between">
+                          <div className={`truncate ${m.winner_id === m.p1_id ? 'font-semibold' : ''}`}>
+                            <NameWithSeed pid={m.p1_id} />
+                          </div>
+                          <div className="text-xs text-gray-500">{completed ? m.p1_score : ''}</div>
+                        </div>
+                        <div className="flex justify-between">
+                          <div className={`truncate ${m.winner_id === m.p2_id ? 'font-semibold' : ''}`}>
+                            <NameWithSeed pid={m.p2_id} />
+                          </div>
+                          <div className="text-xs text-gray-500">{completed ? m.p2_score : ''}</div>
+                        </div>
+
+                        {isManager && m.status !== 'completed' && m.p1_id && m.p2_id && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <input
+                              type="number"
+                              placeholder="P1"
+                              className="border rounded px-2 py-1 w-16"
+                              onChange={(e) => (m._p1 = Number(e.target.value))}
+                            />
+                            <input
+                              type="number"
+                              placeholder="P2"
+                              className="border rounded px-2 py-1 w-16"
+                              onChange={(e) => (m._p2 = Number(e.target.value))}
+                            />
+                            <button
+                              className="px-3 py-1 rounded bg-black text-white"
+                              onClick={() => reportResult(m.id, m._p1 ?? 0, m._p2 ?? 0)}
+                            >
+                              Save
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Champion panel (appears when final has a winner) */}
+          {championInfo && (
+            <div className="min-w-[220px]">
+              <div className="text-sm font-semibold mb-2">Champion</div>
+              <div className="rounded-lg border p-4 bg-white shadow-sm">
+                <div className="text-base font-medium">
+                  <span className="inline-flex items-baseline gap-1">
+                    {championInfo.seed ? (
+                      <span className="text-[10px] leading-none opacity-70 w-3 text-right">{championInfo.seed}</span>
+                    ) : <span className="w-3" />}
+                    <span>{championInfo.name}</span>
+                  </span>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Awarded Final points</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   // Report result (frontend validation)
@@ -971,98 +1089,6 @@ function TournamentsView({ API, club, user, isManager }) {
     if (!r.ok) return alert((data && data.error) || 'Save failed');
     await openDetail(selectedId);
   };
-
-  // Render bracket columns grouped by round (DESC -> left to right)
-  // Render bracket columns grouped by round (DESC -> left to right)
-const renderBracket = () => {
-  if (!detail || !detail.matches?.length) {
-    return <div className="text-sm text-gray-500">No matches yet.</div>;
-  }
-
-  const rounds = [...new Set(detail.matches.map(m => m.round))].sort((a, b) => b - a);
-  const playersById = new Map(detail.players.map(p => [p.id, p.display_name]));
-
-  // compute final winner (if any) to show Champion box
-  const finalMatchWithWinner = detail.matches.find(m => m.round === 1 && m.winner_id);
-  const championId = finalMatchWithWinner?.winner_id ?? null;
-  const championName = championId ? (playersById.get(championId) || 'Champion') : null;
-
-  return (
-    <div className="w-full overflow-x-auto">
-      <div className="flex gap-6 items-start">
-        {/* Bracket rounds (left → right) */}
-        {rounds.map(rnd => {
-          const ms = detail.matches.filter(m => m.round === rnd);
-          const title =
-            rnd === 1 ? 'Final' :
-            rnd === 2 ? 'Semifinal' :
-            rnd === 3 ? 'Quarterfinal' :
-            `Round ${rnd}`;
-
-          return (
-            <div key={rnd} className="min-w-[240px]">
-              <div className="text-sm font-semibold mb-2">{title}</div>
-              <div className="flex flex-col gap-3">
-                {ms.map(m => {
-                  const p1 = playersById.get(m.p1_id) || 'TBD';
-                  const p2 = playersById.get(m.p2_id) || 'TBD';
-                  const completed = m.status === 'completed';
-                  return (
-                    <div key={m.id} className="border rounded-lg p-3 bg-white shadow-sm">
-                      <div className="flex justify-between">
-                        <div className={`truncate ${m.winner_id === m.p1_id ? 'font-semibold' : ''}`}>{p1}</div>
-                        <div className="text-xs text-gray-500">{completed ? m.p1_score : ''}</div>
-                      </div>
-                      <div className="flex justify-between">
-                        <div className={`truncate ${m.winner_id === m.p2_id ? 'font-semibold' : ''}`}>{p2}</div>
-                        <div className="text-xs text-gray-500">{completed ? m.p2_score : ''}</div>
-                      </div>
-
-                      {isManager && m.status !== 'completed' && m.p1_id && m.p2_id && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <input
-                            type="number"
-                            placeholder="P1"
-                            className="border rounded px-2 py-1 w-16"
-                            onChange={(e) => (m._p1 = Number(e.target.value))}
-                          />
-                          <input
-                            type="number"
-                            placeholder="P2"
-                            className="border rounded px-2 py-1 w-16"
-                            onChange={(e) => (m._p2 = Number(e.target.value))}
-                          />
-                          <button
-                            className="px-3 py-1 rounded bg-black text-white"
-                            onClick={() => reportResult(m.id, m._p1 ?? 0, m._p2 ?? 0)}
-                          >
-                            Save
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Champion panel (appears when final has a winner) */}
-        {championName && (
-          <div className="min-w-[220px]">
-            <div className="text-sm font-semibold mb-2">Champion</div>
-            <div className="rounded-lg border p-4 bg-white shadow-sm">
-              <div className="text-base font-medium">{championName}</div>
-              <div className="text-xs text-gray-500 mt-1">Awarded Final points</div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
 
   return (
     <div className="p-4 space-y-6">
@@ -1110,9 +1136,16 @@ const renderBracket = () => {
             <select className="border rounded px-3 py-2" value={drawSize} onChange={e=>setDrawSize(Number(e.target.value))}>
               {[4,8,16,32,64,128].map(n=> <option key={n} value={n}>{n} draw</option>)}
             </select>
-            <select className="border rounded px-3 py-2" value={seedCount} onChange={e=>setSeedCount(Number(e.target.value))}>
-              {[2,4,8,16,32].map(n=> <option key={n} value={n}>{n} seeds</option>)}
-            </select>
+
+            {/* If your backend allows any integer up to 32: use input. Otherwise keep your old select. */}
+            <input
+              type="number"
+              min={0}
+              max={Math.min(32, Number(drawSize))}
+              className="border rounded px-3 py-2"
+              value={seedCount}
+              onChange={e=>setSeedCount(Number(e.target.value))}
+            />
           </div>
 
           {/* Points by round (only show labels needed for drawSize) */}
@@ -1152,7 +1185,7 @@ const renderBracket = () => {
                 <div className="text-sm font-medium mb-2">Add Players (usernames, comma-separated)</div>
                 <input
                   className="border rounded px-2 py-1 w-full"
-                  placeholder="e.g., 12, 15, 23, 31"
+                  placeholder="e.g., alice, bob, charlie"
                   value={playerIdsText}
                   onChange={e=>setPlayerIdsText(e.target.value)}
                 />
@@ -1167,9 +1200,14 @@ const renderBracket = () => {
                   <select className="border rounded px-2 py-1" value={drawSize} onChange={e=>setDrawSize(Number(e.target.value))}>
                     {[4,8,16,32,64,128].map(n=> <option key={n} value={n}>{n}</option>)}
                   </select>
-                  <select className="border rounded px-2 py-1" value={seedCount} onChange={e=>setSeedCount(Number(e.target.value))}>
-                    {[2,4,8,16,32].map(n=> <option key={n} value={n}>{n}</option>)}
-                  </select>
+                  <input
+                    type="number"
+                    min={0}
+                    max={Math.min(32, Number(drawSize))}
+                    className="border rounded px-2 py-1 w-20"
+                    value={seedCount}
+                    onChange={e=>setSeedCount(Number(e.target.value))}
+                  />
                   <button className="px-3 py-1 rounded bg-black text-white" onClick={generateBracket}>
                     Generate
                   </button>
