@@ -40,13 +40,23 @@ export default function App(){
     const handleAuthed = async (u) => {
       localStorage.setItem('user', JSON.stringify(u));
       setUser(u);
+
       try {
-        const r = await fetch(`${API}/users/${u.id}/club`);
-        if (r.ok) {
-          const c = await r.json();
-          localStorage.setItem('club', JSON.stringify(c));
-          setClub(c);
-          setView('book');                 // land on Book
+        // try to restore saved club if still valid for this user
+        const saved = JSON.parse(localStorage.getItem('club') || 'null');
+        const clubs = await fetchUserClubs(u.id);
+
+        let nextClub = null;
+        if (saved && clubs.some(c => c.id === saved.id)) {
+          nextClub = saved;                     // keep previously selected club
+        } else if (clubs.length) {
+          nextClub = clubs[0];                  // fallback: first club
+        }
+
+        if (nextClub) {
+          localStorage.setItem('club', JSON.stringify(nextClub));
+          setClub(nextClub);
+          setView('book');
         } else {
           localStorage.removeItem('club');
           setClub(null);
@@ -55,6 +65,14 @@ export default function App(){
         setClub(null);
       }
     };
+
+    async function fetchUserClubs(userId) {
+      const r = await fetch(`${API}/users/${userId}/clubs`);
+      if (!r.ok) return [];
+      return r.json();
+    }
+
+
     return <Auth onLogin={handleAuthed} onRegister={handleAuthed} />;
   }
 
