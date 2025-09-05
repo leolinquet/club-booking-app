@@ -1,22 +1,47 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>Club Booking</title>
+  <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover"
+      />
+      <title>Club Booking</title>
 
-    <!-- Auto-pick API base: Render vs local -->
-    <script>
-      (function () {
-        const isRender = /\.onrender\.com$/i.test(location.hostname);
-        window.API_BASE = isRender
-          ? "https://club-booking-app.onrender.com"  /* your Node API URL */
-          : "http://localhost:5051";
-      })();
-    </script>
-  </head>
-  <body class="bg-gray-50">
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>
+      <!-- Auto-pick API base: Render vs local -->
+      <script>
+        (function () {
+          const isRender = /\.onrender\.com$/i.test(location.hostname);
+          window.API_BASE = isRender
+            ? "https://club-booking-app.onrender.com" /* your Node API URL */
+            : "http://localhost:5051";
+        })();
+      </script>
+
+      <!-- PWA: Manifest + theme -->
+      <link rel="manifest" href="/manifest.webmanifest" />
+      <meta name="theme-color" content="#0ea5e9" />
+
+      <!-- iOS install / full-screen -->
+      <meta name="apple-mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+      <meta name="apple-mobile-web-app-title" content="Club Booking" />
+      <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+
+      <!-- OPTIONAL: simple splash fallback color -->
+      <meta name="background-color" content="#0b1220" />
+    </head>
+    <body class="bg-gray-50">
+      <div id="root"></div>
+      <script type="module" src="/src/main.jsx"></script>
+
+      <!-- Register service worker -->
+      <script>
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(console.error);
+          });
+        }
+      </script>
+    </body>
+  </html>
