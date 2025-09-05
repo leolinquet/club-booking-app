@@ -55,6 +55,10 @@ export default function Navbar({
           <button onClick={onClubs} className="nav-btn">Clubs</button>
           <button onClick={onTournaments} className="nav-btn">Tournaments</button>
           <button onClick={onRankings} className="nav-btn">Rankings</button>
+          {/* Install PWA button, revealed by a2hs.js */}
+          <button id="install-btn" className="nav-btn" style={{ display: "none" }}>
+          Install App
+          </button>
         </nav>
 
         {/* Mobile hamburger */}
@@ -101,6 +105,9 @@ export default function Navbar({
             <button onClick={handle(onClubs)} className="menu-item">Clubs</button>
             <button onClick={handle(onTournaments)} className="menu-item">Tournaments</button>
             <button onClick={handle(onRankings)} className="menu-item">Rankings</button>
+            <button id="install-btn-mobile" className="menu-item" style={{ display: "none" }}>
+            Install App
+            </button>
           </div>
         </div>
       </div>
