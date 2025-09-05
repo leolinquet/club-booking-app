@@ -1066,9 +1066,14 @@ function TournamentsView({ API, club, user, isManager }) {
     }
     const rounds = [...new Set(detail.matches.map(m => m.round))].sort((a, b) => b - a);
     const firstRound = Math.max(...rounds);
-    const finalMatchWithWinner = detail.matches.find(m => m.round === 1 && m.winner_id);
-    const championId = finalMatchWithWinner?.winner_id ?? null;
+    const final = detail.matches.find(m => m.round === 1);
+    const championId = final
+      ? (final.winner_id ?? (final.status === 'completed'
+            ? (Number(final.p1_score) > Number(final.p2_score) ? final.p1_id : final.p2_id)
+            : null))
+      : null;
     const championInfo = championId ? playersById.get(championId) : null;
+
 
     return (
       <div className="w-full overflow-x-auto">
@@ -1118,15 +1123,18 @@ function TournamentsView({ API, club, user, isManager }) {
           })}
 
           {championInfo && (
-            <div className="text-base font-medium">
-              <span className="inline-flex items-baseline gap-1">
-                {championInfo.seed != null ? (
-                  <span className="text-[10px] leading-none opacity-70 w-3 text-right">
-                    {String(championInfo.seed)}
-                  </span>
-                ) : <span className="w-3" />}
-                <span>{championInfo.name}</span>
-              </span>
+            <div className="ml-auto sticky top-3">
+              <div className="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 bg-yellow-50 border-yellow-200 text-yellow-900 shadow-sm">
+                <span>🏆 Champion:</span>
+                <span className="inline-flex items-baseline gap-1 font-semibold">
+                  {championInfo.seed != null ? (
+                    <span className="text-[10px] leading-none opacity-70 w-3 text-right">
+                      {String(championInfo.seed)}
+                    </span>
+                  ) : <span className="w-3" />}
+                  <span>{championInfo.name}</span>
+                </span>
+              </div>
             </div>
           )}
         </div>
