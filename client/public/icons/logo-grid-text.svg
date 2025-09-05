@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- background -->
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="#0b1220"/>
+  <!-- grid emblem (moved up a bit to add space) -->
+  <rect x="136" y="78" width="240" height="170" rx="28" fill="#0ea5e9"/>
+  <rect x="136" y="156" width="240" height="18" fill="#0b1220"/>
+  <rect x="248" y="78"  width="16"  height="170" fill="#0b1220"/>
+
+  <!-- text (simple font to avoid ImageMagick issues) -->
+  <text x="256" y="330" font-size="64" text-anchor="middle" fill="#0ea5e9" font-family="Arial" font-weight="800" letter-spacing="1.5">CLUB</text>
+  <text x="256" y="400" font-size="64" text-anchor="middle" fill="#0ea5e9" font-family="Arial" font-weight="800" letter-spacing="1.5">BOOKING</text>
+</svg>
