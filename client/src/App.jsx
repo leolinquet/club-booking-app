@@ -682,9 +682,9 @@ function UserBooking({ user, club }){
             <TextInput type="date" value={date} onChange={e=>setDate(e.target.value)} />
           </div>
           <div className="flex items-center gap-3">
-            <span className="inline-block w-4 h-4 rounded bg-green-500" /> <span className="text-sm">Available</span>
-            <span className="inline-block w-4 h-4 rounded bg-orange-500" /> <span className="text-sm">Yours</span>
-            <span className="inline-block w-4 h-4 rounded bg-red-500" /> <span className="text-sm">Unavailable</span>
+            <span className="inline-block w-[6px] h-[24px] rounded bg-green-500" /> <span className="text-sm">Available</span>
+            <span className="inline-block w-[6px] h-[24px] rounded bg-orange-500" /> <span className="text-sm">Yours</span>
+            <span className="inline-block w-[6px] h-[24px] rounded bg-red-500" /> <span className="text-sm">Unavailable</span>
           </div>
         </div>
       </Card>
