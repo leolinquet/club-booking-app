@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from "./Navbar";
+import './styles/theme.css';
+import './styles/ui.css';
 
 const API = (() => {
   const h = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -406,16 +408,18 @@ function ManagerDashboard({ user, club }){
 
   return (
     <div className="space-y-4">
+      {/* ===== Card 1: Add/Edit sport form ===== */}
       <Card>
         <h3 className="text-lg font-medium mb-3">
           {editingId ? 'Edit sport' : 'Add a sport'}
         </h3>
 
-        {/* Field labels on top as requested */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+          {/* Sport */}
           <div>
-            <div className="text-xs text-gray-600 mb-1">Sport</div>
+            <label htmlFor="sportChoice" className="text-xs text-gray-600 mb-1 block">Sport</label>
             <Select
+              id="sportChoice"
               value={form.sportChoice}
               onChange={e=>setForm(f=>({...f, sportChoice:e.target.value}))}
             >
@@ -424,10 +428,15 @@ function ManagerDashboard({ user, club }){
               ))}
               <option value="__custom__">Custom…</option>
             </Select>
+
             {form.sportChoice === '__custom__' && (
               <div className="mt-2">
+                <label htmlFor="customSport" className="sr-only">Custom sport</label>
                 <TextInput
+                  id="customSport"
                   placeholder="Type sport name (e.g., Hockey)"
+                  autoComplete="off"
+                  inputMode="text"
                   value={form.customSport}
                   onChange={e=>setForm(f=>({...f, customSport:e.target.value}))}
                 />
@@ -435,37 +444,76 @@ function ManagerDashboard({ user, club }){
             )}
           </div>
 
+          {/* Courts */}
           <div>
-            <div className="text-xs text-gray-600 mb-1">Courts / Fields</div>
-            <TextInput type="number" value={form.courts}
-              onChange={e=>setForm({...form, courts:Number(e.target.value)})}/>
+            <label htmlFor="courts" className="text-xs text-gray-600 mb-1 block">Courts / Fields</label>
+            <TextInput
+              id="courts"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={64}
+              step={1}
+              value={form.courts}
+              onChange={e=>setForm({...form, courts:Number(e.target.value)})}
+            />
           </div>
 
+          {/* Open hour */}
           <div>
-            <div className="text-xs text-gray-600 mb-1">Open time (0–23)</div>
-            <TextInput type="number" value={form.openHour}
-              onChange={e=>setForm({...form, openHour:Number(e.target.value)})}/>
+            <label htmlFor="openHour" className="text-xs text-gray-600 mb-1 block">Open time (0–23)</label>
+            <TextInput
+              id="openHour"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={23}
+              step={1}
+              value={form.openHour}
+              onChange={e=>setForm({...form, openHour:Number(e.target.value)})}
+            />
           </div>
 
+          {/* Close hour */}
           <div>
-            <div className="text-xs text-gray-600 mb-1">Closing time (1–24)</div>
-            <TextInput type="number" value={form.closeHour}
-              onChange={e=>setForm({...form, closeHour:Number(e.target.value)})}/>
+            <label htmlFor="closeHour" className="text-xs text-gray-600 mb-1 block">Closing time (1–24)</label>
+            <TextInput
+              id="closeHour"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={24}
+              step={1}
+              value={form.closeHour}
+              onChange={e=>setForm({...form, closeHour:Number(e.target.value)})}
+            />
           </div>
 
+          {/* Slot minutes */}
           <div>
-            <div className="text-xs text-gray-600 mb-1">Time slots (minutes)</div>
+            <label htmlFor="slotChoice" className="text-xs text-gray-600 mb-1 block">Time slots (minutes)</label>
             <Select
+              id="slotChoice"
               value={form.slotChoice}
-              onChange={e=>setForm(f=>({...f, slotChoice: isNaN(+e.target.value) ? e.target.value : Number(e.target.value)}))}
+              onChange={e=>setForm(f=>({
+                ...f,
+                slotChoice: isNaN(+e.target.value) ? e.target.value : Number(e.target.value)
+              }))}
             >
               {SLOT_PRESETS.map(m => <option key={m} value={m}>{m}</option>)}
               <option value="__custom__">Custom…</option>
             </Select>
+
             {form.slotChoice === '__custom__' && (
               <div className="mt-2">
+                <label htmlFor="customMinutes" className="sr-only">Custom minutes</label>
                 <TextInput
+                  id="customMinutes"
                   type="number"
+                  inputMode="numeric"
+                  min={5}
+                  max={240}
+                  step={5}
                   placeholder="Minutes (5–240)"
                   value={form.customMinutes}
                   onChange={e=>setForm(f=>({...f, customMinutes:e.target.value}))}
@@ -474,10 +522,14 @@ function ManagerDashboard({ user, club }){
             )}
           </div>
 
+          {/* Actions */}
           <div className="flex items-end gap-2">
             <Button onClick={save}>{editingId ? 'Update' : 'Save'}</Button>
             {editingId && (
-              <button className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300" onClick={resetForm}>
+              <button
+                className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300"
+                onClick={resetForm}
+              >
                 Cancel
               </button>
             )}
@@ -485,6 +537,7 @@ function ManagerDashboard({ user, club }){
         </div>
       </Card>
 
+      {/* ===== Card 2: Configured sports list ===== */}
       <Card>
         <h3 className="text-lg font-medium mb-2">Configured sports</h3>
         <div className="grid gap-2">
@@ -512,12 +565,15 @@ function ManagerDashboard({ user, club }){
               </div>
             </div>
           ))}
-          {sports.length===0 && <div className="text-gray-500 text-sm">No sports yet. Add one above.</div>}
+          {sports.length===0 && (
+            <div className="text-gray-500 text-sm">No sports yet. Add one above.</div>
+          )}
         </div>
       </Card>
     </div>
   );
 }
+
 
 
 /* -------------------- Book (for both; managers have extra powers) -------------------- */
@@ -648,50 +704,56 @@ function UserBooking({ user, club }){
               <tbody>
                 {grid.slots.map(row => (
                   <tr key={row.time}>
-                    <td className="p-2 text-sm text-gray-700">{row.time}</td>
-                    {row.courts.map(cell => (
-                    <td key={cell.courtIndex} className="p-1">
-                      {cell.owned ? (
-                        // ORANGE: your booking → cancel (owner; managers see label too)
-                        <button
-                          onClick={() => cancelBooking(cell.bookingId)}
-                          className="h-10 w-full rounded bg-orange-500 hover:opacity-90 relative"
-                          title="Click to cancel your reservation"
-                        >
-                          {isOwnClubManager && cell.bookedBy && (
-                            <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium">
-                              {cell.bookedBy}
-                            </span>
-                          )}
-                        </button>
-                      ) : cell.booked ? (
-                        isManager ? (
-                          // RED: someone else booked → managers can cancel any; managers see label
+                    <td data-label="Time" className="p-2 text-sm text-gray-700">{row.time}</td>
+                    {row.courts.map((cell, i) => (
+                      <td data-label={`Court ${i+1}`} key={cell.courtIndex} className="p-1">
+                        {cell.owned ? (
                           <button
                             onClick={() => cancelBooking(cell.bookingId)}
-                            className="h-10 w-full rounded bg-red-500 hover:opacity-90 relative"
-                            title="Manager: click to cancel this booking"
+                            className="w-full rounded bg-orange-500 hover:opacity-90 relative
+                                      min-h-12 sm:h-10 active:scale-[.98] transition"
+                            title="Click to cancel your reservation"
                           >
+                            {/* helper label on small screens (shows username if manager) */}
                             {isOwnClubManager && cell.bookedBy && (
-                              <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium">
+                              <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium select-none">
                                 {cell.bookedBy}
                               </span>
                             )}
+                            <span className="sr-only">Cancel your reservation</span>
                           </button>
+                        ) : cell.booked ? (
+                          isManager ? (
+                            <button
+                              onClick={() => cancelBooking(cell.bookingId)}
+                              className="w-full rounded bg-red-500 hover:opacity-90 relative
+                                        min-h-12 sm:h-10 active:scale-[.98] transition"
+                              title="Manager: click to cancel this booking"
+                            >
+                              {isOwnClubManager && cell.bookedBy && (
+                                <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium select-none">
+                                  {cell.bookedBy}
+                                </span>
+                              )}
+                              <span className="sr-only">Cancel booking</span>
+                            </button>
+                          ) : (
+                            <div className="rounded bg-red-500 min-h-12 sm:h-10" />
+                          )
                         ) : (
-                          // regular users just see solid red block
-                          <div className="h-10 rounded bg-red-500" />
-                        )
-                      ) : (
-                        // GREEN: available
-                        <button
-                          onClick={() => openConfirm(cell.courtIndex, row.time)}
-                          className={`h-10 w-full rounded bg-green-500 hover:opacity-90 ${hasOwnBooking ? 'opacity-50 cursor-not-allowed' : ''} relative`}
-                          disabled={hasOwnBooking && !isManager}
-                        />
-                      )}
-                    </td>
-                  ))}
+                          <button
+                            onClick={() => openConfirm(cell.courtIndex, row.time)}
+                            className={`w-full rounded bg-green-500 hover:opacity-90 relative
+                                        min-h-12 sm:h-10 active:scale-[.98] transition
+                                        ${hasOwnBooking ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            disabled={hasOwnBooking && !isManager}
+                            aria-pressed="false"
+                          >
+                            <span className="sr-only">Book this slot</span>
+                          </button>
+                        )}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -1404,10 +1466,10 @@ function RankingsView({ API, club, user, isManager }) {
             <tbody>
               {rows.map((r, i) => (
                 <tr key={r.player_id} className="border-b">
-                  <td className="py-2 pr-4">{i + 1}</td>
-                  <td className="py-2 pr-4">{r.name}</td>
-                  <td className="py-2 pr-4">{r.tournaments_played}</td>
-                  <td className="py-2 pr-4">{r.points}</td>
+                  <td data-label="#" className="py-2 pr-4">{i + 1}</td>
+                  <td data-label="Player" className="py-2 pr-4">{r.name}</td>
+                  <td data-label="Tournaments" className="py-2 pr-4">{r.tournaments_played}</td>
+                  <td data-label="Points" className="py-2 pr-4">{r.points}</td>
                 </tr>
               ))}
             </tbody>
@@ -1417,5 +1479,3 @@ function RankingsView({ API, club, user, isManager }) {
     </div>
   );
 }
-
-

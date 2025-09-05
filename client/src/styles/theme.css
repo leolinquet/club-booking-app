@@ -1,0 +1,18 @@
+:root{
+  --brand: #4f46e5;         /* primary */
+  --brand-600:#4f46e5; --brand-500:#6366f1; --brand-400:#818cf8;
+  --accent:#06b6d4;
+  --bg:#0b1020;             /* dark surface */
+  --panel:#111827;          /* card surface */
+  --text:#e5e7eb;           /* primary text */
+  --muted:#9ca3af;          /* secondary text */
+  --success:#10b981; --warn:#f59e0b; --danger:#ef4444;
+
+  --radius:16px;
+  --shadow:0 10px 25px rgba(0,0,0,.2);
+  --ring:0 0 0 3px color-mix(in oklab, var(--brand) 30%, transparent);
+  --motion-fast:150ms; --motion:220ms; --motion-slow:380ms;
+}
+*{box-sizing:border-box}
+body{background:var(--bg); color:var(--text); font:16px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+a{color:var(--brand-400)}

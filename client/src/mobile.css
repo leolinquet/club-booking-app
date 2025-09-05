@@ -1,0 +1,104 @@
+:root { --space: 12px; --radius: 12px; --shadow: 0 2px 10px rgba(0,0,0,.06); }
+
+/* Base */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 16px; color: #111; background: #f7f7f8; }
+a { color: #1a73e8; text-decoration: none; }
+img { max-width: 100%; height: auto; display: block; }
+
+/* Layout */
+.container { padding: var(--space); max-width: 960px; margin: 0 auto; }
+.grid { display: grid; gap: var(--space); }
+@media (min-width: 768px) { .grid-2 { grid-template-columns: 1fr 1fr; } }
+
+/* Components */
+.card { background: #fff; border-radius: var(--radius); padding: var(--space); box-shadow: var(--shadow); }
+.section-title { margin: 4px 0 8px; font-weight: 700; font-size: 18px; }
+
+/* Buttons: big enough for thumbs */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 48px; padding: 0 16px; gap: 8px;
+  border-radius: 999px; border: none; background: #1a73e8; color: #fff; font-weight: 600;
+}
+.btn.secondary { background: #e9eef6; color: #1a73e8; }
+.btn:disabled { opacity: .6; }
+
+/* Forms */
+label { display: block; font-size: 14px; color: #444; margin-bottom: 6px; }
+input, select, button, textarea { font: inherit; }
+input[type="text"], input[type="number"], input[type="date"], input[type="time"], select, textarea {
+  width: 100%; min-height: 48px; border-radius: 10px; border: 1px solid #e5e7eb; padding: 10px 12px; background: #fff;
+}
+
+/* Top nav: sticky */
+.navbar {
+  position: sticky; top: 0; z-index: 20;
+  backdrop-filter: blur(8px);
+  background: rgba(255,255,255,.85);
+  border-bottom: 1px solid #eee;
+  padding: 8px 12px;
+}
+
+/* Tables -> Cards on mobile */
+.table { width: 100%; border-collapse: collapse; background: #fff; }
+.table th, .table td { padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
+.table tr:last-child td { border-bottom: none; }
+
+@media (max-width: 640px){
+  .table, .table thead, .table tbody, .table th, .table td, .table tr { display: block; }
+  .table thead { display: none; }
+  .table tr { margin: 0 0 var(--space); border-radius: var(--radius); box-shadow: var(--shadow); background: #fff; }
+  .table td { border: none; padding: 12px; }
+  .table td::before {
+    content: attr(data-label);
+    display: block; font-size: 12px; color: #666; margin-bottom: 4px;
+  }
+}
+
+/* Booking grid */
+.booking-grid {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+@media (max-width: 640px){
+  .booking-grid { grid-template-columns: 1fr 1fr; }
+}
+.slot {
+  border: 1px solid #e5e7eb; border-radius: 10px; background:#fff; padding: 10px;
+  min-height: 56px; display: grid; place-items: center; text-align: center; box-shadow: var(--shadow);
+}
+.slot.available { cursor: pointer; }
+.slot.selected { outline: 2px solid #1a73e8; }
+
+/* Sticky action bar for confirm buttons */
+.action-bar {
+  position: sticky; bottom: 0; z-index: 10; padding: 8px; background: rgba(255,255,255,.9);
+  border-top: 1px solid #eee; backdrop-filter: blur(8px);
+}
+
+/* Reduce tap highlight and accidental text selection on buttons */
+button { -webkit-tap-highlight-color: transparent; }
+@media (pointer: coarse){
+  .tap-big { min-height: 48px; }
+}
+
+/* mobile.css (near bottom) */
+button { -webkit-tap-highlight-color: transparent; }
+
+/* Navbar component helpers */
+.nav-btn {
+  @apply px-3 py-1.5 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10;
+}
+.menu-item {
+  @apply w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10;
+}
+.burger-line {
+  pointer-events: none;
+  position: absolute;
+  height: 2px;
+  width: 20px; /* matches w-5 */
+  background: #000;
+  transition: all .2s ease-in-out;
+}
