@@ -40,13 +40,23 @@ export default function App(){
     const handleAuthed = async (u) => {
       localStorage.setItem('user', JSON.stringify(u));
       setUser(u);
+
       try {
-        const r = await fetch(`${API}/users/${u.id}/club`);
-        if (r.ok) {
-          const c = await r.json();
-          localStorage.setItem('club', JSON.stringify(c));
-          setClub(c);
-          setView('book');                 // land on Book
+        // try to restore saved club if still valid for this user
+        const saved = JSON.parse(localStorage.getItem('club') || 'null');
+        const clubs = await fetchUserClubs(u.id);
+
+        let nextClub = null;
+        if (saved && clubs.some(c => c.id === saved.id)) {
+          nextClub = saved;                     // keep previously selected club
+        } else if (clubs.length) {
+          nextClub = clubs[0];                  // fallback: first club
+        }
+
+        if (nextClub) {
+          localStorage.setItem('club', JSON.stringify(nextClub));
+          setClub(nextClub);
+          setView('book');
         } else {
           localStorage.removeItem('club');
           setClub(null);
@@ -55,6 +65,14 @@ export default function App(){
         setClub(null);
       }
     };
+
+    async function fetchUserClubs(userId) {
+      const r = await fetch(`${API}/users/${userId}/clubs`);
+      if (!r.ok) return [];
+      return r.json();
+    }
+
+
     return <Auth onLogin={handleAuthed} onRegister={handleAuthed} />;
   }
 
@@ -682,9 +700,9 @@ function UserBooking({ user, club }){
             <TextInput type="date" value={date} onChange={e=>setDate(e.target.value)} />
           </div>
           <div className="flex items-center gap-3">
-            <span className="inline-block w-4 h-4 rounded bg-green-500" /> <span className="text-sm">Available</span>
-            <span className="inline-block w-4 h-4 rounded bg-orange-500" /> <span className="text-sm">Yours</span>
-            <span className="inline-block w-4 h-4 rounded bg-red-500" /> <span className="text-sm">Unavailable</span>
+            <span className="inline-block w-[6px] h-[24px] rounded bg-green-500" /> <span className="text-sm">Available</span>
+            <span className="inline-block w-[6px] h-[24px] rounded bg-orange-500" /> <span className="text-sm">Yours</span>
+            <span className="inline-block w-[6px] h-[24px] rounded bg-red-500" /> <span className="text-sm">Unavailable</span>
           </div>
         </div>
       </Card>

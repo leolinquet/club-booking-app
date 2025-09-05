@@ -222,3 +222,13 @@ tbody td, thead th { padding: .6rem .75rem; }
     transition:none !important;
   }
 }
+
+.legend-item::before {
+  content: '';
+  display: inline-block;
+  width: 8px;   /* was maybe 2-3px */
+  height: 16px; /* keep height for visibility */
+  margin-right: 6px;
+  border-radius: 2px; /* optional for softer edges */
+}
+
