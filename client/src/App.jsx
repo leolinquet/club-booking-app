@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from "./Navbar";
+import './styles/theme.css';
+import './styles/ui.css';
 
 const API = (() => {
   const h = typeof window !== 'undefined' ? window.location.hostname : '';

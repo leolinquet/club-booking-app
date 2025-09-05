@@ -1,0 +1,224 @@
+/* =========================
+   THEME TOKENS
+   ========================= */
+:root {
+  /* Brand (Energetic Blue) */
+  --brand: #4f46e5;          /* indigo */
+  --brand-600: #4f46e5;
+  --brand-500: #6366f1;
+  --brand-400: #818cf8;
+  --accent: #06b6d4;         /* cyan */
+
+  /* App surfaces & text */
+  --bg: #f3f4f6;             /* light gray background */
+  --panel: #ffffff;          /* cards/surfaces */
+  --text: #1f2937;           /* slate text */
+  --muted: #6b7280;          /* secondary text */
+
+  /* Semantic */
+  --success: #10b981;        /* available */
+  --warn: #f59e0b;           /* warning */
+  --danger: #ef4444;         /* error/unavailable */
+
+  /* Design primitives */
+  --radius: 14px;
+  --shadow: 0 10px 26px rgba(0,0,0,.08);
+  --ring: 0 0 0 3px rgba(79,70,229,.28);
+
+  /* Motion */
+  --motion-fast: 150ms;
+  --motion: 220ms;
+  --motion-slow: 380ms;
+}
+
+/* =========================
+   GLOBAL BASE
+   ========================= */
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.text-gray-600 { color: #6b7280 !important; } /* keep your muted text intent */
+
+/* Glassy/sticky navbar */
+.min-h-screen > :first-child {
+  position: sticky; top: 0; z-index: 30;
+  background: rgba(255,255,255,.9);
+  backdrop-filter: saturate(120%) blur(6px);
+  border-bottom: 1px solid rgba(0,0,0,.06);
+  box-shadow: 0 2px 6px rgba(0,0,0,.04);
+}
+
+/* =========================
+   FADE-IN (dependency-free)
+   ========================= */
+@keyframes k-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in {
+  opacity: 0; transform: translateY(8px);
+  animation: k-fade-in .35s ease-out forwards;
+}
+/* Apply to main content container automatically */
+.min-h-screen .max-w-5xl {
+  animation: k-fade-in .35s ease-out both;
+}
+
+/* Staggered lists (optional utility) */
+.fade-in-list > * {
+  opacity: 0; transform: translateY(8px);
+  animation: k-fade-in .35s ease-out forwards;
+}
+.fade-in-list > *:nth-child(1) { animation-delay: .05s; }
+.fade-in-list > *:nth-child(2) { animation-delay: .10s; }
+.fade-in-list > *:nth-child(3) { animation-delay: .15s; }
+
+/* =========================
+   SECTION HEADERS (underline)
+   ========================= */
+@keyframes k-underline { from { width: 0; } to { width: 56px; } }
+header h1 {
+  position: relative; display: inline-block; padding-bottom: 6px;
+}
+header h1::after {
+  content: ""; position: absolute; left: 0; bottom: -4px; height: 3px; width: 56px;
+  background: linear-gradient(90deg, var(--brand), var(--accent));
+  border-radius: 2px;
+  animation: k-underline .45s ease-out;
+}
+
+/* =========================
+   CARDS / PANELS
+   ========================= */
+/* Your <Card> markup maps to these Tailwind-ish classes */
+.bg-white.rounded-xl.shadow.p-4 {
+  background: var(--panel) !important;
+  color: var(--text);
+  border: 1px solid rgba(0,0,0,.05);
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.bg-white.rounded-xl.shadow.p-4:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 44px rgba(0,0,0,.12);
+  border-color: rgba(0,0,0,.09);
+}
+
+/* =========================
+   BUTTONS
+   ========================= */
+/* Your custom .btn utility (if you use it in JSX) */
+.btn{
+  display:inline-flex; align-items:center; gap:.5rem; padding:.6rem .9rem;
+  border-radius:var(--radius); background:var(--brand-600); color:white;
+  box-shadow:var(--shadow);
+  transition: transform var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
+}
+.btn:hover{ transform: translateY(-1px); background: var(--brand-500); }
+.btn:focus-visible{ outline: none; box-shadow: var(--ring); }
+.btn.ghost{
+  background: transparent;
+  border: 1px solid color-mix(in oklab, var(--brand) 35%, transparent);
+}
+
+/* Primary buttons in your app use bg-black text-white → re-skin to brand */
+button.bg-black.text-white {
+  background: var(--brand) !important;
+  color: #fff !important;
+  border-radius: calc(var(--radius) - 4px);
+  box-shadow: 0 6px 16px rgba(79,70,229,.20);
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease, opacity .15s ease;
+}
+button.bg-black.text-white:hover { transform: translateY(-1px) scale(1.01); box-shadow: 0 10px 24px rgba(79,70,229,.25); }
+button.bg-black.text-white:active { transform: translateY(0) scale(.985); }
+button.bg-black.text-white:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* Neutral/secondary buttons (gray) */
+button.bg-gray-200, button.bg-gray-200:hover {
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+}
+button.bg-gray-200:hover { background: #e5e7eb; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,.08); }
+button.bg-gray-200:active { transform: translateY(0) scale(.985); }
+
+/* Destructive / status buttons */
+button.bg-red-500, button.bg-red-500:hover,
+button.bg-orange-500, button.bg-orange-500:hover {
+  transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+}
+button.bg-red-500:hover, button.bg-orange-500:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,.16); }
+button.bg-red-500:active, button.bg-orange-500:active { transform: translateY(0) scale(.985); }
+
+/* =========================
+   INPUTS & SELECTS
+   ========================= */
+input.border.rounded-lg, select.border.rounded-lg,
+input.border.rounded,     select.border.rounded,
+input.border.rounded-xl,  select.border.rounded-xl,
+input.border,             select.border {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  transition: box-shadow .15s ease, border-color .15s ease, background .15s ease;
+}
+input.border.rounded-lg:focus, select.border.rounded-lg:focus,
+input.border.rounded:focus,     select.border.rounded:focus,
+input.border.rounded-xl:focus,  select.border.rounded-xl:focus,
+input.border:focus,             select.border:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: var(--ring);
+  background: #fff;
+}
+
+/* Your .input utility (if/where used) */
+.input{
+  width:100%; background:#fff; color:var(--text);
+  border:1px solid #d1d5db; border-radius:12px; padding:.65rem .8rem;
+  transition:border var(--motion-fast), box-shadow var(--motion-fast), background var(--motion-fast);
+}
+.input:focus{ outline:none; border-color:var(--brand-400); box-shadow: var(--ring); }
+
+/* =========================
+   BOOKING GRID TILES
+   ========================= */
+.bg-green-500, .bg-orange-500, .bg-red-500 {
+  border-radius: 10px !important;
+  transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+}
+.bg-green-500:hover, .bg-orange-500:hover, .bg-red-500:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(0,0,0,.18);
+}
+
+/* =========================
+   MODAL BACKDROP
+   ========================= */
+.fixed.inset-0.bg-black\/40 {
+  backdrop-filter: blur(2px) saturate(110%);
+}
+
+/* =========================
+   TABLES (Tournaments, Rankings)
+   ========================= */
+table { border-collapse: separate; border-spacing: 0; }
+thead tr { background: #fff; }
+thead th { font-weight: 600; border-bottom: 1px solid rgba(0,0,0,.08); }
+tbody tr { transition: background .15s ease; }
+tbody tr:nth-child(odd) { background: #fafafa; }
+tbody tr:hover { background: #eef2ff; } /* indigo-tinted hover */
+tbody td, thead th { padding: .6rem .75rem; }
+
+/* =========================
+   ACCESSIBILITY
+   ========================= */
+@media (prefers-reduced-motion: reduce){
+  *{
+    animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;
+    transition:none !important;
+  }
+}
