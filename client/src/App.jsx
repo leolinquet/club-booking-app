@@ -172,14 +172,17 @@ function Auth({ onLogin, onRegister }) {
     setBusy(true);
     try {
       const res = await fetch(`${API}/auth/login`, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ name, password })
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // 👇 send "login" (email or username), not "name"
+        body: JSON.stringify({ login: name, password })
       });
       const data = await res.json().catch(()=>null);
       if (!res.ok) return alert((data && data.error) || 'Login failed');
-      onLogin(data);
+      onLogin(data.user); // server returns { ok, user }
     } finally { setBusy(false); }
   };
+
 
   const register = async () => {
     setBusy(true);
@@ -201,7 +204,7 @@ function Auth({ onLogin, onRegister }) {
           <h2 className="text-xl font-medium">{mode === 'login' ? 'Log in' : 'Create account'}</h2>
 
           <div className="space-y-2">
-            <div className="text-sm text-gray-600">Username</div>
+            <div className="text-sm text-gray-600">Email or Username</div>
             <TextInput placeholder="Your username" value={name} onChange={e=>setName(e.target.value)} />
           </div>
 

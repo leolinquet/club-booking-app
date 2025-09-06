@@ -5,3 +5,10 @@ dist/
 
 # DB files
 server/*.db
+
+# Env files
+.env
+.env.local
+server/.env
+client/.env
+client/.env.local
