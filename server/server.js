@@ -1,6 +1,7 @@
 // server/server.js  (ESM version)
-// Run with: PORT=5051 node server.js  (or npm run dev if your script calls node server.js)
+// Run with: npm run dev  (dev script should be: node -r dotenv/config server.js)
 
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
@@ -8,9 +9,17 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import helmet from 'helmet';
+import { buildAuthRouter } from './auth/routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// -------------------------------
+// SQLite setup / schema  (MOVED UP so `db` exists before it's used below)
+// -------------------------------
+const DB_FILE = path.join(__dirname, 'data.db');
+const db = new Database(DB_FILE);
+db.pragma('foreign_keys = ON');
 
 const app = express();
 
@@ -73,12 +82,33 @@ app.options('*', cors(corsOptions)); // preflight
 // Body parser
 app.use(express.json());
 
-// -------------------------------
-// SQLite setup / schema
-// -------------------------------
-const DB_FILE = path.join(__dirname, 'data.db');
-const db = new Database(DB_FILE);
-db.pragma('foreign_keys = ON');
+// ✅ Mount routers AFTER db exists
+app.use('/auth', buildAuthRouter(db));
+
+// env check
+app.get('/__envcheck', (req, res) => {
+  res.json({
+    cwd: process.cwd(),
+    has_RESEND_API_KEY: Boolean(process.env.RESEND_API_KEY),
+    FROM_EMAIL: process.env.FROM_EMAIL,
+    APP_BASE_URL: process.env.APP_BASE_URL
+  });
+});
+
+// test send (replace with your real inbox before calling)
+import { sendEmail } from './email/resend.js';
+app.post('/__sendtest', async (req, res) => {
+  try {
+    const ok = await sendEmail({
+      to: 'your-real-email@example.com',
+      subject: 'Test from Club Booking',
+      html: '<p>Hello from Resend ✅</p>'
+    });
+    res.json({ ok });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: String(e) });
+  }
+});
 
 // Helpful unique indexes
 db.exec(`

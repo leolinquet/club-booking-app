@@ -138,3 +138,18 @@ CREATE TABLE IF NOT EXISTS matches (
   winner_id INTEGER,                  -- nullable until completed
   FOREIGN KEY(tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
 );
+
+-- migrations/023_user_email_verification.sql
+ALTER TABLE users ADD COLUMN email TEXT;
+ALTER TABLE users ADD COLUMN email_verified_at TEXT;     -- null until verified
+ALTER TABLE users ADD COLUMN email_verify_token TEXT;    -- one-time token
+ALTER TABLE users ADD COLUMN email_verify_expires TEXT;  -- ISO expiry
+ALTER TABLE users ADD COLUMN password_hash TEXT;         -- bcrypt
+ALTER TABLE users ADD COLUMN is_test INTEGER DEFAULT 0;  -- 1 for test users
+
+-- optional: unique email
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email);
+
+-- migrations/024_add_username.sql
+ALTER TABLE users ADD COLUMN username TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
