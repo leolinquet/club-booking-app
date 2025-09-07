@@ -162,70 +162,151 @@ export default function App(){
 
 /* -------------------- Auth (Login / Register) -------------------- */
 function Auth({ onLogin, onRegister }) {
-  const [mode, setMode] = useState('login'); // 'login' | 'register'
-  const [name, setName] = useState('');
+//   const [mode, setMode] = useState('login'); // 'login' | 'register'
+//   const [name, setName] = useState('');
+//   const [password, setPassword] = useState('');
+//   const [role, setRole] = useState('user');
+//   const [busy, setBusy] = useState(false);
+
+//   const login = async () => {
+//     setBusy(true);
+//     try {
+//       const res = await fetch(`${API}/auth/login`, {
+//         method: 'POST',
+//         headers: { 'Content-Type': 'application/json' },
+//         // 👇 send "login" (email or username), not "name"
+//         body: JSON.stringify({ login: name, password })
+//       });
+//       const data = await res.json().catch(()=>null);
+//       if (!res.ok) return alert((data && data.error) || 'Login failed');
+//       onLogin(data.user); // server returns { ok, user }
+//     } finally { setBusy(false); }
+//   };
+
+
+//   const register = async () => {
+//     setBusy(true);
+//     try {
+//       const res = await fetch(`${API}/auth/register`, {
+//         method: 'POST', headers: {'Content-Type':'application/json'},
+//         body: JSON.stringify({ name, role, password })
+//       });
+//       const data = await res.json().catch(()=>null);
+//       if (!res.ok) return alert((data && data.error) || 'Register failed');
+//       onRegister(data);
+//     } finally { setBusy(false); }
+//   };
+
+  const [mode, setMode] = useState('login');           // 'login' | 'register'
+  const [username, setUsername] = useState('');        // email OR username for login
+  const [email, setEmail] = useState('');              // only used in register
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('user');
   const [busy, setBusy] = useState(false);
 
+  // LOGIN: send { login: <email or username>, password }
   const login = async () => {
     setBusy(true);
     try {
       const res = await fetch(`${API}/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // 👇 send "login" (email or username), not "name"
-        body: JSON.stringify({ login: name, password })
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ login: username.trim(), password })
       });
       const data = await res.json().catch(()=>null);
       if (!res.ok) return alert((data && data.error) || 'Login failed');
-      onLogin(data.user); // server returns { ok, user }
+      onLogin(data.user);
     } finally { setBusy(false); }
   };
 
-
+  // REGISTER (real users): send { email, username, password } to /auth/signup
   const register = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`${API}/auth/register`, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ name, role, password })
+      const res = await fetch(`${API}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          username: username.trim(),
+          password
+        })
       });
       const data = await res.json().catch(()=>null);
-      if (!res.ok) return alert((data && data.error) || 'Register failed');
-      onRegister(data);
+      if (!res.ok) return alert((data && data.error) || 'Signup failed');
+      alert('We sent a verification link/code to your email. Verify to continue.');
+      setMode('login');
     } finally { setBusy(false); }
   };
+
+  const canLogin = username.trim() && password;
+  const canRegister = username.trim() && email.trim() && password;
 
   return (
     <div className="min-h-screen grid place-items-center p-4">
       <Card>
         <div className="space-y-4 w-96">
-          <h2 className="text-xl font-medium">{mode === 'login' ? 'Log in' : 'Create account'}</h2>
+          <h2 className="text-xl font-medium">
+            {mode === 'login' ? 'Log in' : 'Create account'}
+          </h2>
 
+          {/* Login: label as "Email or Username" */}
           <div className="space-y-2">
             <div className="text-sm text-gray-600">Email or Username</div>
-            <TextInput placeholder="Your username" value={name} onChange={e=>setName(e.target.value)} />
+            <TextInput
+              placeholder="you@example.com or yourname"
+              value={username}
+              onChange={e=>setUsername(e.target.value)}
+            />
           </div>
+
+          {/* Only show Email input in register mode */}
+          {mode === 'register' && (
+            <div className="space-y-2">
+              <div className="text-sm text-gray-600">Email</div>
+              <TextInput
+                placeholder="you@example.com"
+                value={email}
+                onChange={e=>setEmail(e.target.value)}
+              />
+            </div>
+          )}
 
           <div className="space-y-2">
             <div className="text-sm text-gray-600">Password</div>
-            <TextInput type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} />
+            <TextInput
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={e=>setPassword(e.target.value)}
+            />
           </div>
 
-          {mode === 'register' && (
-            <div className="space-y-2">
-              <div className="text-sm text-gray-600">Role</div>
-              <Select value={role} onChange={e=>setRole(e.target.value)}>
-                <option value="user">User</option>
-                <option value="manager">Manager</option>
-              </Select>
-            </div>
+          {/* Dev: quick test account (no email) */}
+          {mode === 'register' && import.meta.env.MODE === 'development' && (
+            <button
+              className="text-xs underline opacity-70"
+              onClick={async ()=>{
+                const res = await fetch(`${API}/auth/register`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type':'application/json',
+                    'x-test-signup-secret': import.meta.env.VITE_TEST_SECRET || 'dev-only-long-random'
+                  },
+                  body: JSON.stringify({ username, password })
+                });
+                const data = await res.json().catch(()=>null);
+                if (!res.ok) return alert((data && data.error) || 'Dev register failed');
+                alert('Dev test user created. Log in now.');
+                setMode('login');
+              }}
+            >
+              Dev: quick test account (no email)
+            </button>
           )}
 
           {mode === 'login' ? (
             <>
-              <Button onClick={login} disabled={!name || !password || busy}>Log in</Button>
+              <Button onClick={login} disabled={!canLogin || busy}>Log in</Button>
               <div className="text-sm text-gray-600">
                 Don’t have an account?{' '}
                 <button className="underline" onClick={()=>setMode('register')}>Create one</button>
@@ -233,7 +314,7 @@ function Auth({ onLogin, onRegister }) {
             </>
           ) : (
             <>
-              <Button onClick={register} disabled={!name || !password || busy}>Create account</Button>
+              <Button onClick={register} disabled={!canRegister || busy}>Create account</Button>
               <div className="text-sm text-gray-600">
                 Already have an account?{' '}
                 <button className="underline" onClick={()=>setMode('login')}>Log in</button>

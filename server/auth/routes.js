@@ -27,109 +27,149 @@ function getUserColumns(db) {
     const cols = getUserColumns(db);
     const nameField = pickNameField(cols);
 
-    // ---------- SIGNUP (email verify in prod; test bypass allowed) ----------
+// ---------- SIGNUP (email verify in prod; test bypass allowed) ----------
     router.post('/signup', async (req, res) => {
         try {
-        const { display_name, name, username, email, password } = req.body || {};
-        const testBypass = req.get('x-test-signup-secret') === process.env.TEST_SIGNUP_SECRET;
-        const providedName = display_name || name || username || null;
+            // Normalize inputs up front
+            const body = req.body || {};
+            const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+            const username = typeof body.username === 'string' ? body.username.trim() : '';
+            const password = typeof body.password === 'string' ? body.password : '';
+            const providedName = (body.display_name || body.name || username || '').trim() || null;
 
-        if (!username && has(cols, 'username')) {
+            const cols = new Set(db.prepare('PRAGMA table_info(users)').all().map(c => c.name));
+            const has = (c) => cols.has(c);
+            const nameField = has('display_name') ? 'display_name' : (has('name') ? 'name' : null);
+
+            const testBypass = req.get('x-test-signup-secret') === process.env.TEST_SIGNUP_SECRET;
+
+            // If schema has username, require it in real signups
+            if (has('username') && !username) {
             return res.status(400).json({ error: 'Username required' });
-        }
+            }
 
-        if (testBypass) {
-            const pwOk = validatePassword(password || 'Aa123'); // keep policy even in test
+            // --- DEV/TEST PATH (no email required) ---
+            if (testBypass) {
+            const pwOk = validatePassword(password || 'Aa123');
             if (!pwOk.ok) return res.status(400).json({ error: pwOk.error });
 
-            const hash = has(cols, 'password_hash') ? await bcrypt.hash(password || 'Aa123', 10) : undefined;
+            const hash = has('password_hash') ? await bcrypt.hash(password || 'Aa123', 10) : undefined;
 
             const values = {
-            // name-ish fields
-            username: has(cols, 'username') ? (username || (providedName ? providedName.replace(/\s+/g, '').toLowerCase() : null)) : undefined,
-            [nameField || '']: nameField ? (providedName || null) : undefined,
-            // auth flags
-            is_test: has(cols, 'is_test') ? 1 : undefined,
-            email_verified_at: has(cols, 'email_verified_at') ? new Date().toISOString() : undefined,
-            password_hash: hash,
-            // optional role left empty unless you pass it and have 'role'
+                username: has('username') ? (username || (providedName ? providedName.replace(/\s+/g, '').toLowerCase() : null)) : undefined,
+                [nameField || '']: nameField ? (providedName || null) : undefined,
+                is_test: has('is_test') ? 1 : undefined,
+                email_verified_at: has('email_verified_at') ? new Date().toISOString() : undefined,
+                password_hash: hash,
+                role: has('role') ? 'user' : undefined,
             };
+            const keys = Object.keys(values).filter(k => values[k] !== undefined);
+            const placeholders = keys.map(() => '?').join(',');
+            const sql = `INSERT INTO users (${keys.join(',')}) VALUES (${placeholders})`;
+            const info = db.prepare(sql).run(...keys.map(k => values[k]));
+            return res.json({ ok: true, user_id: info.lastInsertRowid, mode: 'test' });
+            }
 
-            const userId = insertUser(db, cols, values);
-            return res.json({ ok: true, user_id: userId, mode: 'test' });
-        }
-
-        // Normal path: email + password required
-        if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-
-        // Ensure table supports email verify fields
-        if (!(has(cols, 'email') && has(cols, 'password_hash') && has(cols, 'email_verify_token') && has(cols, 'email_verify_expires'))) {
+            // --- REAL PATH: email + password required ---
+            if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password required' });
+            }
+            if (!(has('email') && has('password_hash') && has('email_verify_token') && has('email_verify_expires'))) {
             return res.status(501).json({ error: 'Email verification not configured on server schema' });
-        }
+            }
 
-        const pw = validatePassword(password);
-        if (!pw.ok) return res.status(400).json({ error: pw.error });
+            const pw = validatePassword(password);
+            if (!pw.ok) return res.status(400).json({ error: pw.error });
 
-        const hash = await bcrypt.hash(password, 10);
-        const token = crypto.randomBytes(32).toString('hex');
-        const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+            const hash = await bcrypt.hash(password, 10);
 
-        // Build values dynamically based on existing columns
-        const values = {
-            email: email.toLowerCase(),
+            // ✅ Generate token/expires FIRST
+            const token = crypto.randomBytes(32).toString('hex');
+            const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+            // Insert user (unverified)
+            const values = {
+            email,
             password_hash: hash,
             email_verify_token: token,
             email_verify_expires: expires,
-            username: has(cols, 'username') ? username : undefined,
+            username: has('username') ? username : undefined,
             [nameField || '']: nameField ? (providedName || username || null) : undefined,
-        };
+            role: has('role') ? 'user' : undefined, // default role
+            };
+            const keys = Object.keys(values).filter(k => values[k] !== undefined);
+            const placeholders = keys.map(() => '?').join(',');
+            const sql = `INSERT INTO users (${keys.join(',')}) VALUES (${placeholders})`;
+            const info = db.prepare(sql).run(...keys.map(k => values[k]));
 
-        const userId = insertUser(db, cols, values);
+            // Build verify link AFTER token exists
+            const base = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+            const verifyUrl = `${base}/auth/verify?token=${token}`;
 
-        const verifyUrl = `${process.env.APP_BASE_URL}/auth/verify?token=${token}`;
-        const ok = await sendEmail({
+            // Send email
+            const { ok, error } = await sendEmail({
             to: email,
             subject: 'Verify your Club Booking email',
             html: `
-            <div style="font-family:system-ui">
+                <div style="font-family:system-ui">
                 <h2>Confirm your email</h2>
                 <p>Hi ${providedName || username || ''}, click to verify your account:</p>
                 <p><a href="${verifyUrl}">Verify Email</a></p>
                 <p>If the button doesn’t work, open this link:<br>${verifyUrl}</p>
-            </div>
+                </div>
             `,
-        });
-        if (!ok) return res.status(500).json({ error: 'Failed to send verification email' });
+            });
+            if (!ok) {
+            return res.status(500).json({ error: 'Failed to send verification email', detail: error });
+            }
 
-        res.json({ ok: true, user_id: userId, mode: 'email-verify' });
+            return res.json({ ok: true, user_id: info.lastInsertRowid, mode: 'email-verify' });
         } catch (e) {
-        const msg = String(e);
-        if (msg.includes('UNIQUE') && msg.includes('username')) return res.status(409).json({ error: 'Username already taken' });
-        if (msg.includes('UNIQUE') && msg.includes('email')) return res.status(409).json({ error: 'Email already in use' });
-        res.status(500).json({ error: msg });
+            const msg = String(e);
+            if (msg.includes('UNIQUE') && msg.includes('username')) return res.status(409).json({ error: 'Username already taken' });
+            if (msg.includes('UNIQUE') && msg.includes('email')) return res.status(409).json({ error: 'Email already in use' });
+            return res.status(500).json({ error: msg });
         }
-    });
+});
 
     // ---------- VERIFY ----------
     router.get('/verify', (req, res) => {
-        if (!(has(cols, 'email_verify_token') && has(cols, 'email_verify_expires') && has(cols, 'email_verified_at'))) {
-        return res.status(501).send('Email verification not configured on server schema.');
-        }
-        const { token } = req.query;
-        if (!token) return res.status(400).send('Missing token');
+        const cols = new Set(db.prepare('PRAGMA table_info(users)').all().map(c=>c.name));
+        const need = ['email_verify_token','email_verify_expires','email_verified_at'];
+        const missing = need.some(n => !cols.has(n));
+        const html = (title, msg) =>
+            `<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"/>
+            <div style="font-family:system-ui;max-width:520px;margin:12vh auto;padding:24px;text-align:center">
+            <h1 style="margin:0 0 12px">${title}</h1>
+            <p style="opacity:.8">${msg}</p>
+            </div>`;
 
-        const row = db.prepare(`SELECT id, email_verify_expires FROM users WHERE email_verify_token = ?`).get(token);
-        if (!row) return res.status(400).send('Invalid token');
-        if (new Date(row.email_verify_expires) < new Date()) return res.status(400).send('Token expired. Please request a new verification email.');
+        if (missing) {
+            return res.status(501).send(html('Setup incomplete',
+            'Email verification is not configured on this server.'));
+        }
+
+        const { token } = req.query;
+        if (!token) return res.status(400).send(html('Missing token', 'Try the link again.'));
+
+        const row = db.prepare(
+            `SELECT id, email_verify_expires FROM users WHERE email_verify_token = ?`
+        ).get(token);
+
+        if (!row) return res.status(400).send(html('Invalid link', 'This verification link is not valid.'));
+
+        if (new Date(row.email_verify_expires) < new Date()) {
+            return res.status(400).send(html('Link expired', 'Request a new verification email and try again.'));
+        }
 
         db.prepare(`
-        UPDATE users
-        SET email_verified_at = ?, email_verify_token = NULL, email_verify_expires = NULL
-        WHERE id = ?
+            UPDATE users
+            SET email_verified_at = ?, email_verify_token = NULL, email_verify_expires = NULL
+            WHERE id = ?
         `).run(new Date().toISOString(), row.id);
 
-        return res.redirect('/?verified=1');
-    });
+        return res.status(200).send(html('✅ Email verified', 'You can close this tab and return to the app.'));
+        });
 
     // ---------- RESEND VERIFY ----------
     router.post('/resend-verification', async (req, res) => {
@@ -180,7 +220,17 @@ function getUserColumns(db) {
         }
         if (!u) return res.status(401).json({ error: 'Invalid credentials' });
 
-        const testBypass = req.get('x-test-signup-secret') === process.env.TEST_SIGNUP_SECRET || (has(cols, 'is_test') && u.is_test === 1);
+        // 👇 force verification if the account has an email but no verified_at
+        const requiresVerification =
+            has(cols,'email') && has(cols,'email_verified_at') && u.email && !u.email_verified_at;
+            const testBypass =
+            req.get('x-test-signup-secret') === process.env.TEST_SIGNUP_SECRET ||
+            (has(cols,'is_test') && u.is_test === 1);
+
+            if (requiresVerification && !testBypass) {
+            return res.status(403).json({ error: 'Email not verified' });
+            }
+
         const allowLegacy = process.env.ALLOW_LEGACY_USERNAME_LOGIN === '1' && process.env.NODE_ENV !== 'production';
 
         if (has(cols, 'password_hash') && u.password_hash) {

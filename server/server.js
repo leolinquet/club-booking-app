@@ -10,6 +10,7 @@ import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import helmet from 'helmet';
 import { buildAuthRouter } from './auth/routes.js';
+import { sendEmail } from './email/resend.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,27 +88,38 @@ app.use('/auth', buildAuthRouter(db));
 
 // env check
 app.get('/__envcheck', (req, res) => {
+  const k = process.env.RESEND_API_KEY || '';
+  const masked = k ? `${k.slice(0,6)}…${k.slice(-4)}` : '';
   res.json({
-    cwd: process.cwd(),
-    has_RESEND_API_KEY: Boolean(process.env.RESEND_API_KEY),
+    has_RESEND_API_KEY: Boolean(k),
+    RESEND_API_KEY_masked: masked,
     FROM_EMAIL: process.env.FROM_EMAIL,
     APP_BASE_URL: process.env.APP_BASE_URL
   });
 });
 
 // test send (replace with your real inbox before calling)
-import { sendEmail } from './email/resend.js';
-app.post('/__sendtest', async (req, res) => {
-  try {
-    const ok = await sendEmail({
-      to: 'your-real-email@example.com',
-      subject: 'Test from Club Booking',
-      html: '<p>Hello from Resend ✅</p>'
-    });
-    res.json({ ok });
-  } catch (e) {
-    res.status(500).json({ ok:false, error: String(e) });
-  }
+app.post('/__sendtest', express.json(), async (req, res) => {
+  const to = req.body?.to;
+  if (!to) return res.status(400).json({ ok: false, error: 'Provide "to" in JSON body' });
+
+  const result = await sendEmail({
+    to,
+    subject: 'Test from Club Booking',
+    html: '<p>Hello from Resend ✅</p>',
+  });
+
+  return res.status(result.ok ? 200 : 500).json(result); // ← don’t wrap in { ok: result }
+});
+
+app.get('/__envcheck', (req, res) => {
+  const k = process.env.RESEND_API_KEY || '';
+  res.json({
+    has_RESEND_API_KEY: !!k,
+    RESEND_API_KEY_masked: k ? `${k.slice(0,6)}…${k.slice(-4)}` : '',
+    FROM_EMAIL: process.env.FROM_EMAIL,
+    APP_BASE_URL: process.env.APP_BASE_URL
+  });
 });
 
 // Helpful unique indexes

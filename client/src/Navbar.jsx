@@ -84,7 +84,6 @@ export default function Navbar({
       <div
         className={`sm:hidden fixed inset-0 bg-black/40 transition-opacity duration-200 ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
       />
-
       {/* Mobile dropdown (animated) */}
       <div
         id="mobile-menu"

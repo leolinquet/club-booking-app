@@ -4,9 +4,10 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",                   
-    "dev": "node -r dotenv/config server.js",     
-    "init:db": "node -r dotenv/config scripts/init_db.js"
+    "start": "node scripts/migrate_auth_columns.js && node server.js",
+    "dev": "node -r dotenv/config server.js",
+    "init:db": "node -r dotenv/config scripts/init_db.js",
+    "migrate:auth": "node scripts/migrate_auth_columns.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

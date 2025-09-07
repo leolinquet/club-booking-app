@@ -24,6 +24,11 @@ export function buildTestSignupRouter(db){
   return router;
 }
 
+const { ok, error, id } = await sendEmail({ to: email, subject: 'Verify your Club Booking email', html });
+if (!ok) {
+  return res.status(500).json({ error: 'Failed to send verification email', detail: error });
+}
+
 // server/server.js
 import { buildTestSignupRouter } from './auth/testSignup.js';
 app.use('/auth', buildTestSignupRouter(db));
