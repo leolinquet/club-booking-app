@@ -1,155 +1,155 @@
-PRAGMA foreign_keys = ON;
+-- PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL UNIQUE,
-  ALTER TABLE users ADD COLUMN active_club_id INTEGER;
-  role TEXT CHECK(role IN ('user','manager')) NOT NULL,
-  password_hash TEXT NOT NULL
-);
+-- CREATE TABLE IF NOT EXISTS users (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   name TEXT NOT NULL UNIQUE,
+--   ALTER TABLE users ADD COLUMN active_club_id INTEGER;
+--   role TEXT CHECK(role IN ('user','manager')) NOT NULL,
+--   password_hash TEXT NOT NULL
+-- );
 
-CREATE TABLE IF NOT EXISTS clubs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  code TEXT UNIQUE NOT NULL,
-  manager_id INTEGER NOT NULL,
-  FOREIGN KEY(manager_id) REFERENCES users(id) ON DELETE CASCADE
-);
+-- CREATE TABLE IF NOT EXISTS clubs (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   name TEXT NOT NULL,
+--   code TEXT UNIQUE NOT NULL,
+--   manager_id INTEGER NOT NULL,
+--   FOREIGN KEY(manager_id) REFERENCES users(id) ON DELETE CASCADE
+-- );
 
-CREATE TABLE IF NOT EXISTS club_members (
-  user_id INTEGER NOT NULL,
-  club_id INTEGER NOT NULL,
-  PRIMARY KEY (user_id, club_id),
-  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE
-);
+-- CREATE TABLE IF NOT EXISTS club_members (
+--   user_id INTEGER NOT NULL,
+--   club_id INTEGER NOT NULL,
+--   PRIMARY KEY (user_id, club_id),
+--   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+--   FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE
+-- );
 
-CREATE TABLE IF NOT EXISTS club_sports (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  club_id INTEGER NOT NULL,
-  sport TEXT NOT NULL,                                        -- was CHECK(...list)
-  courts INTEGER NOT NULL CHECK(courts > 0),
-  open_hour INTEGER NOT NULL CHECK(open_hour BETWEEN 0 AND 23),
-  close_hour INTEGER NOT NULL CHECK(close_hour BETWEEN 1 AND 24),
-  slot_minutes INTEGER NOT NULL CHECK(slot_minutes BETWEEN 5 AND 240),  -- was IN (30,60,90,120)
-  UNIQUE (club_id, sport),
-  FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE
-);
+-- CREATE TABLE IF NOT EXISTS club_sports (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   club_id INTEGER NOT NULL,
+--   sport TEXT NOT NULL,                                        -- was CHECK(...list)
+--   courts INTEGER NOT NULL CHECK(courts > 0),
+--   open_hour INTEGER NOT NULL CHECK(open_hour BETWEEN 0 AND 23),
+--   close_hour INTEGER NOT NULL CHECK(close_hour BETWEEN 1 AND 24),
+--   slot_minutes INTEGER NOT NULL CHECK(slot_minutes BETWEEN 5 AND 240),  -- was IN (30,60,90,120)
+--   UNIQUE (club_id, sport),
+--   FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE
+-- );
 
-CREATE TABLE IF NOT EXISTS bookings (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  club_id INTEGER NOT NULL,
-  sport TEXT NOT NULL,
-  court_index INTEGER NOT NULL,
-  date TEXT NOT NULL,
-  time TEXT NOT NULL,
-  user_id INTEGER NOT NULL,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(club_id, sport, court_index, date, time),
-  FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE,
-  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
-);
+-- CREATE TABLE IF NOT EXISTS bookings (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   club_id INTEGER NOT NULL,
+--   sport TEXT NOT NULL,
+--   court_index INTEGER NOT NULL,
+--   date TEXT NOT NULL,
+--   time TEXT NOT NULL,
+--   user_id INTEGER NOT NULL,
+--   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+--   UNIQUE(club_id, sport, court_index, date, time),
+--   FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE,
+--   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+-- );
 
--- who can be ranked (use user_id, but allow guest name too)
-CREATE TABLE IF NOT EXISTS players (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  club_id INTEGER NOT NULL,
-  user_id INTEGER,              -- nullable for guests
-  display_name TEXT NOT NULL,   -- cached name
-  ALTER TABLE tournament_players ADD COLUMN seed INTEGER; -- NULL for unseeded
-  UNIQUE (club_id, user_id),
-  FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE,
-  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
-);
+-- -- who can be ranked (use user_id, but allow guest name too)
+-- CREATE TABLE IF NOT EXISTS players (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   club_id INTEGER NOT NULL,
+--   user_id INTEGER,              -- nullable for guests
+--   display_name TEXT NOT NULL,   -- cached name
+--   ALTER TABLE tournament_players ADD COLUMN seed INTEGER; -- NULL for unseeded
+--   UNIQUE (club_id, user_id),
+--   FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE,
+--   FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+-- );
 
--- standings snapshot (recomputed from match_results, or updated incrementally)
-CREATE TABLE IF NOT EXISTS standings (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  club_id INTEGER NOT NULL,
-  sport TEXT NOT NULL,
-  player_id INTEGER NOT NULL,
-  season TEXT DEFAULT 'default',
-  played INTEGER NOT NULL DEFAULT 0,
-  won INTEGER NOT NULL DEFAULT 0,
-  drawn INTEGER NOT NULL DEFAULT 0,
-  lost INTEGER NOT NULL DEFAULT 0,
-  gf INTEGER NOT NULL DEFAULT 0,   -- goals/games for
-  ga INTEGER NOT NULL DEFAULT 0,   -- against
-  points INTEGER NOT NULL DEFAULT 0,
-  rating INTEGER,                   -- optional Elo
-  UNIQUE (club_id, sport, season, player_id),
-  FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE,
-  FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
-);
+-- -- standings snapshot (recomputed from match_results, or updated incrementally)
+-- CREATE TABLE IF NOT EXISTS standings (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   club_id INTEGER NOT NULL,
+--   sport TEXT NOT NULL,
+--   player_id INTEGER NOT NULL,
+--   season TEXT DEFAULT 'default',
+--   played INTEGER NOT NULL DEFAULT 0,
+--   won INTEGER NOT NULL DEFAULT 0,
+--   drawn INTEGER NOT NULL DEFAULT 0,
+--   lost INTEGER NOT NULL DEFAULT 0,
+--   gf INTEGER NOT NULL DEFAULT 0,   -- goals/games for
+--   ga INTEGER NOT NULL DEFAULT 0,   -- against
+--   points INTEGER NOT NULL DEFAULT 0,
+--   rating INTEGER,                   -- optional Elo
+--   UNIQUE (club_id, sport, season, player_id),
+--   FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE,
+--   FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
+-- );
 
--- results that drive standings
-CREATE TABLE IF NOT EXISTS match_results (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  club_id INTEGER NOT NULL,
-  sport TEXT NOT NULL,
-  date TEXT NOT NULL,
-  p1_id INTEGER NOT NULL,
-  p2_id INTEGER NOT NULL,
-  p1_score INTEGER NOT NULL,
-  p2_score INTEGER NOT NULL,
-  tournament_id INTEGER,        -- nullable if friendly/ladder
-  UNIQUE (club_id, sport, date, p1_id, p2_id, tournament_id),
-  FOREIGN KEY(club_id) REFERENCES clubs(id),
-  FOREIGN KEY(p1_id) REFERENCES players(id),
-  FOREIGN KEY(p2_id) REFERENCES players(id)
-);
-CREATE TABLE IF NOT EXISTS tournaments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  club_id INTEGER NOT NULL,
-  sport TEXT NOT NULL,
-  name TEXT NOT NULL,
-  format TEXT NOT NULL CHECK(format IN ('single_elim','round_robin')),
-  start_date TEXT,
-  ALTER TABLE tournaments ADD COLUMN seeds_count INTEGER DEFAULT 0;
-  end_date TEXT,
-  block_courts INTEGER NOT NULL DEFAULT 0, -- 1 = block during matches
-  UNIQUE (club_id, sport, name),
-  FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE
-);
+-- -- results that drive standings
+-- CREATE TABLE IF NOT EXISTS match_results (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   club_id INTEGER NOT NULL,
+--   sport TEXT NOT NULL,
+--   date TEXT NOT NULL,
+--   p1_id INTEGER NOT NULL,
+--   p2_id INTEGER NOT NULL,
+--   p1_score INTEGER NOT NULL,
+--   p2_score INTEGER NOT NULL,
+--   tournament_id INTEGER,        -- nullable if friendly/ladder
+--   UNIQUE (club_id, sport, date, p1_id, p2_id, tournament_id),
+--   FOREIGN KEY(club_id) REFERENCES clubs(id),
+--   FOREIGN KEY(p1_id) REFERENCES players(id),
+--   FOREIGN KEY(p2_id) REFERENCES players(id)
+-- );
+-- CREATE TABLE IF NOT EXISTS tournaments (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   club_id INTEGER NOT NULL,
+--   sport TEXT NOT NULL,
+--   name TEXT NOT NULL,
+--   format TEXT NOT NULL CHECK(format IN ('single_elim','round_robin')),
+--   start_date TEXT,
+--   ALTER TABLE tournaments ADD COLUMN seeds_count INTEGER DEFAULT 0;
+--   end_date TEXT,
+--   block_courts INTEGER NOT NULL DEFAULT 0, -- 1 = block during matches
+--   UNIQUE (club_id, sport, name),
+--   FOREIGN KEY(club_id) REFERENCES clubs(id) ON DELETE CASCADE
+-- );
 
-CREATE TABLE IF NOT EXISTS tournament_players (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  tournament_id INTEGER NOT NULL,
-  player_id INTEGER NOT NULL,
-  ALTER TABLE tournaments ADD COLUMN seeds_count INTEGER DEFAULT 0;
-  UNIQUE (tournament_id, player_id),
-  FOREIGN KEY(tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
-  FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
-);
+-- CREATE TABLE IF NOT EXISTS tournament_players (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   tournament_id INTEGER NOT NULL,
+--   player_id INTEGER NOT NULL,
+--   ALTER TABLE tournaments ADD COLUMN seeds_count INTEGER DEFAULT 0;
+--   UNIQUE (tournament_id, player_id),
+--   FOREIGN KEY(tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
+--   FOREIGN KEY(player_id) REFERENCES players(id) ON DELETE CASCADE
+-- );
 
-CREATE TABLE IF NOT EXISTS matches (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  tournament_id INTEGER NOT NULL,
-  round INTEGER NOT NULL DEFAULT 1,
-  group_name TEXT,                    -- for round-robin pools
-  scheduled_date TEXT,                -- YYYY-MM-DD
-  time TEXT,                          -- HH:mm
-  court_index INTEGER,                -- nullable until assigned
-  p1_id INTEGER NOT NULL,
-  p2_id INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','completed','walkover')),
-  p1_score INTEGER,                   -- nullable until completed
-  p2_score INTEGER,
-  winner_id INTEGER,                  -- nullable until completed
-  FOREIGN KEY(tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
-);
+-- CREATE TABLE IF NOT EXISTS matches (
+--   id INTEGER PRIMARY KEY AUTOINCREMENT,
+--   tournament_id INTEGER NOT NULL,
+--   round INTEGER NOT NULL DEFAULT 1,
+--   group_name TEXT,                    -- for round-robin pools
+--   scheduled_date TEXT,                -- YYYY-MM-DD
+--   time TEXT,                          -- HH:mm
+--   court_index INTEGER,                -- nullable until assigned
+--   p1_id INTEGER NOT NULL,
+--   p2_id INTEGER NOT NULL,
+--   status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','completed','walkover')),
+--   p1_score INTEGER,                   -- nullable until completed
+--   p2_score INTEGER,
+--   winner_id INTEGER,                  -- nullable until completed
+--   FOREIGN KEY(tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
+-- );
 
--- migrations/023_user_email_verification.sql
-ALTER TABLE users ADD COLUMN email TEXT;
-ALTER TABLE users ADD COLUMN email_verified_at TEXT;     -- null until verified
-ALTER TABLE users ADD COLUMN email_verify_token TEXT;    -- one-time token
-ALTER TABLE users ADD COLUMN email_verify_expires TEXT;  -- ISO expiry
-ALTER TABLE users ADD COLUMN password_hash TEXT;         -- bcrypt
-ALTER TABLE users ADD COLUMN is_test INTEGER DEFAULT 0;  -- 1 for test users
+-- -- migrations/023_user_email_verification.sql
+-- ALTER TABLE users ADD COLUMN email TEXT;
+-- ALTER TABLE users ADD COLUMN email_verified_at TEXT;     -- null until verified
+-- ALTER TABLE users ADD COLUMN email_verify_token TEXT;    -- one-time token
+-- ALTER TABLE users ADD COLUMN email_verify_expires TEXT;  -- ISO expiry
+-- ALTER TABLE users ADD COLUMN password_hash TEXT;         -- bcrypt
+-- ALTER TABLE users ADD COLUMN is_test INTEGER DEFAULT 0;  -- 1 for test users
 
--- optional: unique email
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email);
+-- -- optional: unique email
+-- CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email);
 
--- migrations/024_add_username.sql
-ALTER TABLE users ADD COLUMN username TEXT;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
+-- -- migrations/024_add_username.sql
+-- ALTER TABLE users ADD COLUMN username TEXT;
+-- CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);

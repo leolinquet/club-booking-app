@@ -6,7 +6,9 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import path from 'path';
-import Database from 'better-sqlite3';
+import db from './db.js';
+import { all, q } from './db.js';
+// import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import helmet from 'helmet';
 import { buildAuthRouter } from './auth/routes.js';
@@ -18,9 +20,9 @@ const __dirname = path.dirname(__filename);
 // -------------------------------
 // SQLite setup / schema  (MOVED UP so `db` exists before it's used below)
 // -------------------------------
-const DB_FILE = path.join(__dirname, 'data.db');
-const db = new Database(DB_FILE);
-db.pragma('foreign_keys = ON');
+// const DB_FILE = path.join(__dirname, 'data.db');
+// const db = new Database(DB_FILE);
+// db.pragma('foreign_keys = ON');
 
 const app = express();
 
@@ -99,18 +101,18 @@ app.get('/__envcheck', (req, res) => {
 });
 
 // test send (replace with your real inbox before calling)
-app.post('/__sendtest', express.json(), async (req, res) => {
-  const to = req.body?.to;
-  if (!to) return res.status(400).json({ ok: false, error: 'Provide "to" in JSON body' });
+// app.post('/__sendtest', express.json(), async (req, res) => {
+//   const to = req.body?.to;
+//   if (!to) return res.status(400).json({ ok: false, error: 'Provide "to" in JSON body' });
 
-  const result = await sendEmail({
-    to,
-    subject: 'Test from Club Booking',
-    html: '<p>Hello from Resend ✅</p>',
-  });
+//   const result = await sendEmail({
+//     to,
+//     subject: 'Test from Club Booking',
+//     html: '<p>Hello from Resend ✅</p>',
+//   });
 
-  return res.status(result.ok ? 200 : 500).json(result); // ← don’t wrap in { ok: result }
-});
+//   return res.status(result.ok ? 200 : 500).json(result); // ← don’t wrap in { ok: result }
+// });
 
 app.get('/__envcheck', (req, res) => {
   const k = process.env.RESEND_API_KEY || '';
@@ -133,24 +135,24 @@ db.exec(`
 `);
 
 // Ensure base tables/columns exist
-function ensureSchema() {
-  // tournament_players.seed
-  const tpCols = db.prepare(`PRAGMA table_info(tournament_players)`).all();
-  if (!tpCols.some(c => c.name === 'seed')) {
-    db.exec(`ALTER TABLE tournament_players ADD COLUMN seed INTEGER`);
-  }
+// function ensureSchema() {
+//   // tournament_players.seed
+//   const tpCols = db.prepare(`PRAGMA table_info(tournament_players)`).all();
+//   if (!tpCols.some(c => c.name === 'seed')) {
+//     db.exec(`ALTER TABLE tournament_players ADD COLUMN seed INTEGER`);
+//   }
 
-  // tournaments.seeds_count
-  const tCols = db.prepare(`PRAGMA table_info(tournaments)`).all();
-  if (!tCols.some(c => c.name === 'seeds_count')) {
-    db.exec(`ALTER TABLE tournaments ADD COLUMN seeds_count INTEGER DEFAULT 0`);
-  }
-}
-ensureSchema();
+//   // tournaments.seeds_count
+//   const tCols = db.prepare(`PRAGMA table_info(tournaments)`).all();
+//   if (!tCols.some(c => c.name === 'seeds_count')) {
+//     db.exec(`ALTER TABLE tournaments ADD COLUMN seeds_count INTEGER DEFAULT 0`);
+//   }
+// }
+// ensureSchema();
 
 // standings.points, standings.tournaments_played
 try {
-  const sCols = new Set(db.prepare('PRAGMA table_info(standings)').all().map(c => c.name));
+  const sCols = new Set((await all('PRAGMA table_info(standings)')).map(c => c.name));
   if (!sCols.has('points')) {
     db.prepare(`ALTER TABLE standings ADD COLUMN points INTEGER DEFAULT 0`).run();
     console.log('Added standings.points column');
@@ -202,41 +204,41 @@ function nowDateTime() {
 // -------------------------------
 // Auth
 // -------------------------------
-app.post('/auth/register', async (req, res) => {
-  try {
-    const { name, role, password } = req.body || {};
-    if (!name || !role || !password) return res.status(400).json({ error: 'name, role, password required' });
-    if (!['user', 'manager'].includes(role)) return res.status(400).json({ error: 'role must be user|manager' });
+// app.post('/auth/register', async (req, res) => {
+//   try {
+//     const { name, role, password } = req.body || {};
+//     if (!name || !role || !password) return res.status(400).json({ error: 'name, role, password required' });
+//     if (!['user', 'manager'].includes(role)) return res.status(400).json({ error: 'role must be user|manager' });
 
-    const existing = db.prepare('SELECT id FROM users WHERE name = ?').get(name);
-    if (existing) return res.status(409).json({ error: 'username already taken' });
+//     const existing = db.prepare('SELECT id FROM users WHERE name = ?').get(name);
+//     if (existing) return res.status(409).json({ error: 'username already taken' });
 
-    const password_hash = await bcrypt.hash(password, 10);
-    db.prepare('INSERT INTO users (name, role, password_hash) VALUES (?, ?, ?)').run(name, role, password_hash);
+//     // const password_hash = await bcrypt.hash(password, 10);
+//     db.prepare('INSERT INTO users (name, role, password_hash) VALUES (?, ?, ?)').run(name, role, password_hash);
 
-    const user = db.prepare('SELECT id, name, role FROM users WHERE name = ?').get(name);
-    res.json(user);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'unexpected error' });
-  }
-});
+//     const user = db.prepare('SELECT id, name, role FROM users WHERE name = ?').get(name);
+//     res.json(user);
+//   } catch (e) {
+//     console.error(e);
+//     res.status(500).json({ error: 'unexpected error' });
+//   }
+// });
 
-app.post('/auth/login', async (req, res) => {
-  try {
-    const { name, password } = req.body || {};
-    const row = db.prepare('SELECT id, name, role, password_hash FROM users WHERE name = ?').get(name);
-    if (!row) return res.status(401).json({ error: 'invalid credentials' });
+// app.post('/auth/login', async (req, res) => {
+//   try {
+//     const { name, password } = req.body || {};
+//     const row = db.prepare('SELECT id, name, role, password_hash FROM users WHERE name = ?').get(name);
+//     if (!row) return res.status(401).json({ error: 'invalid credentials' });
 
-    const ok = await bcrypt.compare(password, row.password_hash);
-    if (!ok) return res.status(401).json({ error: 'invalid credentials' });
+//     // const ok = await bcrypt.compare(password, row.password_hash);
+//     if (!ok) return res.status(401).json({ error: 'invalid credentials' });
 
-    res.json({ id: row.id, name: row.name, role: row.role });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'unexpected error' });
-  }
-});
+//     res.json({ id: row.id, name: row.name, role: row.role });
+//   } catch (e) {
+//     console.error(e);
+//     res.status(500).json({ error: 'unexpected error' });
+//   }
+// });
 
 // -------------------------------
 // Tournament helpers
@@ -1718,7 +1720,6 @@ app.post('/cancel', (req, res) => {
 // -------------------------------
 // Server
 // -------------------------------
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`server listening on :${PORT}`);
-});
+const PORT = process.env.PORT || 5051;
+app.listen(PORT, () => console.log('server listening on :' + PORT));
+
