@@ -1,10 +1,10 @@
 {
   "scripts": {
     "dev": "concurrently \"npm:server:start\" \"npm:client:dev\"",
-    "server:start": "node server/server.js",
+  "server:start": "DOTENV_CONFIG_PATH=server/.env node -r dotenv/config server/server.js",
     "client:dev": "(cd client && npm run dev)",
-    "build": "(cd client && npm run build)",
-    "postinstall": "npm run build",
+  "build": "NPM_CONFIG_PRODUCTION=false npm --prefix client ci && npm --prefix client run build",
+  "postinstall": "NPM_CONFIG_PRODUCTION=false npm --prefix client ci && npm --prefix client run build",
     "start": "node server/server.js"
   },
   "dependencies": {

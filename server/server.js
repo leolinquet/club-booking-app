@@ -63,6 +63,11 @@ const isProd = process.env.NODE_ENV === 'production';
 // Force HTTPS in production only
 app.use((req, res, next) => {
   if (!isProd) return next();
+  // Don't force-redirect to HTTPS for local development hosts even if
+  // NODE_ENV=production is set locally (helps developers testing on localhost).
+  const host = String(req.headers.host || '').toLowerCase();
+  if (/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host)) return next();
+
   const xfProto = req.get('x-forwarded-proto');
   if (req.secure || xfProto === 'https') return next();
   return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
@@ -2491,7 +2496,8 @@ export async function logDbIdentity() {
     console.warn('[db] identity check failed:', e.message || e);
   }
 }
-const PORT = process.env.PORT || 5051;
+// Ensure PORT is a number (some platforms provide it as a string)
+const PORT = Number(process.env.PORT) || 5051;
 app.listen(PORT, () => console.log(`server listening on :${PORT}`));
 
 

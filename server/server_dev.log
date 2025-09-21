@@ -1,0 +1,25 @@
+
+> dev
+> concurrently "npm:server:start" "npm:client:dev"
+
+[client:dev] 
+[client:dev] > client:dev
+[client:dev] > (cd client && npm run dev)
+[client:dev] 
+[server:start] 
+[server:start] > server:start
+[server:start] > node server/server.js
+[server:start] 
+[client:dev] 
+[client:dev] > club-booking-client@0.1.0 dev
+[client:dev] > vite
+[client:dev] 
+[client:dev] Port 5173 is in use, trying another one...
+[client:dev] 
+[client:dev]   VITE v5.4.19  ready in 137 ms
+[client:dev] 
+[client:dev]   ➜  Local:   http://localhost:5174/
+[client:dev]   ➜  Network: use --host to expose
+[server:start] server listening on :5051
+[server:start] npm run server:start exited with code SIGTERM
+[client:dev] npm run client:dev exited with code SIGTERM

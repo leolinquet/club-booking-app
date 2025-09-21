@@ -264,6 +264,7 @@ export function Auth({ onLogin, onRegister }) {
 
   // LOGIN: send { login: <email or username>, password }
   const doLogin = async () => {
+    console.log('doLogin invoked', { username });
     setBusy(true);
     try {
       const r = await fetch(`${API}/auth/login`, {
@@ -276,10 +277,16 @@ export function Auth({ onLogin, onRegister }) {
         }),
       });
       const data = await r.json().catch(() => null);
-      if (!r.ok) return alert((data && data.error) || "Login failed");
+      if (!r.ok) {
+        console.error('login failed', { status: r.status, data });
+        return alert((data && data.error) || "Login failed");
+      }
 
       // backend returns { ok:true, user_id }
       onLogin?.(data.user || { id: data.user_id });
+    } catch (e) {
+      console.error('doLogin error', e);
+      alert('Login failed: ' + (e && e.message ? e.message : String(e)));
     } finally {
       setBusy(false);
     }
