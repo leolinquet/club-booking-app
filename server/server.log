@@ -1,0 +1,558 @@
+server listening on :5051
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 11
+DEBUG availability: sample bookings [
+  {
+    id: 17,
+    court_index: '1',
+    time: '12:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 18,
+    court_index: '2',
+    time: '12:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 19,
+    court_index: '1',
+    time: '13:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 20,
+    court_index: '0',
+    time: '20:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 23,
+    court_index: '1',
+    time: '16:00',
+    user_id: 5,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 9,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 11,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 11
+DEBUG availability: sample bookings [
+  {
+    id: 17,
+    court_index: '1',
+    time: '12:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 18,
+    court_index: '2',
+    time: '12:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 19,
+    court_index: '1',
+    time: '13:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 20,
+    court_index: '0',
+    time: '20:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 23,
+    court_index: '1',
+    time: '16:00',
+    user_id: 5,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 9,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 11,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 11
+DEBUG availability: sample bookings [
+  {
+    id: 17,
+    court_index: '1',
+    time: '12:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 18,
+    court_index: '2',
+    time: '12:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 19,
+    court_index: '1',
+    time: '13:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 20,
+    court_index: '0',
+    time: '20:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 23,
+    court_index: '1',
+    time: '16:00',
+    user_id: 5,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 9,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 11,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+GET /users/:id/clubs error: invalid input syntax for type bigint: "undefined"
+    at /Users/leolopez-linquet/Documents/club-booking-app/server/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async file:///Users/leolopez-linquet/Documents/club-booking-app/server/server.js:1877:22 {
+  length: 151,
+  severity: 'ERROR',
+  code: '22P02',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: "unnamed portal parameter $1 = '...'",
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'numutils.c',
+  line: '879',
+  routine: 'pg_strtoint64_safe'
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 11
+DEBUG availability: sample bookings [
+  {
+    id: 17,
+    court_index: '1',
+    time: '12:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 18,
+    court_index: '2',
+    time: '12:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 19,
+    court_index: '1',
+    time: '13:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 20,
+    court_index: '0',
+    time: '20:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 23,
+    court_index: '1',
+    time: '16:00',
+    user_id: 5,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 9,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 11,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+POST /book payload: {
+  clubId: 9,
+  sport: 'tennis',
+  courtIndex: 2,
+  date: '2025-09-21',
+  time: '10:00',
+  userId: 27,
+  asUsername: undefined
+}
+DEBUG legacy booking mapping: {
+  clubId: 9,
+  requestedSport: 'tennis',
+  includeLegacyNull: true,
+  sql: 'SELECT id FROM courts WHERE club_id = ? AND (sport = ? OR sport IS NULL) ORDER BY id ASC LIMIT 1 OFFSET ?'
+}
+DEBUG booking insert params: {
+  clubId: 9,
+  courtId: 34,
+  startsAtISO: '2025-09-21T10:00:00.000Z',
+  endsAtISO: '2025-09-21T11:00:00.000Z',
+  targetUserId: 27
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 12
+DEBUG availability: sample bookings [
+  {
+    id: 17,
+    court_index: '1',
+    time: '12:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 18,
+    court_index: '2',
+    time: '12:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 19,
+    court_index: '1',
+    time: '13:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 20,
+    court_index: '0',
+    time: '20:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 23,
+    court_index: '1',
+    time: '16:00',
+    user_id: 5,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 9,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 12,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 11
+DEBUG availability: sample bookings [
+  {
+    id: 17,
+    court_index: '1',
+    time: '12:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 18,
+    court_index: '2',
+    time: '12:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 19,
+    court_index: '1',
+    time: '13:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 20,
+    court_index: '0',
+    time: '20:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 23,
+    court_index: '1',
+    time: '16:00',
+    user_id: 5,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 9,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 11,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+GET /clubs/9/standings from ::1
+  -> standings rows: 4 [
+  { player_id: 1, name: 'user1', tournaments_played: 1, points: 40 },
+  { player_id: 8, name: 'user4', tournaments_played: 1, points: 26 },
+  { player_id: 6, name: 'user2', tournaments_played: 1, points: 18 },
+  { player_id: 7, name: 'user3', tournaments_played: 1, points: 18 }
+]
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 11
+DEBUG availability: sample bookings [
+  {
+    id: 17,
+    court_index: '1',
+    time: '12:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 18,
+    court_index: '2',
+    time: '12:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 19,
+    court_index: '1',
+    time: '13:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 20,
+    court_index: '0',
+    time: '20:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 23,
+    court_index: '1',
+    time: '16:00',
+    user_id: 5,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 9,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 11,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 11
+DEBUG availability: sample bookings [
+  {
+    id: 17,
+    court_index: '1',
+    time: '12:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 18,
+    court_index: '2',
+    time: '12:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 19,
+    court_index: '1',
+    time: '13:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 20,
+    court_index: '0',
+    time: '20:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 23,
+    court_index: '1',
+    time: '16:00',
+    user_id: 5,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 9,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 11,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 11
+DEBUG availability: sample bookings [
+  {
+    id: 17,
+    court_index: '1',
+    time: '12:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 18,
+    court_index: '2',
+    time: '12:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 19,
+    court_index: '1',
+    time: '13:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 20,
+    court_index: '0',
+    time: '20:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 23,
+    court_index: '1',
+    time: '16:00',
+    user_id: 5,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 9,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 11,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 11
+DEBUG availability: sample bookings [
+  {
+    id: 17,
+    court_index: '1',
+    time: '12:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 18,
+    court_index: '2',
+    time: '12:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 19,
+    court_index: '1',
+    time: '13:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 20,
+    court_index: '0',
+    time: '20:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 23,
+    court_index: '1',
+    time: '16:00',
+    user_id: 5,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 9,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 11,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 11
+DEBUG availability: sample bookings [
+  {
+    id: 17,
+    court_index: '1',
+    time: '12:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 18,
+    court_index: '2',
+    time: '12:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 19,
+    court_index: '1',
+    time: '13:00',
+    user_id: 8,
+    booked_by: 'user3'
+  },
+  {
+    id: 20,
+    court_index: '0',
+    time: '20:00',
+    user_id: 5,
+    booked_by: 'user1'
+  },
+  {
+    id: 23,
+    court_index: '1',
+    time: '16:00',
+    user_id: 5,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 9,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 11,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}

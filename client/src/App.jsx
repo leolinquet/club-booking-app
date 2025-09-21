@@ -3,6 +3,13 @@ import Navbar from "./Navbar";
 import './styles/theme.css';
 import './styles/ui.css';
 import "./a2hs.js";
+import ClubGate from './ClubGate.jsx';
+
+const safeParse = (s) => {
+  try { return JSON.parse(s); } catch { return null; }
+};
+
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5051';
 
 const API = (() => {
   const h = typeof window !== 'undefined' ? window.location.hostname : '';
@@ -15,9 +22,46 @@ const API = (() => {
   return base || 'http://localhost:5051';
 })();
 
+async function j(path, opts = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    credentials: 'include',
+    ...opts,
+  });
+  const data = await res.json().catch(() => null);
+  return { res, data };
+}
 
 function Card({ children }) {
   return <div className="bg-white rounded-xl shadow p-4">{children}</div>;
+}
+// Small helper to show a club code with a copy button
+function CodeWithCopy({ code }) {
+  const [copied, setCopied] = useState(false);
+  const doCopy = async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(String(code));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      // fallback: prompt the user to copy manually
+      try { window.prompt('Copy the club code', String(code)); } catch { /* ignore */ }
+    }
+  };
+  return (
+    <span className="inline-flex items-center gap-2 text-gray-600 text-xs">
+      <span>code {code || '—'}</span>
+      <button
+        onClick={doCopy}
+        title="Copy club code"
+        className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100"
+        type="button"
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </span>
+  );
 }
 function Button({ children, ...props }) {
   return <button className="px-4 py-2 rounded-lg bg-black text-white hover:opacity-90 disabled:opacity-50" {...props}>{children}</button>;
@@ -30,8 +74,8 @@ function Select(props) {
 }
 
 export default function App(){
-  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user')||'null'));
-  const [club, setClub] = useState(() => JSON.parse(localStorage.getItem('club')||'null'));
+  const [user, setUser] = useState(() => safeParse(localStorage.getItem('user')));
+  const [club, setClub] = useState(() => safeParse(localStorage.getItem('club')));
   const [view, setView] = useState('book'); // 'book' | 'clubs' | 'home' | 'tournaments' | 'rankings'
 
   function saveUser(u){ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }
@@ -83,6 +127,52 @@ export default function App(){
   const isManager = user.role === 'manager';
   const effectivePage = isManager ? view : (view === 'home' ? 'book' : view);
 
+  function saveUser(u) {
+    setUser(u);
+    localStorage.setItem('user', JSON.stringify(u));
+  }
+  function saveClub(c) {
+    setClub(c);
+    localStorage.setItem('club', JSON.stringify(c));
+  }
+
+  // after successful login, make sure user has role populated
+  async function handleAuthed(u) {
+    saveUser(u); // u must include role/is_manager from /auth/login
+    // load club(s)
+    const r = await fetch(`${API}/users/${u.id}/clubs`, { credentials: 'include' });
+    if (r.ok) {
+      const clubs = await r.json();
+      if (clubs.length) saveClub(clubs[0]);
+    }
+  }
+
+  // Ensure we fetch the authoritative active club (this will backfill code if missing)
+  useEffect(() => {
+    (async () => {
+      if (!user) return;
+      try {
+        const r = await fetch(`${API}/users/${user.id}/club`, { credentials: 'include' });
+        if (!r.ok) return;
+        const c = await r.json().catch(() => null);
+        if (c) {
+          saveClub(c);
+        }
+      } catch (e) {
+        // ignore failures — app still works with cached club
+      }
+    })();
+  }, [user?.id]);
+
+  if (user && !club) {
+    return (
+      <ClubGate
+        user={user}
+        onJoin={(c) => saveClub(c)}
+        onCreate={(c) => saveClub(c)}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -108,7 +198,8 @@ export default function App(){
               <div className="text-sm text-gray-600 flex items-center gap-2">
                 <span>{user.name} ({user.role})</span>
                 <span className="mx-2">•</span>
-                <span>{club.name} (code {club.code})</span>
+                <span>{club.name} </span>
+                <CodeWithCopy code={club.code} />
                 <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
               </div>
             </header>
@@ -121,7 +212,8 @@ export default function App(){
               <div className="text-sm text-gray-600 flex items-center gap-2">
                 <span>{user.name} ({user.role})</span>
                 <span className="mx-2">•</span>
-                <span>{club.name} (code {club.code})</span>
+                <span>{club.name} </span>
+                <CodeWithCopy code={club.code} />
                 <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
               </div>
             </header>
@@ -135,7 +227,8 @@ export default function App(){
               <div className="text-sm text-gray-600 flex items-center gap-2">
                 <span>{user.name} ({user.role})</span>
                 <span className="mx-2">•</span>
-                <span>{club.name} (code {club.code})</span>
+                <span>{club.name} </span>
+                <CodeWithCopy code={club.code} />
                 <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
               </div>
             </header>
@@ -148,7 +241,8 @@ export default function App(){
               <div className="text-sm text-gray-600 flex items-center gap-2">
                 <span>{user.name} ({user.role})</span>
                 <span className="mx-2">•</span>
-                <span>{club.name} (code {club.code})</span>
+                <span>{club.name} </span>
+                <CodeWithCopy code={club.code} />
                 <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
               </div>
             </header>
@@ -161,81 +255,64 @@ export default function App(){
 }
 
 /* -------------------- Auth (Login / Register) -------------------- */
-function Auth({ onLogin, onRegister }) {
-//   const [mode, setMode] = useState('login'); // 'login' | 'register'
-//   const [name, setName] = useState('');
-//   const [password, setPassword] = useState('');
-//   const [role, setRole] = useState('user');
-//   const [busy, setBusy] = useState(false);
-
-//   const login = async () => {
-//     setBusy(true);
-//     try {
-//       const res = await fetch(`${API}/auth/login`, {
-//         method: 'POST',
-//         headers: { 'Content-Type': 'application/json' },
-//         // 👇 send "login" (email or username), not "name"
-//         body: JSON.stringify({ login: name, password })
-//       });
-//       const data = await res.json().catch(()=>null);
-//       if (!res.ok) return alert((data && data.error) || 'Login failed');
-//       onLogin(data.user); // server returns { ok, user }
-//     } finally { setBusy(false); }
-//   };
-
-
-//   const register = async () => {
-//     setBusy(true);
-//     try {
-//       const res = await fetch(`${API}/auth/register`, {
-//         method: 'POST', headers: {'Content-Type':'application/json'},
-//         body: JSON.stringify({ name, role, password })
-//       });
-//       const data = await res.json().catch(()=>null);
-//       if (!res.ok) return alert((data && data.error) || 'Register failed');
-//       onRegister(data);
-//     } finally { setBusy(false); }
-//   };
-
-  const [mode, setMode] = useState('login');           // 'login' | 'register'
-  const [username, setUsername] = useState('');        // email OR username for login
-  const [email, setEmail] = useState('');              // only used in register
-  const [password, setPassword] = useState('');
+export function Auth({ onLogin, onRegister }) {
+  const [mode, setMode] = useState("login"); // 'login' | 'register'
+  const [username, setUsername] = useState(""); // email OR username
+  const [email, setEmail] = useState("");       // only used in register
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
   // LOGIN: send { login: <email or username>, password }
-  const login = async () => {
+  const doLogin = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`${API}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ login: username.trim(), password })
+      const r = await fetch(`${API}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          login: username.trim(),       // <-- send the username/email string
+          password,
+        }),
       });
-      const data = await res.json().catch(()=>null);
-      if (!res.ok) return alert((data && data.error) || 'Login failed');
-      onLogin(data.user);
-    } finally { setBusy(false); }
+      const data = await r.json().catch(() => null);
+      if (!r.ok) return alert((data && data.error) || "Login failed");
+
+      // backend returns { ok:true, user_id }
+      onLogin?.(data.user || { id: data.user_id });
+    } finally {
+      setBusy(false);
+    }
   };
 
-  // REGISTER (real users): send { email, username, password } to /auth/signup
-  const register = async () => {
+  // REGISTER: send { email, password, name }
+  const doRegister = async () => {
     setBusy(true);
     try {
-      const res = await fetch(`${API}/auth/signup`, {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
+      const name =
+        (username && username.trim()) ||
+        (email && email.split("@")[0]) ||
+        "";
+
+      const r = await fetch(`${API}/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          username: username.trim(),
-          password
-        })
+          email: email.trim(),
+          password,
+          name,                         // <-- backend expects "name"
+        }),
       });
-      const data = await res.json().catch(()=>null);
-      if (!res.ok) return alert((data && data.error) || 'Signup failed');
-      alert('We sent a verification link/code to your email. Verify to continue.');
-      setMode('login');
-    } finally { setBusy(false); }
+      const data = await r.json().catch(() => null);
+      if (!r.ok) return alert((data && data.error) || "Signup failed");
+
+      alert("We sent a verification email. Verify, then log in.");
+      setMode("login");
+      onRegister?.(data);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const canLogin = username.trim() && password;
@@ -246,27 +323,31 @@ function Auth({ onLogin, onRegister }) {
       <Card>
         <div className="space-y-4 w-96">
           <h2 className="text-xl font-medium">
-            {mode === 'login' ? 'Log in' : 'Create account'}
+            {mode === "login" ? "Log in" : "Create account"}
           </h2>
 
           {/* Login: label as "Email or Username" */}
           <div className="space-y-2">
             <div className="text-sm text-gray-600">Email or Username</div>
             <TextInput
+              name="login"
+              autoComplete="username"
               placeholder="you@example.com or yourname"
               value={username}
-              onChange={e=>setUsername(e.target.value)}
+              onChange={(e) => setUsername(e.target.value)}
             />
           </div>
 
           {/* Only show Email input in register mode */}
-          {mode === 'register' && (
+          {mode === "register" && (
             <div className="space-y-2">
               <div className="text-sm text-gray-600">Email</div>
               <TextInput
+                name="email"
+                autoComplete="email"
                 placeholder="you@example.com"
                 value={email}
-                onChange={e=>setEmail(e.target.value)}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
           )}
@@ -274,128 +355,68 @@ function Auth({ onLogin, onRegister }) {
           <div className="space-y-2">
             <div className="text-sm text-gray-600">Password</div>
             <TextInput
+              name="password"
               type="password"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
               placeholder="••••••••"
               value={password}
-              onChange={e=>setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.target.value)}
             />
           </div>
 
-          {/* Dev: quick test account (no email) */}
-          {mode === 'register' && import.meta.env.MODE === 'development' && (
-            <button
-              className="text-xs underline opacity-70"
-              onClick={async ()=>{
-                const res = await fetch(`${API}/auth/register`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type':'application/json',
-                    'x-test-signup-secret': import.meta.env.VITE_TEST_SECRET || 'dev-only-long-random'
-                  },
-                  body: JSON.stringify({ username, password })
-                });
-                const data = await res.json().catch(()=>null);
-                if (!res.ok) return alert((data && data.error) || 'Dev register failed');
-                alert('Dev test user created. Log in now.');
-                setMode('login');
-              }}
-            >
-              Dev: quick test account (no email)
-            </button>
-          )}
-
-          {mode === 'login' ? (
+          {mode === "login" ? (
             <>
-              <Button onClick={login} disabled={!canLogin || busy}>Log in</Button>
+              <Button onClick={doLogin} disabled={!canLogin || busy}>
+                Log in
+              </Button>
               <div className="text-sm text-gray-600">
-                Don’t have an account?{' '}
-                <button className="underline" onClick={()=>setMode('register')}>Create one</button>
+                Don’t have an account?{" "}
+                <button className="underline" onClick={() => setMode("register")}>
+                  Create one
+                </button>
               </div>
             </>
           ) : (
             <>
-              <Button onClick={register} disabled={!canRegister || busy}>Create account</Button>
+              <Button onClick={doRegister} disabled={!canRegister || busy}>
+                Create account
+              </Button>
               <div className="text-sm text-gray-600">
-                Already have an account?{' '}
-                <button className="underline" onClick={()=>setMode('login')}>Log in</button>
+                Already have an account?{" "}
+                <button className="underline" onClick={() => setMode("login")}>
+                  Log in
+                </button>
               </div>
+
+              {/* Dev helper (optional). Keep only if you have this route wired. */}
+              {import.meta.env.MODE === "development" && (
+                <button
+                  className="text-xs underline opacity-70"
+                  onClick={async () => {
+                    try {
+                      const r = await fetch(`${API}/auth/register`, {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                          "x-test-signup-secret":
+                            import.meta.env.VITE_TEST_SECRET || "dev-only-long-random",
+                        },
+                        body: JSON.stringify({ username, password }),
+                      });
+                      const data = await r.json().catch(() => null);
+                      if (!r.ok) return alert((data && data.error) || "Dev register failed");
+                      alert("Dev test user created. Log in now.");
+                      setMode("login");
+                    } catch (_) {}
+                  }}
+                >
+                  Dev: quick test account (no email)
+                </button>
+              )}
             </>
           )}
         </div>
       </Card>
-    </div>
-  );
-}
-
-/* -------------------- ClubGate (Join/Create) -------------------- */
-function ClubGate({ user, onJoin, onCreate }){
-  const [code, setCode] = useState('');
-  const [clubName, setClubName] = useState('');
-
-  const join = async ()=> {
-    const res = await fetch(`${API}/clubs/join`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ code, userId:user.id })
-    });
-    const data = await res.json();
-    if (res.ok) onJoin(data.club);
-    else alert(data.error || 'error');
-  };
-
-  const create = async ()=> {
-    const res = await fetch(`${API}/clubs`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name: clubName, managerId: user.id })
-    });
-    const data = await res.json();
-    if (res.ok) onCreate(data);
-    else alert(data.error || 'error');
-  };
-
-  const goBack = () => {
-  // clear any stored user
-  localStorage.removeItem('user');
-  // force reload at root (your login/creation page)
-  window.location.href = '/';
-};
-
-
-  const goHome = () => {
-    if (user.clubId) {
-      location.reload();
-    } else {
-      alert("You need to join or create a club first!");
-    }
-  };
-
-  return (
-    <div className="min-h-screen grid place-items-center p-4 relative">
-      <div className="absolute top-4 left-4 flex gap-2">
-        <button onClick={goBack} className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300">Back</button>
-        <button onClick={goHome} className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300">Home</button>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-6 w-full max-w-3xl">
-        <Card>
-          <div className="space-y-3">
-            <h3 className="text-lg font-medium">Join a club</h3>
-            <TextInput placeholder="Enter club code" value={code} onChange={e=>setCode(e.target.value)} />
-            <Button onClick={join} disabled={!code}>Join</Button>
-          </div>
-        </Card>
-
-        {user.role === 'manager' && (
-          <Card>
-            <div className="space-y-3">
-              <h3 className="text-lg font-medium">Create a club</h3>
-              <TextInput placeholder="Club name" value={clubName} onChange={e=>setClubName(e.target.value)} />
-              <Button onClick={create} disabled={!clubName}>Create</Button>
-            </div>
-          </Card>
-        )}
-      </div>
     </div>
   );
 }
@@ -426,7 +447,12 @@ function ManagerDashboard({ user, club }){
 
   const load = async ()=> {
     const r = await fetch(`${API}/clubs/${club.id}/sports`);
-    setSports(await r.json());
+    const data = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(data)) {
+      setSports([]);
+    } else {
+      setSports(data);
+    }
   };
   useEffect(()=>{ load(); }, []);
 
@@ -450,12 +476,12 @@ function ManagerDashboard({ user, club }){
     }
 
     const payload = {
+      userId: user.id,
       sport: actualSport,
       courts: Number(form.courts),
       openHour: Number(form.openHour),
       closeHour: Number(form.closeHour),
       slotMinutes: actualMinutes,
-      managerId: user.id
     };
 
     const url = editingId
@@ -497,7 +523,7 @@ function ManagerDashboard({ user, club }){
     const res = await fetch(`${API}/clubs/${club.id}/sports/${s.id}`, {
       method:'DELETE',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ managerId: user.id })
+      body: JSON.stringify({ userId: user.id })
     });
     const data = await res.json().catch(()=>null);
     if (!res.ok) return alert((data && data.error) || 'Delete failed');
@@ -694,9 +720,13 @@ function UserBooking({ user, club }){
   useEffect(()=>{
     (async ()=>{
       const r = await fetch(`${API}/clubs/${club.id}/sports`);
-      const all = await r.json();
-      setSports(all);
-      if (all.length) setSport(all[0].sport);
+      const all = await r.json().catch(()=>null);
+      if (!r.ok || !Array.isArray(all)) {
+        setSports([]);
+      } else {
+        setSports(all);
+        if (all.length) setSport(all[0].sport);
+      }
     })();
   }, [club.id]);
 
@@ -725,8 +755,18 @@ function UserBooking({ user, club }){
   const closeConfirm = () => { setConfirmOpen(false); setPending(null); };
 
   const refresh = async () => {
-    const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`);
-    setGrid(await r.json());
+    try {
+      const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`);
+      const d = await r.json().catch(()=>null);
+      if (r.ok) setGrid(d);
+      else {
+        // keep previous grid visible (do not overwrite with error payload) and notify user
+        alert((d && d.error) || 'Failed to refresh availability');
+      }
+    } catch (err) {
+      console.error('refresh error', err);
+      alert('Failed to refresh availability');
+    }
   };
 
   const confirmBook = async () => {
@@ -752,7 +792,12 @@ function UserBooking({ user, club }){
     })
   });
   const data = await res.json().catch(()=>null);
-  if (!res.ok) alert((data && data.error) || 'Booking failed');
+  if (!res.ok) {
+    alert((data && data.error) || 'Booking failed');
+    closeConfirm();
+    // Do not call refresh() here — refresh may try to set the grid to an error payload and crash the UI.
+    return;
+  }
   closeConfirm();
   await refresh();
 };
@@ -817,12 +862,10 @@ function UserBooking({ user, club }){
                                       min-h-12 sm:h-10 active:scale-[.98] transition"
                             title="Click to cancel your reservation"
                           >
-                            {/* helper label on small screens (shows username if manager) */}
-                            {isOwnClubManager && cell.bookedBy && (
-                              <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium select-none">
-                                {cell.bookedBy}
-                              </span>
-                            )}
+                            {/* Always show the booking name for owned slots: prefer bookedBy when present, otherwise show 'You' */}
+                            <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium select-none">
+                              {cell.bookedBy ? cell.bookedBy : 'You'}
+                            </span>
                             <span className="sr-only">Cancel your reservation</span>
                           </button>
                         ) : cell.booked ? (
@@ -833,7 +876,8 @@ function UserBooking({ user, club }){
                                         min-h-12 sm:h-10 active:scale-[.98] transition"
                               title="Manager: click to cancel this booking"
                             >
-                              {isOwnClubManager && cell.bookedBy && (
+                              {/* Show the name of the user who booked this slot (if available) */}
+                              {cell.bookedBy && (
                                 <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium select-none">
                                   {cell.bookedBy}
                                 </span>
@@ -841,7 +885,14 @@ function UserBooking({ user, club }){
                               <span className="sr-only">Cancel booking</span>
                             </button>
                           ) : (
-                            <div className="rounded bg-red-500 min-h-12 sm:h-10" />
+                            <div className="rounded bg-red-500 min-h-12 sm:h-10 relative">
+                              {/* For non-managers, show the booking name if available */}
+                              {cell.bookedBy && (
+                                <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium select-none">
+                                  {cell.bookedBy}
+                                </span>
+                              )}
+                            </div>
                           )
                         ) : (
                           <button
@@ -968,9 +1019,9 @@ function ClubsPage({ user, club, onSetActive }) {
         <div className="grid gap-2">
           {clubs.map(c => (
             <div key={c.id} className="flex items-center justify-between border rounded-lg p-3">
-              <div className="text-sm">
+                <div className="text-sm">
                 <div className="font-medium">{c.name}</div>
-                <div className="text-gray-600 text-xs">code {c.code}</div>
+                <div className="text-gray-600 text-xs"><CodeWithCopy code={c.code} /></div>
               </div>
               {club && club.id === c.id ? (
                 <span className="text-xs px-2 py-1 rounded bg-gray-200">Active</span>
@@ -1018,7 +1069,7 @@ function TournamentsView({ API, club, user, isManager }) {
   const [drawSize, setDrawSize] = useState(16);
   const [seedCount, setSeedCount] = useState(4);
   const [pointsByRound, setPointsByRound] = useState({
-    R128: 0, R64: 0, R32: 10, R16: 20, QF: 40, SF: 70, F: 120, C: 150
+    R128: 0, R64: 5, R32: 10, R16: 20, QF: 40, SF: 70, F: 120, C: 200
   });
 
   // selected tournament
@@ -1082,7 +1133,16 @@ function TournamentsView({ API, club, user, isManager }) {
   const openDetail = async (id) => {
     setSelectedId(id);
     const r = await fetch(`${API}/tournaments/${id}`);
-    const data = await r.json();
+    if (!r.ok) {
+      const err = await r.json().catch(()=>({ error: 'Failed to load tournament' }));
+      alert(err.error || 'Failed to load tournament');
+      return;
+    }
+    const data = await r.json().catch(() => null);
+    if (!data || !data.tournament) {
+      alert('Invalid tournament data from server');
+      return;
+    }
     setDetail(data);
   };
 
@@ -1179,7 +1239,7 @@ function TournamentsView({ API, club, user, isManager }) {
   let playersById = new Map();
   if (detail?.players) {
     playersById = new Map(
-      detail.players.map(p => [
+      (detail?.players || []).map(p => [
         p.id,
         { name: p.display_name, seed: p.seed == null ? null : Number(p.seed) }
       ])
@@ -1223,6 +1283,14 @@ function TournamentsView({ API, club, user, isManager }) {
     const data = await r.json().catch(()=>null);
     if (!r.ok) return alert((data && data.error) || 'Save failed');
     await openDetail(selectedId);
+
+    // Notify other parts of the app (e.g., Rankings) that standings may have changed
+    try {
+      const ev = new CustomEvent('standingsUpdated', { detail: { clubId: club?.id } });
+      window.dispatchEvent(ev);
+    } catch (err) {
+      // ignore in old browsers
+    }
   };
 
   const renderBracket = () => {
@@ -1252,17 +1320,21 @@ function TournamentsView({ API, club, user, isManager }) {
                 <div className="flex flex-col gap-3">
                   {ms.map(m => {
                     const completed = m.status === 'completed';
+                    // determine if this is a BYE: in first round, a null pX_id and the opponent exists
+                    const isByeP1 = (m.p1_id == null) && (m.p2_id != null) && (m.round === firstRound);
+                    const isByeP2 = (m.p2_id == null) && (m.p1_id != null) && (m.round === firstRound);
+
                     return (
                       <div key={m.id} className="border rounded-lg p-3 bg-white shadow-sm">
                         <div className="flex justify-between">
                           <div className={`truncate ${m.winner_id === m.p1_id ? 'font-semibold' : ''}`}>
-                            <NameWithSeed pid={m.p1_id} />
+                            <NameWithSeed pid={m.p1_id} nullLabel={isByeP1 ? 'BYE' : 'TBD'} />
                           </div>
                           <div className="text-xs text-gray-500">{completed ? m.p1_score : ''}</div>
                         </div>
                         <div className="flex justify-between">
                           <div className={`truncate ${m.winner_id === m.p2_id ? 'font-semibold' : ''}`}>
-                            <NameWithSeed pid={m.p2_id} />
+                            <NameWithSeed pid={m.p2_id} nullLabel={isByeP2 ? 'BYE' : 'TBD'} />
                           </div>
                           <div className="text-xs text-gray-500">{completed ? m.p2_score : ''}</div>
                         </div>
@@ -1404,12 +1476,12 @@ function TournamentsView({ API, club, user, isManager }) {
       {detail && (
         <div className="border rounded-lg p-4 bg-white shadow-sm">
           <div className="flex items-center justify-between">
-            <div className="text-base font-semibold">{detail.tournament.name} · {detail.tournament.sport}</div>
+            <div className="text-base font-semibold">{detail?.tournament?.name ?? ''} · {detail?.tournament?.sport ?? ''}</div>
             <button className="text-sm text-gray-500 hover:underline" onClick={()=> setDetail(null)}>Close</button>
           </div>
 
           {/* Manager pre-draw controls */}
-          {isManager && !detail.tournament.end_date && detail.matches?.length === 0 && (
+          {isManager && !detail?.tournament?.end_date && detail?.matches?.length === 0 && (
             <div className="mt-3 grid md:grid-cols-3 gap-3">
               {/* Add players (usernames) */}
               <div className="border rounded p-3">
@@ -1427,7 +1499,7 @@ function TournamentsView({ API, club, user, isManager }) {
               <div className="border rounded p-3">
                 <div className="text-sm font-medium mb-2">Registered Players</div>
                 <ul className="space-y-1 max-h-48 overflow-auto">
-                  {detail.players.map(p => (
+                  {detail?.players?.map(p => (
                     <li key={p.id} className="flex items-center justify-between">
                       <span>{p.display_name}</span>
                       <button className="text-xs px-2 py-0.5 rounded bg-red-100 hover:bg-red-200"
@@ -1472,13 +1544,35 @@ function RankingsView({ API, club, user, isManager }) {
   const load = async () => {
     if (!club) return;
     setLoading(true);
-    const r = await fetch(`${API}/clubs/${club.id}/standings`);
-    const data = await r.json();
-    setRows(Array.isArray(data) ? data : []);
+    try {
+      console.debug('RankingsView: fetching standings for club', club.id, 'from', API);
+      const { res, data } = await j(`/clubs/${club.id}/standings`);
+      if (!res.ok) {
+        console.warn('RankingsView: standings fetch failed', res.status, data);
+        setRows([]);
+      } else {
+        setRows(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('RankingsView: error loading standings', err);
+      setRows([]);
+    }
     setLoading(false);
   };
 
   React.useEffect(() => { load(); }, [club?.id]);
+
+  // Listen for global standingsUpdated events so the Rankings view can refresh
+  React.useEffect(() => {
+    const handler = (e) => {
+      try {
+        if (!e?.detail || !e.detail.clubId) return load();
+        if (e.detail.clubId === club?.id) load();
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('standingsUpdated', handler);
+    return () => window.removeEventListener('standingsUpdated', handler);
+  }, [club?.id]);
 
   const doReset = async () => {
     if (!club) return;

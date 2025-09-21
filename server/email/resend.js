@@ -1,32 +1,55 @@
 // server/email/resend.js
-import { Resend } from 'resend';
+import 'dotenv/config'
+import nodemailer from 'nodemailer'
 
-const FROM = process.env.FROM_EMAIL || 'Club Booking <onboarding@resend.dev>';
+export const emailFrom =
+  process.env.EMAIL_FROM || 'Club Booking <no-reply@dev.local>'
 
-function getResend() {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) throw new Error('RESEND_API_KEY is missing');
-  return new Resend(key);
+// choose backend: Resend if key is present, otherwise Ethereal
+let resendClient = null
+let transporter = null
+let mailBackend = 'ethereal'
+
+if (process.env.RESEND_API_KEY) {
+  const { Resend } = await import('resend')
+  resendClient = new Resend(process.env.RESEND_API_KEY)
+  mailBackend = 'resend'
+} else {
+  const acct = await nodemailer.createTestAccount()
+  transporter = nodemailer.createTransport({
+    host: 'smtp.ethereal.email',
+    port: 587,
+    secure: false,
+    auth: { user: acct.user, pass: acct.pass },
+  })
+  mailBackend = 'ethereal'
 }
 
-export async function sendEmail({ to, subject, html }) {
-  try {
-    const resend = getResend();
-    const resp = await resend.emails.send({ from: FROM, to, subject, html });
+export async function sendEmail({ to, subject, text, html, from }) {
+  const _from = from || emailFrom
 
-    const id = resp?.id || resp?.data?.id || null;
-    const apiError = resp?.error || null;
-    const ok = Boolean(id) && !apiError;
-
-    if (!ok) {
-      console.error('[mail] failed', { to, subject, from: FROM, resp });
-      return { ok: false, error: apiError?.message || 'Unknown send failure', resp, to, from: FROM, subject };
-    }
-
-    console.log('[mail] sent', { id, to, subject, from: FROM });
-    return { ok: true, id, to, from: FROM, subject };
-  } catch (e) {
-    console.error('[mail] exception', { to, subject, from: FROM, error: String(e) });
-    return { ok: false, error: String(e), to, from: FROM, subject };
+  if (resendClient) {
+    const { data, error } = await resendClient.emails.send({
+      from: _from,
+      to,
+      subject,
+      text,
+      html,
+    })
+    if (error) throw error
+    return { id: data?.id, backend: 'resend' }
+  } else {
+    const info = await transporter.sendMail({
+      from: _from,
+      to,
+      subject,
+      text,
+      html,
+    })
+    const preview = nodemailer.getTestMessageUrl(info)
+    if (preview) console.log('[Ethereal preview]', preview)
+    return { id: info.messageId, preview, backend: 'ethereal' }
   }
 }
+
+export { mailBackend }
