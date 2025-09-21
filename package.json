@@ -2,7 +2,10 @@
   "scripts": {
     "dev": "concurrently \"npm:server:start\" \"npm:client:dev\"",
     "server:start": "node server/server.js",
-    "client:dev": "(cd client && npm run dev)"
+    "client:dev": "(cd client && npm run dev)",
+    "build": "(cd client && npm run build)",
+    "postinstall": "npm run build",
+    "start": "node server/server.js"
   },
   "dependencies": {
     "dotenv": "^17.2.2",

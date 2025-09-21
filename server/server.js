@@ -6,6 +6,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import bcrypt from 'bcryptjs';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 import db, { pool, run, q, one, all, get, prepare, tableExists } from './db.js';
@@ -109,6 +110,23 @@ app.options('*', cors()); // preflight
 
 // Body parser
 app.use(express.json());
+
+// Serve client static build when deployed in production and the build exists.
+if (isProd) {
+  const clientDist = path.join(__dirname, '..', 'client', 'dist');
+  try {
+    if (fs.existsSync(clientDist)) {
+      app.use(express.static(clientDist));
+      // Serve index.html for any unknown route (SPA fallback)
+      app.get('*', (req, res) => res.sendFile(path.join(clientDist, 'index.html')));
+      console.log('Serving built client from', clientDist);
+    } else {
+      console.warn('Client dist not found; static files will not be served from server.');
+    }
+  } catch (e) {
+    console.warn('Failed to enable static client serving:', e && e.message ? e.message : e);
+  }
+}
 
 // env check
 app.get('/__envcheck', async (req, res) => {
