@@ -8,7 +8,7 @@ import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import db, { pool, run, q, one, all, get, prepare, tableExists } from './db.js';
+import db, { pool, logDbIdentity, run, q, one, all, prepare, tableExists } from './db.js';
 import { tableInfo, addColumnsIfMissing } from './pg_compat.js';
 import { sendEmail } from './email/resend.js';
 
@@ -34,15 +34,6 @@ await addColumnsIfMissing('tournament_points', {
   tournament_id: 'tournament_id INTEGER',
   points: 'points INTEGER DEFAULT 0'
 })
-
-// Ensure tournaments can store per-tournament points configuration (JSON)
-try {
-  await addColumnsIfMissing('tournaments', {
-    points_by_round: 'points_by_round TEXT'
-  });
-} catch (e) {
-  console.warn('Could not ensure tournaments.points_by_round:', e && e.message ? e.message : e);
-}
 
 const app = express();
 
@@ -146,6 +137,37 @@ app.get('/__envcheck', async (req, res) => {
   });
 });
 
+// Ensure base tables/columns exist
+// function ensureSchema() {
+//   // tournament_players.seed
+//   const tpCols = db.prepare(`PRAGMA table_info(tournament_players)`).all();
+//   if (!tpCols.some(c => c.name === 'seed')) {
+//     db.exec(`ALTER TABLE tournament_players ADD COLUMN seed INTEGER`);
+//   }
+
+//   // tournaments.seeds_count
+//   const tCols = db.prepare(`PRAGMA table_info(tournaments)`).all();
+//   if (!tCols.some(c => c.name === 'seeds_count')) {
+//     db.exec(`ALTER TABLE tournaments ADD COLUMN seeds_count INTEGER DEFAULT 0`);
+//   }
+// }
+// ensureSchema();
+
+// standings.points, standings.tournaments_played
+try {
+  const sCols = new Set((await tableInfo('standings')).map(c => c.name));
+  if (!sCols.has('points')) {
+    await db.prepare(`ALTER TABLE standings ADD COLUMN points INTEGER DEFAULT 0`).run();
+    console.log('Added standings.points column');
+  }
+  if (!sCols.has('tournaments_played')) {
+    await db.prepare(`ALTER TABLE standings ADD COLUMN tournaments_played INTEGER DEFAULT 0`).run();
+    console.log('Added standings.tournaments_played column');
+  }
+} catch (e) {
+  console.error('Could not ensure standings columns:', e.message);
+}
+
 // tournament_points table (idempotent)
 db.prepare(`
   CREATE TABLE IF NOT EXISTS tournament_points (
@@ -189,52 +211,10 @@ async function ensureRankingsSchema() {
       UNIQUE (club_id, sport)
     );
   `);
-
-  // Ensure tournaments table has seeds_count (used by bracket code)
-  await pool.query(`ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS seeds_count INTEGER`);
-
-  // Ensure matches table has commonly-used columns that the server expects.
-  // Some older installs may lack score/status columns; add them idempotently.
-  try {
-    await pool.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS p1_score INTEGER`);
-    await pool.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS p2_score INTEGER`);
-    await pool.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS winner_id INTEGER`);
-    await pool.query(`ALTER TABLE matches ADD COLUMN IF NOT EXISTS status TEXT`);
-  } catch (e) {
-    // best-effort: if ALTER fails (e.g., table doesn't exist yet), log and continue
-    console.warn('ensureRankingsSchema: could not ensure matches columns:', e.message || e);
-  }
 }
 
 // call this once during startup (after pool is imported and ready)
 await ensureRankingsSchema();
-
-// Ensure a dedicated per-tournament results table exists separately from
-// the historical/per-round `tournament_points` config table. Some installs
-// historically used the same name for different purposes which created
-// collisions. Create a clear results table `tournament_player_points` that
-// stores the points awarded to each player for a tournament.
-try {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS tournament_player_points (
-      tournament_id INTEGER NOT NULL,
-      player_id INTEGER NOT NULL,
-      points INTEGER NOT NULL DEFAULT 0,
-      placement INTEGER,
-      PRIMARY KEY (tournament_id, player_id),
-      FOREIGN KEY(tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
-    )
-  `);
-} catch (e) {
-  console.warn('Could not ensure tournament_player_points table:', e && e.message ? e.message : e);
-}
-
-// Ensure tournaments table has draw_size column
-try {
-  await addColumnsIfMissing('tournaments', { draw_size: 'draw_size INTEGER' });
-} catch (e) {
-  console.warn('Could not ensure tournaments.draw_size:', e && e.message ? e.message : e);
-}
 
 // -------------------------------
 // Utilities
@@ -268,8 +248,8 @@ app.post('/auth/register', async (req, res) => {
     // reject duplicates (case-insensitive)
     const dup = await pool.query(
       `SELECT id FROM users
-        WHERE ($1::text IS NOT NULL AND LOWER(username)=LOWER($1::text))
-           OR ($2::text IS NOT NULL AND LOWER(email)=LOWER($2::text))
+        WHERE ($1 IS NOT NULL AND LOWER(username)=LOWER($1))
+           OR ($2 IS NOT NULL AND LOWER(email)=LOWER($2))
         LIMIT 1`,
       [username || null, email || null]
     );
@@ -279,17 +259,11 @@ app.post('/auth/register', async (req, res) => {
 
     const password_hash = await bcrypt.hash(password, 10);
 
-    // Compute a display_name (required by schema)
-    let display_name = null;
-    if (username) display_name = String(username).trim();
-    else if (email) display_name = String(email).split('@')[0];
-    else display_name = `user${Math.floor(Math.random() * 100000)}`;
-
     const ins = await pool.query(
-      `INSERT INTO users (display_name, username, email, password_hash, role, is_manager)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, display_name, username, email, role, is_manager`,
-      [display_name, username?.toLowerCase() || null, email?.toLowerCase() || null, password_hash, targetRole, isManager]
+      `INSERT INTO users (username, email, password_hash, role, is_manager)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, username, email, role, is_manager`,
+      [username?.toLowerCase() || null, email?.toLowerCase() || null, password_hash, targetRole, isManager]
     );
 
     res.status(201).json({ user: ins.rows[0] });
@@ -299,108 +273,35 @@ app.post('/auth/register', async (req, res) => {
   }
 });
 
-// Compatibility: client calls POST /auth/signup — provide a thin wrapper that
-// accepts { email, password, name } and behaves like /auth/register.
-app.post('/auth/signup', async (req, res) => {
-  try {
-    const { email, password, name } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-
-    // reject duplicates (case-insensitive)
-    const dup = await pool.query(
-      `SELECT id FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1`,
-      [email]
-    );
-    if (dup.rows.length) return res.status(409).json({ error: 'Email already exists' });
-
-    const password_hash = await bcrypt.hash(password, 10);
-    const display_name = (name && String(name).trim()) || String(email).split('@')[0];
-    const username = String(display_name).trim().toLowerCase().replace(/\s+/g, '') || null;
-
-    const ins = await pool.query(
-      `INSERT INTO users (display_name, username, email, password_hash, role, is_manager, email_verified_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       RETURNING id, display_name, username, email, role, is_manager`,
-      [display_name, username, email.toLowerCase(), password_hash, 'player', false]
-    );
-
-    return res.status(201).json({ user: ins.rows[0] });
-  } catch (e) {
-    if (e?.code === '23505') {
-      return res.status(409).json({ error: 'Email or username already in use' });
-    }
-    console.error('POST /auth/signup', e?.code || e?.message || e);
-    return res.status(500).json({ error: 'Signup failed' });
-  }
-});
-
 app.post('/auth/login', async (req, res) => {
   try {
-    const identifier = String(
-      req.body?.login ??
-      req.body?.identifier ??
-      req.body?.email ??
-      req.body?.username ??
-      ''
-    ).trim();
-    const password = String(req.body?.password ?? '');
-    if (!identifier) return res.status(400).json({ error: 'login required' });
+    const { login, password } = req.body || {};
+    if (!login) return res.status(400).json({ error: 'login required' });
 
-    // introspect available columns
-    const cols = (await tableInfo('users')).map(c => c.name);
-    const ucols = new Set(cols);
-
-    // SELECT list (only columns that exist)
-    const select = ['id'];
-    if (ucols.has('display_name')) select.push('display_name');
-    else if (ucols.has('username')) select.push('username AS display_name');
-    else if (ucols.has('name'))     select.push('name AS display_name');
-    if (ucols.has('email'))         select.push('email');
-    if (ucols.has('password_hash')) select.push('password_hash');
-    if (ucols.has('role'))          select.push('role');
-    if (ucols.has('is_manager'))    select.push('is_manager');
-
-    // WHERE predicates (build only from real cols)
-    const preds = [];
-    if (ucols.has('email'))         preds.push('LOWER(email) = LOWER($1)');
-    if (ucols.has('display_name'))  preds.push('LOWER(display_name) = LOWER($1)');
-    if (ucols.has('username'))      preds.push('LOWER(username) = LOWER($1)');
-    if (ucols.has('name'))          preds.push('LOWER(name) = LOWER($1)');
-
-    const where  = preds.length ? preds.join(' OR ') : 'FALSE';
-    const params = preds.length ? [identifier] : [];   // ← IMPORTANT
-
-    const user = await one(
-      `SELECT ${select.join(', ')} FROM users WHERE ${where} LIMIT 1`,
-      ...params
+    // accept username OR email, case-insensitive
+    const r = await pool.query(
+      `SELECT id, username, email, role, is_manager, password_hash
+         FROM users
+        WHERE LOWER(username)=LOWER($1) OR LOWER(email)=LOWER($1)
+        LIMIT 1`,
+      [login]
     );
-    if (!user) return res.status(401).json({ error: 'invalid credentials' });
+    const u = r.rows[0];
+    if (!u) return res.status(401).json({ error: 'invalid credentials' });
 
-    // check password only if a valid hash exists
-    const mustCheck = ucols.has('password_hash') && user.password_hash;
-    if (mustCheck) {
-      try {
-        const ok = bcrypt.compareSync(password, user.password_hash);
-        if (!ok) return res.status(401).json({ error: 'invalid credentials' });
-      } catch {
-        return res.status(400).json({ error: 'stored password is invalid; ask admin to reset' });
-      }
+    if (u.password_hash) {
+      const ok = await bcrypt.compare(password || '', u.password_hash);
+      if (!ok) return res.status(401).json({ error: 'invalid credentials' });
+    } else {
+      // (Dev convenience) allow password-less seed users to log in
+      // Remove this block if you want to require a password for all users.
     }
 
-    res.json({
-      ok: true,
-      user: {
-        id: user.id,
-        username: user.display_name ?? null,   // alias for older UI
-        display_name: user.display_name ?? null,
-        email: user.email ?? null,
-        role: user.role ?? 'player',
-        is_manager: !!user.is_manager,
-      }
-    });
+    delete u.password_hash;
+    res.json({ user: u });
   } catch (e) {
-    console.error('login error', e);
-    res.status(500).json({ error: 'server error' });
+    console.error('POST /auth/login', e.code || e.message, e);
+    res.status(500).json({ error: e.code || 'unexpected error' });
   }
 });
 
@@ -460,8 +361,8 @@ function pairingOrder(drawSize){
 }
 
 // ---- compute seeds + randomized rest (unchanged idea, tiny tweaks) ----
-async function computeSeedingOrder({ clubId, sport, playerIds, seedCount }) {
-  const rows = await db.prepare(`
+function computeSeedingOrder({ clubId, sport, playerIds, seedCount }) {
+  const rows = db.prepare(`
     SELECT p.id as player_id, s.points as pts
     FROM players p
     LEFT JOIN standings s
@@ -490,9 +391,9 @@ async function computeSeedingOrder({ clubId, sport, playerIds, seedCount }) {
 }
 
 // ---- place seeds into bracket slots; fill others randomly ----
-async function buildSeededSlots({ playerIds, seedCount, clubId, sport }) {
+function buildSeededSlots({ playerIds, seedCount }) {
   const drawSize = nextPow2(playerIds.length);
-  const { seeds, rest } = await computeSeedingOrder({ clubId, sport, playerIds, seedCount });
+  const { seeds, rest } = computeSeedingOrder({ clubId, sport, playerIds, seedCount });
 
   const order = pairingOrder(drawSize);       // e.g., [1, N, N/4+1, ...]
   const slots = Array(drawSize).fill(null);   // each entry: { playerId, seed|null }
@@ -592,14 +493,11 @@ app.post('/clubs/:clubId/tournaments', async (req, res) => {
     if (!name || !sport || !drawSize || !seedCount || !managerId) {
       return res.status(400).json({ error: 'missing fields' });
     }
-    // ensure numeric and finite to avoid 'NaN' creeping into SQL
-    const Ndraw = Number(drawSize);
-    const Nseed = Number(seedCount);
-    if (!Number.isFinite(Ndraw) || ![4, 8, 16, 32, 64, 128].includes(Ndraw)) {
-      return res.status(400).json({ error: 'drawSize must be one of 4,8,16,32,64,128' });
+    if (![4, 8, 16, 32, 64, 128].includes(Number(drawSize))) {
+      return res.status(400).json({ error: 'drawSize must be 4,8,16,32,64,128' });
     }
-    if (!Number.isFinite(Nseed) || ![2, 4, 8, 16, 32].includes(Nseed)) {
-      return res.status(400).json({ error: 'seedCount must be one of 2,4,8,16,32' });
+    if (![2, 4, 8, 16, 32].includes(Number(seedCount))) {
+      return res.status(400).json({ error: 'seedCount must be 2,4,8,16,32' });
     }
 
     // --- manager check ------------------------------------------------------
@@ -619,8 +517,8 @@ app.post('/clubs/:clubId/tournaments', async (req, res) => {
     if (tCols.includes('start_date'))   payload.start_date   = null;
     if (tCols.includes('end_date'))     payload.end_date     = null;
     if (tCols.includes('block_courts')) payload.block_courts = 0;
-  if (tCols.includes('draw_size'))    payload.draw_size    = Ndraw;
-  if (tCols.includes('seed_count'))   payload.seed_count   = Nseed;
+    if (tCols.includes('draw_size'))    payload.draw_size    = Number(drawSize);
+    if (tCols.includes('seed_count'))   payload.seed_count   = Number(seedCount);
 
     const keys = Object.keys(payload);
     if (!keys.length) {
@@ -645,20 +543,6 @@ app.post('/clubs/:clubId/tournaments', async (req, res) => {
       `INSERT INTO tournaments (${keys.join(', ')}) VALUES (${ph}) RETURNING id`,
       ...vals
     );
-    // persist the pointsByRound JSON if the column exists
-    if (tCols.includes('points_by_round')) {
-      try {
-        await db.prepare(`UPDATE tournaments SET points_by_round = ? WHERE id = ?`).run(JSON.stringify(pointsByRound || {}), Number(row.id));
-      } catch (e) {
-        console.warn('Failed to persist points_by_round for tournament', row.id, e && e.message ? e.message : e);
-      }
-    }
-    // Ensure draw_size and seed_count are stored as well (update in case columns were added dynamically)
-    try {
-      await db.prepare(`UPDATE tournaments SET draw_size = ?, seed_count = ? WHERE id = ?`).run(Ndraw, Nseed, Number(row.id));
-    } catch (e) {
-      // ignore if columns don't exist
-    }
     const tId = Number(row.id);
 
     res.json({ ok: true, tournament: { id: tId, name: String(name), sport: String(sport) } });
@@ -708,14 +592,13 @@ app.post('/tournaments/:id/players', async (req, res) => {
       `).run(t.club_id, Number(uid), Number(uid), Number(uid));
 
 
-      const p = await db.prepare(`
+      const p = db.prepare(`
         SELECT id FROM players WHERE club_id=? AND user_id=?
       `).get(t.club_id, Number(uid));
 
-      if (!p || p.id == null) {
-        // safety net: if user/player wasn't created properly, report a clear error
-        notFound.push(String(uid));
-        continue; // skip this uid but continue processing others
+      if (!p) {
+        // safety net: if user doesn’t exist, skip with message
+        return res.status(400).json({ error: `No player entry could be created for user_id=${uid}` });
       }
 
       try {
@@ -731,13 +614,13 @@ app.post('/tournaments/:id/players', async (req, res) => {
     }
 
     // return current list using players (and fallback to users.name)
-    const current = await db.prepare(`
+    const current = db.prepare(`
       SELECT tp.player_id, COALESCE(p.display_name, u.display_name) AS display_name
       FROM tournament_players tp
       JOIN players p ON p.id = tp.player_id
       LEFT JOIN users u ON u.id = p.user_id
       WHERE tp.tournament_id=?
-      ORDER BY COALESCE(p.display_name, u.display_name) ASC
+      ORDER BY display_name ASC
     `).all(tId);
 
     res.json({ players: current, notFound });
@@ -768,7 +651,7 @@ app.post('/tournaments/:id/generate', async (req, res) => {
     }
 
     // Entrants with points for ranking (0 if none)
-    let entrants = await db.prepare(`
+    const entrants = db.prepare(`
       SELECT
         tp.player_id                                   AS player_id,
         COALESCE(p.display_name, u.display_name)       AS display_name,
@@ -780,21 +663,6 @@ app.post('/tournaments/:id/generate', async (req, res) => {
         ON s.player_id = tp.player_id AND s.club_id = ?
       WHERE tp.tournament_id = ?
     `).all(t.club_id, tId);
-
-    // defensive: ensure entrants is an array (some DB adapters may misbehave)
-    if (!Array.isArray(entrants)) {
-      try {
-        console.warn('Generate: entrants is not an array, inspecting', Object.prototype.toString.call(entrants));
-      } catch (ie) {
-        console.warn('Generate: entrants inspection failed', String(ie));
-      }
-      try {
-        entrants = entrants ? Array.from(entrants) : [];
-      } catch (coerceErr) {
-        console.error('Generate: could not coerce entrants to array', String(coerceErr));
-        entrants = [];
-      }
-    }
 
     const M = entrants.length;
     if (M === 0) return res.status(400).json({ error: 'need at least 1 player' });
@@ -812,18 +680,6 @@ app.post('/tournaments/:id/generate', async (req, res) => {
 
     const seeds = ranked.slice(0, S).map(e => e.player_id);
     const rest  = ranked.slice(S).map(e => e.player_id);
-
-    // Preserve seed #1 and #2 canonical positions (1 -> top, 2 -> bottom).
-    // Randomize orientation of seeds #3 and #4 when present so they may land
-    // in either half (this matches common draw practices).
-    if (S >= 4) {
-      // 50% chance to swap seed 3 and seed 4
-      if (Math.random() < 0.5) {
-        const tmp = seeds[2];
-        seeds[2] = seeds[3];
-        seeds[3] = tmp;
-      }
-    }
 
     // Shuffle unseeded (Fisher–Yates)
     for (let i = rest.length - 1; i > 0; i--) {
@@ -855,132 +711,20 @@ app.post('/tournaments/:id/generate', async (req, res) => {
       const slotIndex = order[i] - 1;
       slots[slotIndex] = seeds[i];
     }
-    // Reserve BYEs for top-ranked entrants (assign to highest-ranked players)
-    // byes = number of empty slots that should be treated as BYEs (drawSize - entrants)
+
+    // Reserve BYEs for top seeds first
     const byes = N - M;
-
-    // Build candidate lists: seeds in seed order, then other ranked players
-    const seedSet = new Set(seeds);
-    const rankedNotSeeded = ranked.map(r => r.player_id).filter(pid => !seedSet.has(pid));
-    const orderPositions = order.map(x => x - 1);
-
-    // Strong seed-first BYE assignment: ensure top-K seeds get BYEs in seed
-    // order whenever possible. For each top seed, try to mark its opponent as
-    // a BYE; if that opponent is occupied, attempt to move the occupant into
-    // an empty non-seed slot or swap it with a low-priority non-seed slot so
-    // the seed's opponent can become a BYE. After exhausting seeds, assign
-    // any remaining BYEs to the next-ranked entrants.
     let byeAssigned = 0;
-    const seedSlots = new Set(order.slice(0, S).map(x => x - 1));
-
-    // First pass: top seeds
     for (let i = 0; i < S && byeAssigned < byes; i++) {
-      const pid = seeds[i];
-      const seedSlot = order[i] - 1;
-
-      // ensure seed is in its canonical slot
-      const curIndex = slots.findIndex(s => s === pid);
-      if (curIndex !== -1 && curIndex !== seedSlot) {
-        const tmp = slots[seedSlot];
-        slots[seedSlot] = pid;
-        slots[curIndex] = tmp;
-      } else if (curIndex === -1) {
-        slots[seedSlot] = pid;
-      }
-
-      const opp = seedSlot ^ 1;
-      if (slots[opp] === 0) {
-        // free opponent -> assign BYE
-        slots[opp] = -1;
-        byeAssigned++;
-        continue;
-      }
-
-      if (slots[opp] > 0) {
-        const occupant = slots[opp];
-
-        // try: move occupant to an empty non-seed slot
-        let emptyIndex = -1;
-        for (let k = 0; k < N; k++) {
-          if (slots[k] === 0 && !seedSlots.has(k) && k !== opp) { emptyIndex = k; break; }
-        }
-        if (emptyIndex !== -1) {
-          slots[emptyIndex] = occupant;
-          slots[opp] = -1;
-          byeAssigned++;
-          continue;
-        }
-
-        // try: swap occupant with a low-priority non-seed slot (not an opponent
-        // of any earlier seed we've already reserved)
-        const reservedOpps = new Set();
-        for (let j = 0; j < i; j++) reservedOpps.add((order[j] - 1) ^ 1);
-
-        let swapIndex = -1;
-        for (let k = 0; k < N; k++) {
-          if (slots[k] > 0 && !seedSlots.has(k) && !reservedOpps.has(k) && k !== opp) { swapIndex = k; break; }
-        }
-        if (swapIndex !== -1) {
-          slots[swapIndex] = occupant;
-          slots[opp] = -1;
-          byeAssigned++;
-          continue;
-        }
-
-        // no place to move occupant; fall through and defer this seed
-      }
+      const sIdx = order[i] - 1;
+      const oppIdx = sIdx ^ 1;
+      if (slots[oppIdx] === 0) { slots[oppIdx] = -1; byeAssigned++; }
     }
 
-    // Second pass: assign remaining BYEs to next-ranked (non-seeded) entrants
-    if (byeAssigned < byes) {
-      const orderedNonSeeds = rankedNotSeeded.slice();
-      for (const pid of orderedNonSeeds) {
-        if (byeAssigned >= byes) break;
-        // find a canonical pair where we can place pid so its opponent becomes a BYE
-        let foundDesired = -1;
-        for (const desired of orderPositions) {
-          const opp = desired ^ 1;
-          if (slots[desired] === pid) { foundDesired = desired; break; }
-          if (slots[desired] === 0 && slots[opp] === 0) { foundDesired = desired; break; }
-        }
-        if (foundDesired === -1) continue;
-
-        const curIndex2 = slots.findIndex(s => s === pid);
-        if (curIndex2 !== -1 && curIndex2 !== foundDesired) {
-          const temp = slots[foundDesired];
-          slots[foundDesired] = slots[curIndex2];
-          slots[curIndex2] = temp;
-        } else if (curIndex2 === -1) {
-          slots[foundDesired] = pid;
-        }
-
-        const opp2 = foundDesired ^ 1;
-        if (slots[opp2] === 0) {
-          slots[opp2] = -1;
-          byeAssigned++;
-        } else if (slots[opp2] > 0) {
-          const occupant2 = slots[opp2];
-          const emptyIndex2 = slots.findIndex(s => s === 0);
-          if (emptyIndex2 !== -1) {
-            slots[emptyIndex2] = occupant2;
-            slots[opp2] = -1;
-            byeAssigned++;
-          }
-        }
-      }
-    }
-
-    // Fill remaining with unseeded (rest); skip any rest entries already
-    // placed above (we may have moved some into slots when assigning BYEs).
+    // Fill remaining with unseeded; any leftover empties remain BYEs
     let rIdx = 0;
     for (let i = 0; i < N && rIdx < rest.length; i++) {
-      if (slots[i] === 0) {
-        // advance rIdx past any players already placed into slots
-        while (rIdx < rest.length && slots.includes(rest[rIdx])) rIdx++;
-        if (rIdx < rest.length) {
-          slots[i] = rest[rIdx++];
-        }
-      }
+      if (slots[i] === 0) slots[i] = rest[rIdx++];
     }
 
     // Wipe old matches
@@ -1037,8 +781,6 @@ app.put('/matches/:id/result', async (req, res) => {
 
     const winnerId = s1 > s2 ? m.p1_id : m.p2_id;
 
-  console.log('Save result: match', mId, 'winnerId', winnerId, 'round', m.round, 'slot', m.slot);
-
     const mColsInfo = await tableInfo('matches');
     const mCols = new Set(mColsInfo.map(c => c.name));
     const notnull = Object.fromEntries(mColsInfo.map(c => [c.name, c.notnull]));
@@ -1056,82 +798,62 @@ app.put('/matches/:id/result', async (req, res) => {
 
     const nextRound = Number(m.round) - 1;
     if (Number.isFinite(nextRound) && nextRound >= 1) {
-      console.log('Advancing winner to nextRound', nextRound);
+      const hasNextMatchId = mCols.has('next_match_id');
+      const hasNextSlot = mCols.has('next_slot');
+      const hasP1Id = mCols.has('p1_id');
+      const hasP2Id = mCols.has('p2_id');
 
-      // compute next slot index (integer division)
-      const nextSlot = Math.floor(Number(m.slot) / 2);
-      console.log('Computed nextSlot', nextSlot);
-
-      // Determine which side of the next match this winner should occupy
-      const myField = (Number(m.slot) % 2 === 0) ? 'p1_id' : 'p2_id';
-      const otherField = myField === 'p1_id' ? 'p2_id' : 'p1_id';
-
-      // Try to find an existing next match
-      let next = await db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?')
-        .get(m.tournament_id, nextRound, nextSlot);
-      console.log('Existing next match?', !!next, next && { id: next.id, p1_id: next.p1_id, p2_id: next.p2_id });
-
-      // helper to insert a new next match (uses status column if present)
-      const insertNext = async (p1, p2) => {
-        if (mCols.has('status')) {
-          await db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status)
-            VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'scheduled')`).run(m.tournament_id, nextRound, nextSlot, p1, p2);
-        } else {
-          await db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id)
-            VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`).run(m.tournament_id, nextRound, nextSlot, p1, p2);
+      if (hasNextMatchId && hasNextSlot && hasP1Id && hasP2Id && m.next_match_id) {
+        const slot = Number(m.next_slot) === 2 ? 2 : 1;
+        const next = await db.prepare('SELECT * FROM matches WHERE id=?').get(m.next_match_id);
+        if (next) {
+          const field = slot === 1 ? 'p1_id' : 'p2_id';
+          if (next[field] == null) await db.prepare(`UPDATE matches SET ${field}=? WHERE id=?`).run(winnerId, m.next_match_id);
         }
-        next = await db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?').get(m.tournament_id, nextRound, nextSlot);
-        return next;
-      };
+      } else {
+        const nextSlot = Math.floor(Number(m.slot) / 2);
+        let next = db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?')
+          .get(m.tournament_id, nextRound, nextSlot);
 
-      if (!next) {
-        // No next match yet: check sibling in current round for its winner
-        const siblingSlot = (Number(m.slot) % 2 === 0) ? Number(m.slot) + 1 : Number(m.slot) - 1;
-        const sibling = await db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?')
-          .get(m.tournament_id, m.round, siblingSlot);
-        const siblingWinner = sibling && Number(sibling.winner_id) ? Number(sibling.winner_id) : null;
-        console.log('Sibling slot', siblingSlot, 'found?', !!sibling, 'siblingWinner', siblingWinner);
+        const myField = (Number(m.slot) % 2 === 0) ? 'p1_id' : 'p2_id';
+        const otherField = myField === 'p1_id' ? 'p2_id' : 'p1_id';
+        const myNN = notnull[myField] === 1;
+        const otherNN = notnull[otherField] === 1;
 
-        // If sibling already has a winner, create a full next match with both players
-        if (siblingWinner != null) {
-          const p1 = myField === 'p1_id' ? winnerId : siblingWinner;
-          const p2 = myField === 'p1_id' ? siblingWinner : winnerId;
-          try {
-            await insertNext(p1, p2);
-            console.log('Inserted next match with both players', { p1, p2, nextSlot });
-          } catch (ie) {
-            console.error('Failed to insert next match (both players):', ie && ie.message ? ie.message : ie);
-          }
-        } else {
-          // sibling has no winner yet: create a partial next-match only if columns allow NULLs
-          const myNN = notnull[myField] === 1;
-          const otherNN = notnull[otherField] === 1;
-          if (!myNN || !otherNN) {
+        if (!next) {
+          const siblingSlot = (Number(m.slot) % 2 === 0) ? Number(m.slot) + 1 : Number(m.slot) - 1;
+          const sibling = db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?')
+            .get(m.tournament_id, m.round, siblingSlot);
+          const siblingWinner = sibling && Number(sibling.winner_id) ? Number(sibling.winner_id) : null;
+
+          if (siblingWinner != null) {
+            const p1 = myField === 'p1_id' ? winnerId : siblingWinner;
+            const p2 = myField === 'p1_id' ? siblingWinner : winnerId;
+            if (mCols.has('status')) {
+              db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status)
+                          VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'scheduled')`)
+                .run(m.tournament_id, nextRound, nextSlot, p1, p2);
+            } else {
+              db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id)
+                          VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`)
+                .run(m.tournament_id, nextRound, nextSlot, p1, p2);
+            }
+          } else if (!myNN || !otherNN) {
             const p1 = myField === 'p1_id' ? winnerId : null;
             const p2 = myField === 'p1_id' ? null : winnerId;
-            try {
-              await insertNext(p1, p2);
-              console.log('Inserted partial next match for BYE/placeholder', { p1, p2, nextSlot });
-            } catch (ie) {
-              console.error('Failed to insert partial next match:', ie && ie.message ? ie.message : ie);
+            if (mCols.has('status')) {
+              db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status)
+                          VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'scheduled')`)
+                .run(m.tournament_id, nextRound, nextSlot, p1, p2);
+            } else {
+              db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id)
+                          VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`)
+                .run(m.tournament_id, nextRound, nextSlot, p1, p2);
             }
-          } else {
-            // cannot create placeholder because schema requires both players; wait for sibling
-            console.log('Not creating partial next match because both p1_id and p2_id are NOT NULL');
           }
-        }
-      }
-
-      // If next now exists, ensure our winner is placed into the correct field
-      if (next) {
-        const field = myField;
-        if (next[field] == null) {
-          try {
-            await db.prepare(`UPDATE matches SET ${field}=? WHERE id=?`).run(winnerId, next.id);
-            console.log('Updated next match field', field, 'with', winnerId, 'nextId', next.id);
-          } catch (ie) {
-            console.error('Failed to update next match field:', ie && ie.message ? ie.message : ie);
-          }
+        } else {
+          const field = myField;
+          if (next[field] == null) await db.prepare(`UPDATE matches SET ${field}=? WHERE id=?`).run(winnerId, next.id);
         }
       }
     } else {
@@ -1141,12 +863,7 @@ app.put('/matches/:id/result', async (req, res) => {
       if (tCols.has('status')) tParts.push("status=?"), tVals.push('completed');
       if (tCols.has('end_date')) tParts.push("end_date=COALESCE(end_date, now())");
       if (tParts.length) await db.prepare(`UPDATE tournaments SET ${tParts.join(', ')} WHERE id=?`).run(...tVals, m.tournament_id);
-      try {
-        // ensure we await the points-awarding so errors bubble up and are logged
-        await awardTournamentPoints(m.tournament_id);
-      } catch (e) {
-        console.error('awardTournamentPoints failed for tournament', m.tournament_id, e && e.message ? e.message : e);
-      }
+      awardTournamentPoints(m.tournament_id);
     }
 
     res.json({ ok: true, winner_id: winnerId });
@@ -1161,7 +878,7 @@ app.get('/clubs/:clubId/tournaments', async (req, res) => {
   try {
     const clubId = Number(req.params.clubId);
     const { status } = req.query;
-    let rows = await db.prepare(`
+    let rows = db.prepare(`
       SELECT * FROM tournaments WHERE club_id=? ORDER BY id DESC
     `).all(clubId);
 
@@ -1181,14 +898,14 @@ app.get('/tournaments/:id', async (req, res) => {
   try {
     const tId = Number(req.params.id);
 
-    const tournament = await db.prepare(`
+    const tournament = db.prepare(`
       SELECT id, club_id, name, sport, seeds_count, end_date
       FROM tournaments
       WHERE id = ?
     `).get(tId);
     if (!tournament) return res.status(404).json({ error: 'tournament not found' });
 
-    const players = await db.prepare(`
+    const players = db.prepare(`
       SELECT
         tp.player_id AS id,
         COALESCE(p.display_name, u.display_name) AS display_name,
@@ -1196,76 +913,32 @@ app.get('/tournaments/:id', async (req, res) => {
       FROM tournament_players tp
       JOIN players p ON p.id = tp.player_id
       LEFT JOIN users u ON u.id = p.user_id
-    WHERE tp.tournament_id = ?
-    ORDER BY (tp.seed IS NULL), tp.seed, LOWER(COALESCE(p.display_name, u.display_name))
-    `).all(tId) || [];
+      WHERE tp.tournament_id = ?
+      ORDER BY (tp.seed IS NULL), tp.seed, display_name COLLATE NOCASE
+    `).all(tId);
 
-    const matches = await db.prepare(`
+    const matches = db.prepare(`
       SELECT id, tournament_id, round, slot,
              p1_id, p2_id, p1_score, p2_score, winner_id,
              COALESCE(status,'scheduled') AS status
       FROM matches
       WHERE tournament_id = ?
       ORDER BY round DESC, slot ASC
-    `).all(tId) || [];
+    `).all(tId);
 
-    // Prefer the dedicated per-tournament results table if present.
-    const hasResultsTable = await tableExists('tournament_player_points');
-    const points = hasResultsTable
+    const hasTP = await tableExists('tournament_points');
+    const points = hasTP
       ? await db.prepare(`
-          SELECT tp.player_id, COALESCE(p.display_name, u.display_name) AS name, tp.points, tp.placement
-            FROM tournament_player_points tp
-            JOIN players p ON p.id = tp.player_id
-            LEFT JOIN users u ON u.id = p.user_id
-            WHERE tp.tournament_id = ?
-            ORDER BY tp.points DESC, COALESCE(p.display_name, u.display_name) ASC
-        `).all(tId) || []
-      : (await db.prepare(`
           SELECT tp.player_id, COALESCE(p.display_name, u.display_name) AS name, tp.points, tp.placement
             FROM tournament_points tp
             JOIN players p ON p.id = tp.player_id
             LEFT JOIN users u ON u.id = p.user_id
             WHERE tp.tournament_id = ?
-            ORDER BY tp.points DESC, COALESCE(p.display_name, u.display_name) ASC
-        `).all(tId)) || [];
+            ORDER BY tp.points DESC, name ASC
+        `).all(tId)
+      : [];
 
-    // Normalize shapes to avoid accidental undefined/NaN values that crash the client
-    const normTournament = {
-      id: Number(tournament.id),
-      club_id: Number(tournament.club_id),
-      name: String(tournament.name || ''),
-      sport: String(tournament.sport || ''),
-      seeds_count: tournament.seeds_count != null ? Number(tournament.seeds_count) : null,
-      end_date: tournament.end_date || null,
-    };
-
-    const normPlayers = (players || []).map(p => ({
-      id: Number(p.id),
-      display_name: p.display_name == null ? 'TBD' : String(p.display_name),
-      seed: p.seed == null ? null : Number(p.seed)
-    }));
-
-    const normMatches = (matches || []).map(m => ({
-      id: Number(m.id),
-      tournament_id: Number(m.tournament_id),
-      round: m.round == null ? null : Number(m.round),
-      slot: m.slot == null ? null : Number(m.slot),
-      p1_id: m.p1_id == null ? null : Number(m.p1_id),
-      p2_id: m.p2_id == null ? null : Number(m.p2_id),
-      p1_score: m.p1_score == null ? null : Number(m.p1_score),
-      p2_score: m.p2_score == null ? null : Number(m.p2_score),
-      winner_id: m.winner_id == null ? null : Number(m.winner_id),
-      status: m.status == null ? 'scheduled' : String(m.status)
-    }));
-
-    const normPoints = (points || []).map(pt => ({
-      player_id: Number(pt.player_id),
-      name: pt.name == null ? '' : String(pt.name),
-      points: pt.points == null ? 0 : Number(pt.points),
-      placement: pt.placement == null ? null : pt.placement
-    }));
-
-    res.json({ tournament: normTournament, players: normPlayers, matches: normMatches, points: normPoints });
+    res.json({ tournament, players, matches, points });
   } catch (e) {
     console.error('Tournament detail error:', e);
     res.status(500).json({ error: 'unexpected error' });
@@ -1278,8 +951,7 @@ app.get('/tournaments/:id', async (req, res) => {
 app.get('/clubs/:clubId/standings', async (req, res) => {
   try {
     const clubId = Number(req.params.clubId);
-    console.log('GET /clubs/' + clubId + '/standings from', req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress);
-    const sql = `
+    const rows = db.prepare(`
       SELECT
         s.player_id,
         COALESCE(p.display_name, u.display_name) AS name,
@@ -1288,13 +960,11 @@ app.get('/clubs/:clubId/standings', async (req, res) => {
       FROM standings s
       JOIN players p ON p.id = s.player_id
       LEFT JOIN users u ON u.id = p.user_id
-      WHERE s.club_id = $1
+      WHERE s.club_id = ?
       ORDER BY s.points DESC, name ASC
-    `;
-    const rows = await all(sql, clubId);
-    console.log('  -> standings rows:', Array.isArray(rows) ? rows.length : typeof rows, Array.isArray(rows) ? rows.slice(0,5) : rows);
+    `).all(clubId);
 
-    res.json(rows || []);
+    res.json(rows);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'unexpected error' });
@@ -1325,40 +995,15 @@ app.post('/clubs/:clubId/standings/reset', async (req, res) => {
 
 
   // tournament → club
-async function awardTournamentPoints(tournamentId) {
   const t = await get(
-    `SELECT t.id, t.club_id, t.points_by_round, t.draw_size, t.seeds_count
+    `SELECT t.id, t.club_id
        FROM tournaments t
       WHERE t.id = $1`,
     tournamentId
   );
   if (!t) return;
 
-  // Idempotency guard: if this tournament already has per-tournament results
-  // recorded, assume it has already been awarded and skip re-awarding. This
-  // covers both the newer `tournament_player_points` table and the older
-  // `tournament_points` legacy table so installations in different migration
-  // states are handled safely.
-  const _hasResultsTable = await tableExists('tournament_player_points');
-  const _hasLegacyPoints = await tableExists('tournament_points');
-  try {
-    if (_hasResultsTable) {
-      const row = await get(`SELECT COUNT(*) AS c FROM tournament_player_points WHERE tournament_id = $1`, tournamentId);
-      if (row && Number(row.c) > 0) {
-        console.log('awardTournamentPoints: results already present in tournament_player_points; skipping award for', tournamentId);
-        return;
-      }
-    } else if (_hasLegacyPoints) {
-      const row = await get(`SELECT COUNT(*) AS c FROM tournament_points WHERE tournament_id = $1`, tournamentId);
-      if (row && Number(row.c) > 0) {
-        console.log('awardTournamentPoints: results already present in tournament_points (legacy); skipping award for', tournamentId);
-        return;
-      }
-    }
-  } catch (e) {
-    console.warn('awardTournamentPoints idempotency check failed, continuing with award:', e && e.message ? e.message : e);
-  }
-
+  // Gather completed matches for this tournament
   const matches = await all(
     `SELECT id, round, slot, p1_id, p2_id, winner_id
        FROM matches
@@ -1368,45 +1013,28 @@ async function awardTournamentPoints(tournamentId) {
   );
   if (!matches.length) return;
 
-  const final = matches.find(x => Number(x.round) === 1);
+  // Determine champion (winner of final = round 1)
+  const final = matches.find(m => Number(m.round) === 1);
   const championId = final?.winner_id ? Number(final.winner_id) : null;
 
-  // Default points mapping (labels -> points)
-  const DEFAULT_POINTS = { R128:0, R64:5, R32:10, R16:20, QF:40, SF:70, F:120, C:200 };
+  // Compute per-player aggregates: played, placement & points
+  // You decide points policy here (e.g., give losers-by-round points and champion bonus).
+  // For simplicity: losers get round-based points (hardcode or derive),
+  // champion gets extra "placement" and points.
 
-  // Determine per-tournament points config (from tournaments.points_by_round JSON), fallback to DEFAULT_POINTS
-  let ptsCfg = {};
-  try {
-    ptsCfg = t.points_by_round ? JSON.parse(t.points_by_round) : {};
-  } catch (e) {
-    ptsCfg = {};
-  }
+  // Example policy (adjust as you like; persisted per-player, not per-round):
+  const ROUND_POINTS = new Map([
+    [7, 1],  // R128
+    [6, 2],  // R64
+    [5, 4],  // R32
+    [4, 8],  // R16
+    [3, 12], // QF
+    [2, 18], // SF
+    [1, 26], // Finalist (loser of final)
+  ]);
+  const CHAMPION_BONUS = 40; // champion extra
 
-  // Helper to get point value for a label
-  const pointsFor = (label) => {
-    if (ptsCfg && typeof ptsCfg[label] !== 'undefined' && ptsCfg[label] !== null) return Number(ptsCfg[label]);
-    return Number(DEFAULT_POINTS[label] || 0);
-  };
-
-  // Determine draw size. Use stored draw_size if present, else infer from matches (max round -> drawSize = 2^maxRound)
-  const maxRound = matches.length ? Math.max(...matches.map(m => Number(m.round) || 0)) : 0;
-  const drawSize = Number(t.draw_size) || Number(t.seeds_count) || (maxRound ? Math.pow(2, maxRound) : 0);
-
-  // Build round labels (same logic as client)
-  const roundLabelsFor = (sz) => {
-    const map = [
-      { label: 'R128', size: 128 }, { label: 'R64', size: 64 }, { label: 'R32', size: 32 },
-      { label: 'R16', size: 16 }, { label: 'QF', size: 8 }, { label: 'SF', size: 4 },
-      { label: 'F', size: 2 }, { label: 'C', size: 1 }
-    ];
-    return map.filter(x => x.size <= sz).map(x => x.label);
-  };
-
-  const labels = drawSize ? roundLabelsFor(drawSize) : [];
-  // labels includes the champion label as last element; losers correspond to labels.slice(0,-1)
-  const loserLabels = labels.slice(0, -1);
-
-  const agg = new Map(); // player_id -> { played, points }
+  const agg = new Map(); // player_id -> { played:1, points:sum }
   const add = (pid, pts = 0) => {
     if (!pid) return;
     const cur = agg.get(pid) || { played: 0, points: 0 };
@@ -1415,53 +1043,29 @@ async function awardTournamentPoints(tournamentId) {
     agg.set(pid, cur);
   };
 
+  // Every completed match: both appear as "played", loser gets round points
   for (const m of matches) {
     add(m.p1_id, 0);
     add(m.p2_id, 0);
     const loser = Number(m.winner_id) === Number(m.p1_id) ? m.p2_id : m.p1_id;
-    // Map m.round to a label in loserLabels. If we can't map, fall back to 0.
-    let pts = 0;
-    if (Number(m.round) && loserLabels.length) {
-      const idx = (maxRound - Number(m.round));
-      if (idx >= 0 && idx < loserLabels.length) {
-        const lbl = loserLabels[idx];
-        pts = pointsFor(lbl);
-      }
-    }
-    add(loser, pts || 0);
+    add(loser, ROUND_POINTS.get(Number(m.round)) || 0);
   }
-  if (championId) add(championId, pointsFor('C'));
+  if (championId) add(championId, CHAMPION_BONUS);
 
-  // Prefer writing per-player results into `tournament_player_points` (newer
-  // semantic). If that table is not present, fall back to the older
-  // `tournament_points` table shape that some installs used (but that table
-  // can also mean a per-tournament config of points by round). This makes the
-  // behavior robust across migrations.
-  const hasResultsTable = _hasResultsTable; // computed above (idempotency check)
-
+  // Upsert per-player tournament_points and club standings (006)
   await run('BEGIN');
   try {
     for (const [playerId, v] of agg.entries()) {
-      if (hasResultsTable) {
-        await run(
-          `INSERT INTO tournament_player_points (tournament_id, player_id, points, placement)
-           VALUES ($1, $2, $3, NULL)
-           ON CONFLICT (tournament_id, player_id)
-           DO UPDATE SET points = tournament_player_points.points + EXCLUDED.points`,
-          tournamentId, playerId, v.points
-        );
-      } else {
-        // legacy fallback
-        await run(
-          `INSERT INTO tournament_points (tournament_id, player_id, points, placement)
-           VALUES ($1, $2, $3, NULL)
-           ON CONFLICT (tournament_id, player_id)
-           DO UPDATE SET points = tournament_points.points + EXCLUDED.points`,
-          tournamentId, playerId, v.points
-        );
-      }
+      // Tournament points (per player)
+      await run(
+        `INSERT INTO tournament_points (tournament_id, player_id, points, placement)
+         VALUES ($1, $2, $3, NULL)
+         ON CONFLICT (tournament_id, player_id)
+         DO UPDATE SET points = tournament_points.points + EXCLUDED.points`,
+        tournamentId, playerId, v.points
+      );
 
-      // Update club standings (upsert incrementally)
+      // Club standings (per player)
       await run(
         `INSERT INTO standings (club_id, player_id, tournaments_played, points)
          VALUES ($1, $2, $3, $4)
@@ -1479,6 +1083,8 @@ async function awardTournamentPoints(tournamentId) {
   }
 }
 
+
+// GET /tournaments/:id/joined?userId=123
 app.get('/tournaments/:id/joined', async (req, res) => {
   try {
     const tId = Number(req.params.id);
@@ -1686,13 +1292,10 @@ app.delete('/clubs/:clubId/tournaments', async (req, res) => {
     const ids = await db.prepare(`SELECT id FROM tournaments WHERE ${where}`).all(clubId).map(r => r.id);
     if (ids.length === 0) return res.json({ ok: true, deleted: 0, ids: [] });
 
-    // sequentially delete tournaments (deleteTournamentById handles its own DB calls)
-    for (const id of ids) {
-      // do not await in parallel to avoid overwhelming the DB with deletes
-      // each call performs the necessary child deletions
-      // await so errors can be caught and aborted
-      await deleteTournamentById(id);
-    }
+    const tx = db.transaction((arr) => {
+      for (const id of arr) deleteTournamentById(id);
+    });
+    tx(ids);
 
     res.json({ ok: true, deleted: ids.length, ids });
   } catch (e) {
@@ -1857,20 +1460,7 @@ app.get('/users/:id/clubs', async (req, res) => {
 app.get('/clubs/:clubId/sports', async (req, res) => {
   try {
     const clubId = Number(req.params.clubId);
-    // If the table hasn't been created yet (fresh DB/migration state), return an empty list
-    if (!(await tableExists('club_sports'))) return res.json([]);
-
-    // Prefer ordering by id, but some installs may have created the table without an id column.
-    // Try the id-based ordering first, and fall back to ordering by sport if the id column is absent.
-    let rows;
-    try {
-      rows = await db.prepare('SELECT * FROM club_sports WHERE club_id = ? ORDER BY id ASC').all(clubId);
-    } catch (err) {
-      // column "id" does not exist (Postgres 42703) -> fallback
-      if ((err && String(err.code) === '42703') || /column \"id\" does not exist/.test(String(err.message || ''))) {
-        rows = await db.prepare('SELECT * FROM club_sports WHERE club_id = ? ORDER BY sport ASC').all(clubId);
-      } else throw err;
-    }
+    const rows = await db.prepare('SELECT * FROM club_sports WHERE club_id = ? ORDER BY id ASC').all(clubId);
     res.json(rows);
   } catch (e) {
     console.error(e);
@@ -1914,15 +1504,6 @@ app.post('/clubs/:clubId/sports', async (req, res) => {
         club_id BIGINT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
         sport   TEXT   NOT NULL
       )`);
-    // Ensure there is an 'id' primary key column (some migrations may have omitted it)
-    await pool.query(`DO $$
-    BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-         WHERE table_schema='public' AND table_name='club_sports' AND column_name='id') THEN
-        ALTER TABLE club_sports ADD COLUMN id BIGSERIAL PRIMARY KEY;
-      END IF;
-    END$$;`);
     await pool.query(`ALTER TABLE club_sports ADD COLUMN IF NOT EXISTS courts INT`);
     await pool.query(`ALTER TABLE club_sports ADD COLUMN IF NOT EXISTS open_hour INT`);
     await pool.query(`ALTER TABLE club_sports ADD COLUMN IF NOT EXISTS close_hour INT`);
@@ -1959,48 +1540,6 @@ app.post('/clubs/:clubId/sports', async (req, res) => {
       [clubId, s, cs, oh, ch, sm]
     );
 
-    // If the manager requested a number of courts, create missing `courts` rows
-    // for this club so legacy booking code that maps a zero-based courtIndex
-    // to a real courts.id will succeed. This is idempotent: we only insert the
-    // delta between existing rows and the requested count.
-    try {
-      const requested = Number(cs) || 0;
-      if (requested > 0) {
-        // Ensure courts table has a sport column so we can create sport-scoped courts
-        await pool.query(`ALTER TABLE courts ADD COLUMN IF NOT EXISTS sport TEXT`);
-
-        // Determine this club's default sport (some installs store a default sport on clubs)
-        const clubSportRow = await pool.query('SELECT sport FROM clubs WHERE id=$1', [clubId]);
-        const clubDefaultSport = clubSportRow.rows?.[0] ? String(clubSportRow.rows[0].sport || '').toLowerCase() : '';
-
-        const requestedSport = String(s).toLowerCase();
-
-        // Count existing courts for this club scoped to the requested sport. For the
-        // club's default sport, also include courts where sport IS NULL (legacy rows).
-        let existingCountRes;
-        if (requestedSport === clubDefaultSport) {
-          existingCountRes = await pool.query(
-            "SELECT COUNT(*)::int AS c FROM courts WHERE club_id=$1 AND (sport = $2 OR sport IS NULL)",
-            [clubId, requestedSport]
-          );
-        } else {
-          existingCountRes = await pool.query(
-            "SELECT COUNT(*)::int AS c FROM courts WHERE club_id=$1 AND sport = $2",
-            [clubId, requestedSport]
-          );
-        }
-        const existing = existingCountRes.rows?.[0] ? Number(existingCountRes.rows[0].c) : 0;
-        if (existing < requested) {
-          console.log('Creating', requested - existing, 'missing courts for club', clubId, 'sport', requestedSport);
-          for (let i = existing + 1; i <= requested; i++) {
-            // label courts as "<sport> Court 1", "<sport> Court 2", ...
-            await pool.query('INSERT INTO courts (club_id, label, sport) VALUES ($1, $2, $3)', [clubId, `${requestedSport} Court ${i}`, requestedSport]);
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Could not ensure courts rows for club', clubId, e && e.message ? e.message : e);
-    }
     console.log('POST /clubs/:id/sports payload', {
       clubId,
       userId,
@@ -2068,7 +1607,7 @@ app.delete('/clubs/:clubId/sports/:id', async (req, res) => {
 app.get('/availability', async (req, res) => {
   try {
     const clubId = Number(req.query.clubId);
-  const sport = String(req.query.sport || '').toLowerCase();
+    const sport = String(req.query.sport || '');
     const date = String(req.query.date || '');
     const userId = req.query.userId ? Number(req.query.userId) : null;
 
@@ -2090,86 +1629,16 @@ app.get('/availability', async (req, res) => {
       cur += step;
     }
 
-    // bookings table historically used different column names in various installs.
-    // Inspect columns and query accordingly to avoid "column does not exist" errors.
-    const bInfo = await tableInfo('bookings');
-    const bCols = new Set((bInfo || []).map(c => c.name));
-    let bookings;
-
-    // Preferred shape: club_id, sport, date, time, court_index
-    if (bCols.has('club_id') && bCols.has('sport') && bCols.has('date') && bCols.has('time') && bCols.has('court_index')) {
-      bookings = await db.prepare(`
-        SELECT b.id, b.court_index, b.time, b.user_id, u.username AS booked_by
-        FROM bookings b
-        LEFT JOIN users u ON u.id = b.user_id
-        WHERE b.club_id=? AND b.sport=? AND b.date=?
-      `).all(clubId, sport, date);
-
-    // Alternate newer schema: bookings use court_id and time/date columns
-    } else if (bCols.has('club_id') && bCols.has('sport') && bCols.has('date') && bCols.has('time') && bCols.has('court_id')) {
-      // Map stored court_id -> zero-based courtIndex (order by courts.id)
-      // court_index should be computed only from courts that belong to the requested sport
-      const clubSportRow = await db.prepare('SELECT sport FROM clubs WHERE id = ?').get(clubId);
-      const clubDefaultSport = clubSportRow ? String(clubSportRow.sport || '').toLowerCase() : '';
-      const includeLegacyNull = (String(sport).toLowerCase() === clubDefaultSport);
-
-      bookings = await db.prepare(`
-        SELECT b.id,
-               (row_number() OVER (PARTITION BY c.club_id ORDER BY c.id) - 1) AS court_index,
-               b.time, b.user_id, u.username AS booked_by
-        FROM bookings b
-        JOIN courts c ON c.id = b.court_id
-        LEFT JOIN users u ON u.id = b.user_id
-        WHERE b.club_id=? AND b.sport=? AND b.date=?
-          AND (c.sport = ? ${includeLegacyNull ? 'OR c.sport IS NULL' : ''})
-      `).all(clubId, sport, date, sport);
-
-    // Legacy schema (migrations/001_init.sql): bookings store court_id and starts_at/ends_at without club_id or sport
-    } else if (bCols.has('court_id') && bCols.has('starts_at')) {
-      // Legacy schema: bookings use court_id + starts_at/ends_at and may lack
-      // sport/date/time. To support sport-scoped courts that were added later,
-      // surface legacy bookings when the booking points to a court whose
-      // sport matches the requested sport (and include NULL sport courts only
-      // when the requested sport equals the club's default sport).
-      const clubSportRow = await db.prepare('SELECT sport FROM clubs WHERE id = ?').get(clubId);
-      const clubDefaultSport = clubSportRow ? String(clubSportRow.sport || '').toLowerCase() : '';
-      const includeLegacyNull = (String(sport).toLowerCase() === clubDefaultSport);
-
-      // Build a derived, ordered list of courts for this club/sport that matches
-      // the SELECT ... ORDER BY id LIMIT 1 OFFSET mapping used during booking.
-      // We assign a zero-based index (court_index) via row_number() over that
-      // ordered list and then join bookings to it by court_id so the indices
-      // are computed from the exact same filtered/ordered set.
-      const courtsFilterCond = `c2.club_id = ? AND (c2.sport = ? ${includeLegacyNull ? 'OR c2.sport IS NULL' : ''})`;
-      bookings = await db.prepare(`
-        WITH courts_ordered AS (
-          SELECT id, (row_number() OVER (ORDER BY id) - 1) AS court_index
-          FROM courts c2
-          WHERE ${courtsFilterCond}
-          ORDER BY id
-        )
-        SELECT b.id,
-               co.court_index,
-               to_char(b.starts_at, 'HH24:MI') AS time,
-               b.user_id, u.username AS booked_by
-        FROM bookings b
-        JOIN courts_ordered co ON co.id = b.court_id
-        LEFT JOIN users u ON u.id = b.user_id
-        WHERE b.starts_at::date = ?
-      `).all(clubId, String(sport), date);
-
-    } else {
-      // Last resort: return empty bookings to avoid crashing frontend
-      bookings = [];
-    }
+    const bookings = await all(`
+      SELECT b.id, b.court_index, b.time, b.user_id, u.username AS booked_by
+      FROM bookings b
+      LEFT JOIN users u ON u.id = b.user_id
+      WHERE b.club_id=$1 AND b.sport=$2 AND b.date=$3
+    `, clubId, sport, date);
 
 
 
-  console.log('DEBUG availability: bookings columns:', Array.from(bCols).join(','));
-  console.log('DEBUG availability: bookings count:', Array.isArray(bookings) ? bookings.length : 0);
-  if (Array.isArray(bookings) && bookings.length) console.log('DEBUG availability: sample bookings', bookings.slice(0,5));
-
-  const bookedSet = new Set(bookings.map(b => `${b.court_index}@${b.time}`));
+    const bookedSet = new Set(bookings.map(b => `${b.court_index}@${b.time}`));
     const ownedSet = userId != null
       ? new Set(bookings.filter(b => b.user_id === userId).map(b => `${b.court_index}@${b.time}`))
       : new Set();
@@ -2185,21 +1654,10 @@ app.get('/availability', async (req, res) => {
           booked: bookedSet.has(key),
           owned: ownedSet.has(key),
           bookingId: idMap.get(key) || null,
-          // Always include bookedBy when a slot is booked so the frontend can render
-          // the booking owner inside the box. Previously this was only exposed to
-          // the club manager; showing the display name helps users see who's booked.
-          ...(bookedSet.has(key) ? { bookedBy: nameMap.get(key) || null } : {})
+          ...(isOwnClubManager && bookedSet.has(key) ? { bookedBy: nameMap.get(key) || null } : {})
         };
       })
     }));
-
-    // Debug: surface a sample of the grid and booking counts to the server log
-    try {
-      const sample = grid.find(g => g.time === '10:00') || grid[0];
-      console.log('DEBUG availability response sample for', { clubId, sport, date, bookingsCount: Array.isArray(bookings) ? bookings.length : 0, sample });
-    } catch (ie) {
-      console.log('DEBUG availability response logging failed', ie && ie.message ? ie.message : ie);
-    }
 
     res.json({ cfg: { courts: Number(cfg.courts) }, slots: grid });
   } catch (e) {
@@ -2218,9 +1676,6 @@ app.post('/book', async (req, res) => {
       return res.status(400).json({ error: 'missing fields' });
     }
 
-    // Diagnostic: log incoming payload for debugging court mapping issues
-    console.log('POST /book payload:', { clubId, sport, courtIndex, date, time, userId, asUsername });
-
     const clubRow = await db.prepare('SELECT manager_id FROM clubs WHERE id = ?').get(Number(clubId));
     const isOwnClubManager = clubRow && Number(clubRow.manager_id) === Number(userId);
 
@@ -2234,147 +1689,38 @@ app.post('/book', async (req, res) => {
       targetUserId = u.id;
     }
 
-    // enforce "1 active booking" for regular users only and choose queries according to bookings schema
-    const bInfo = await tableInfo('bookings');
-    const bCols = new Set((bInfo || []).map(c => c.name));
-
-    // Helper: unified active-booking check
-    let hasActive = null;
+    // enforce "1 active booking" for regular users only
     const { date: curDate, time: curTime } = nowDateTime();
-
-    if (bCols.has('date') && bCols.has('time')) {
-      hasActive = await db.prepare(`
-        SELECT 1 FROM bookings
-        WHERE user_id = ?
-          AND club_id = ?
-          AND (date > ? OR (date = ? AND time >= ?))
-        LIMIT 1
-      `).get(Number(targetUserId), Number(clubId), curDate, curDate, curTime);
-    } else if (bCols.has('starts_at')) {
-      // Legacy schema stores a timestamp in starts_at
-      hasActive = await db.prepare(`
-        SELECT 1 FROM bookings
-        WHERE user_id = ?
-          AND (starts_at >= now())
-        LIMIT 1
-      `).get(Number(targetUserId));
-    } else {
-      // If bookings schema is unknown, be conservative and skip the active-check
-      hasActive = null;
-    }
-
+    const hasActive = db.prepare(`
+      SELECT 1 FROM bookings
+      WHERE user_id = ?
+        AND club_id = ?
+        AND (date > ? OR (date = ? AND time >= ?))
+      LIMIT 1
+    `).get(Number(targetUserId), Number(clubId), curDate, curDate, curTime);
     if (!isOwnClubManager && hasActive) {
       return res.status(409).json({ error: 'You already have an active booking. Cancel it or wait until it has passed.' });
     }
 
-    // Duplicate/slot-check + insertion must also follow schema
-    if (bCols.has('club_id') && bCols.has('sport') && bCols.has('date') && bCols.has('time') && bCols.has('court_index')) {
-      // Preferred modern schema
-      const dup = await db.prepare(`
-        SELECT 1 FROM bookings
-        WHERE club_id = ? AND sport = ? AND court_index = ? AND date = ? AND time = ?
-        LIMIT 1
-      `).get(Number(clubId), String(sport), Number(courtIndex), String(date), String(time));
-      if (dup) return res.status(409).json({ error: 'slot already booked' });
+    const dup = db.prepare(`
+      SELECT 1 FROM bookings
+      WHERE club_id = ? AND sport = ? AND court_index = ? AND date = ? AND time = ?
+      LIMIT 1
+    `).get(Number(clubId), String(sport), Number(courtIndex), String(date), String(time));
+    if (dup) return res.status(409).json({ error: 'slot already booked' });
 
-      await db.prepare(`
-        INSERT INTO bookings (club_id, sport, court_index, date, time, user_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(Number(clubId), String(sport), Number(courtIndex), String(date), String(time), Number(targetUserId));
-
-    } else if (bCols.has('club_id') && bCols.has('sport') && bCols.has('date') && bCols.has('time') && bCols.has('court_id')) {
-      // Older variant that stores court_id instead of court_index.
-      // The client provides a zero-based `courtIndex`. Map that to the
-      // actual `courts.id` for this club (ORDER BY id LIMIT 1 OFFSET courtIndex)
-      // Find the clubs' courts for this sport (or include legacy NULL-sport courts when appropriate)
-      const clubSportRow2 = await db.prepare('SELECT sport FROM clubs WHERE id = ?').get(clubId);
-      const clubDefaultSport2 = clubSportRow2 ? String(clubSportRow2.sport || '').toLowerCase() : '';
-      const includeLegacyNull2 = (String(sport).toLowerCase() === clubDefaultSport2);
-
-      const courtRow = await db.prepare(
-        `SELECT id FROM courts WHERE club_id = ? AND (sport = ? ${includeLegacyNull2 ? 'OR sport IS NULL' : ''}) ORDER BY id ASC LIMIT 1 OFFSET ?`
-      ).get(Number(clubId), String(sport), Number(courtIndex));
-      if (!courtRow || courtRow.id == null) {
-        console.error('Booking: no courts found for club', clubId, 'offset', courtIndex);
-        return res.status(400).json({ error: 'No courts configured for this club — please create courts before booking (or provide explicit court_id).' });
-      }
-      const courtIdToUse = Number(courtRow.id);
-
-      const dup = await db.prepare(`
-        SELECT 1 FROM bookings
-        WHERE club_id = ? AND sport = ? AND court_id = ? AND date = ? AND time = ?
-        LIMIT 1
-      `).get(Number(clubId), String(sport), courtIdToUse, String(date), String(time));
-      if (dup) return res.status(409).json({ error: 'slot already booked' });
-
-      await db.prepare(`
-        INSERT INTO bookings (club_id, sport, court_id, date, time, user_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(Number(clubId), String(sport), courtIdToUse, String(date), String(time), Number(targetUserId));
-
-    } else if (bCols.has('court_id') && bCols.has('starts_at')) {
-      // Legacy schema: courts are separate table. Map client zero-based courtIndex
-      // to the actual courts.id for this club. Prefer sport-scoped courts when
-      // available so new sports map to their own courts instead of legacy ones.
-      const requestedSport = String(sport).toLowerCase();
-      const clubSportRow3 = await db.prepare('SELECT sport FROM clubs WHERE id = ?').get(clubId);
-      const clubDefaultSport3 = clubSportRow3 ? String(clubSportRow3.sport || '').toLowerCase() : '';
-      const includeLegacyNull3 = (requestedSport === clubDefaultSport3);
-
-      // Build SQL to prefer courts matching the sport, including NULL for default sport
-      const courtSql = `SELECT id FROM courts WHERE club_id = ? AND (sport = ? ${includeLegacyNull3 ? 'OR sport IS NULL' : ''}) ORDER BY id ASC LIMIT 1 OFFSET ?`;
-      console.log('DEBUG legacy booking mapping:', { clubId: Number(clubId), requestedSport, includeLegacyNull: includeLegacyNull3, sql: courtSql });
-
-      let courtRow = await db.prepare(courtSql).get(Number(clubId), requestedSport, Number(courtIndex));
-      let courtId;
-      if (courtRow && courtRow.id != null) {
-        courtId = Number(courtRow.id);
-      } else {
-        console.error('Legacy booking: no courts found for club', clubId, 'offset', courtIndex);
-        return res.status(400).json({ error: 'No courts configured for this club — please create courts before booking (or provide explicit court_id).' });
-      }
-
-      // Build a timestamp from date + time and check starts_at
-      const startsAt = `${String(date)} ${String(time)}`; // 'YYYY-MM-DD HH:MM'
-      const startDt = new Date(`${String(date)}T${String(time)}:00Z`);
-      const endDt = new Date(startDt.getTime() + 60 * 60 * 1000);
-
-      const dup = await db.prepare(`
-        SELECT 1 FROM bookings b
-        WHERE b.court_id = ? AND b.starts_at::date = ? AND to_char(b.starts_at,'HH24:MI') = ?
-        LIMIT 1
-      `).get(courtId, String(date), String(time));
-      if (dup) {
-        console.log('DEBUG duplicate detected for courtId', courtId, 'date', date, 'time', time);
-        return res.status(409).json({ error: 'slot already booked' });
-      }
-
-      // Use ISO timestamp strings to avoid SQL casting edge-cases; Postgres accepts ISO 8601
-      const startsAtISO = startDt.toISOString();
-      const endsAtISO = endDt.toISOString();
-
-      // Diagnostic log: print parameters we will insert so we can inspect them
-      console.log('DEBUG booking insert params:', { clubId: Number(clubId), courtId, startsAtISO, endsAtISO, targetUserId: Number(targetUserId) });
-
-      await db.prepare(`
-        INSERT INTO bookings (club_id, court_id, starts_at, ends_at, user_id)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(Number(clubId), courtId, startsAtISO, endsAtISO, Number(targetUserId));
-
-    } else {
-      // Unknown bookings schema: cannot safely insert -> return helpful error
-      console.error('Unsupported bookings schema; columns:', Array.from(bCols).join(','));
-      return res.status(500).json({ error: 'server bookings schema not supported on this installation' });
-    }
+    db.prepare(`
+      INSERT INTO bookings (club_id, sport, court_index, date, time, user_id)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(Number(clubId), String(sport), Number(courtIndex), String(date), String(time), Number(targetUserId));
 
     res.json({ ok: true });
   } catch (e) {
-    // Log full stack for debugging and return the message so the client can see the cause.
-    console.error('POST /book error:', e && e.stack ? e.stack : e);
+    console.error(e);
     if (String(e.message || '').includes('UNIQUE')) {
       return res.status(409).json({ error: 'slot already booked' });
     }
-    return res.status(500).json({ error: e.message || String(e) });
+    res.status(500).json({ error: 'unexpected error' });
   }
 });
 
@@ -2407,18 +1753,7 @@ app.post('/cancel', async (req, res) => {
 // -------------------------------
 // Server
 // -------------------------------
-export async function logDbIdentity() {
-  try {
-    const [{ db, usr }] = (await pool.query(
-      'select current_database() as db, current_user as usr'
-    )).rows;
-    const ver = (await pool.query('select version()')).rows?.[0]?.version || '';
-    console.log(`[db] connected to "${db}" as "${usr}"`);
-    if (ver) console.log(`[db] ${ver}`);
-  } catch (e) {
-    console.warn('[db] identity check failed:', e.message || e);
-  }
-}
+await logDbIdentity();
 const PORT = process.env.PORT || 5051;
 app.listen(PORT, () => console.log(`server listening on :${PORT}`));
 

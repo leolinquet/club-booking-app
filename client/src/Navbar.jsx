@@ -1,7 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 
 export default function Navbar({
-  onBook, onHome, onClubs, onTournaments, onRankings, isManager
+  onBook = () => {},
+  onHome = () => {},
+  onClubs = () => {},
+  onTournaments = () => {},
+  onRankings = () => {},
+  onLogout = () => {},
+  isManager = false,
+  user = null,
+  club = null,
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
@@ -27,14 +35,18 @@ export default function Navbar({
 
   // Prevent body scroll when mobile menu open
   useEffect(() => {
-    if (open) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = prev; };
-    }
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
   }, [open]);
 
   const handle = (fn) => () => { setOpen(false); fn(); };
+
+  const navBtn =
+    "px-3 py-1.5 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10";
+  const menuItem =
+    "w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10";
 
   return (
     <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-gray-200">
@@ -50,15 +62,26 @@ export default function Navbar({
 
         {/* Desktop nav */}
         <nav className="hidden sm:flex items-center gap-2">
-          <button onClick={onBook} className="nav-btn">Book</button>
-          {isManager && <button onClick={onHome} className="nav-btn">Home</button>}
-          <button onClick={onClubs} className="nav-btn">Clubs</button>
-          <button onClick={onTournaments} className="nav-btn">Tournaments</button>
-          <button onClick={onRankings} className="nav-btn">Rankings</button>
-          {/* Install PWA button, revealed by a2hs.js */}
-          <button id="install-btn" className="nav-btn" style={{ display: "none" }}>
-          Install App
+          <button onClick={onBook} className={navBtn}>Book</button>
+          {isManager && <button onClick={onHome} className={navBtn}>Home</button>}
+          <button onClick={onClubs} className={navBtn}>Clubs</button>
+          <button onClick={onTournaments} className={navBtn}>Tournaments</button>
+          <button onClick={onRankings} className={navBtn}>Rankings</button>
+
+          {/* PWA Install (shown by a2hs.js) */}
+          <button id="install-btn" className={navBtn} style={{ display: "none" }}>
+            Install App
           </button>
+
+          {user ? (
+            <>
+              <span className="ml-2 text-sm opacity-75">Hi, {user.display_name ?? user.name ?? "you"}</span>
+              {club && (
+                <span className="ml-3 text-sm text-gray-600">{club.name} (code {club.code})</span>
+              )}
+              <button onClick={onLogout} className={navBtn}>Log out</button>
+            </>
+          ) : null}
         </nav>
 
         {/* Mobile hamburger */}
@@ -67,24 +90,35 @@ export default function Navbar({
           aria-expanded={open}
           aria-controls="mobile-menu"
           onClick={() => setOpen((v) => !v)}
-          className="sm:hidden relative h-9 w-9 grid place-items-center group"
+          className="sm:hidden relative h-9 w-9 grid place-items-center"
         >
-          {/* animated burger → X */}
+          {/* three bars that animate into an X */}
           <span
-            className={`burger-line translate-y-[-6px] ${open ? "rotate-45 translate-y-0" : ""}`}
+            className={`pointer-events-none absolute block h-[2px] w-5 bg-black transition-all duration-200 ease-in-out ${
+              open ? "rotate-45" : "-translate-y-[6px]"
+            }`}
           />
-          <span className={`burger-line ${open ? "opacity-0 scale-x-0" : ""}`} />
           <span
-            className={`burger-line translate-y-[6px] ${open ? "-rotate-45 translate-y-0" : ""}`}
+            className={`pointer-events-none absolute block h-[2px] w-5 bg-black transition-all duration-200 ease-in-out ${
+              open ? "opacity-0 scale-x-0" : ""
+            }`}
+          />
+          <span
+            className={`pointer-events-none absolute block h-[2px] w-5 bg-black transition-all duration-200 ease-in-out ${
+              open ? "-rotate-45" : "translate-y-[6px]"
+            }`}
           />
         </button>
       </div>
 
       {/* Backdrop */}
       <div
-        className={`sm:hidden fixed inset-0 bg-black/40 transition-opacity duration-200 ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+        className={`sm:hidden fixed inset-0 bg-black/40 transition-opacity duration-200 ${
+          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
       />
-      {/* Mobile dropdown (animated) */}
+
+      {/* Mobile dropdown */}
       <div
         id="mobile-menu"
         ref={menuRef}
@@ -99,28 +133,30 @@ export default function Navbar({
           style={{ transformOrigin: "top center" }}
         >
           <div className="p-1 flex flex-col">
-            <button onClick={handle(onBook)} className="menu-item">Book</button>
-            {isManager && <button onClick={handle(onHome)} className="menu-item">Home</button>}
-            <button onClick={handle(onClubs)} className="menu-item">Clubs</button>
-            <button onClick={handle(onTournaments)} className="menu-item">Tournaments</button>
-            <button onClick={handle(onRankings)} className="menu-item">Rankings</button>
-            <button id="install-btn-mobile" className="menu-item" style={{ display: "none" }}>
-            Install App
+            <button onClick={handle(onBook)} className={menuItem}>Book</button>
+            {isManager && <button onClick={handle(onHome)} className={menuItem}>Home</button>}
+            <button onClick={handle(onClubs)} className={menuItem}>Clubs</button>
+            <button onClick={handle(onTournaments)} className={menuItem}>Tournaments</button>
+            <button onClick={handle(onRankings)} className={menuItem}>Rankings</button>
+
+            {/* PWA Install (mobile) */}
+            <button id="install-btn-mobile" className={menuItem} style={{ display: "none" }}>
+              Install App
             </button>
+
+            {user ? (
+              <>
+                {club && (
+                  <div className="px-3 py-2 text-sm text-gray-700">{club.name} (code {club.code})</div>
+                )}
+                <button onClick={handle(onLogout)} className={`${menuItem} text-red-600`}>
+                  Log out
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
     </header>
   );
 }
-
-/* --- tiny inline style helpers via Tailwind classes ---
-   You already use Tailwind-y classes in the app.
-   If you want these in a CSS file instead, see the note below.
-*/
-
-/* Suggested Tailwind component classes (put in your global CSS if you prefer):
-.nav-btn    = "px-3 py-1.5 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10"
-.menu-item  = "w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10"
-.burger-line= "pointer-events-none absolute block h-[2px] w-5 bg-black transition-all duration-200 ease-in-out"
-*/

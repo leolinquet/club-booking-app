@@ -1,0 +1,123 @@
+// server/db.js
+import pg from 'pg';
+const { Pool } = pg;
+
+// ---- Load Neon URL from server/.env ----
+const { DATABASE_URL } = process.env;
+if (!DATABASE_URL) {
+  console.error('ERROR: DATABASE_URL is not set. Put it in server/.env');
+  process.exit(1);
+}
+
+// ---- Parse the URL and pass discrete fields to Pool (avoids PG* env overrides) ----
+const u = new URL(DATABASE_URL);
+const poolConfig = {
+  host: u.hostname,
+  port: u.port ? Number(u.port) : 5432,
+  user: decodeURIComponent(u.username),
+  password: decodeURIComponent(u.password),
+  database: u.pathname.replace(/^\//, ''),
+  ssl: { require: true, rejectUnauthorized: false },
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 10,
+};
+export const pool = new Pool(poolConfig);
+
+// ---- Identity logger (helpful at boot) ----
+export async function logDbIdentity() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT current_database() AS db,
+             current_user       AS "user",
+             inet_server_addr()::text AS host,
+             inet_server_port() AS port
+    `);
+    console.log('DB identity →', rows[0], 'config.host →', poolConfig.host);
+  } catch (e) {
+    console.error('DB identity check failed:', e.message);
+  }
+}
+
+/* ---------- Helpers ---------- */
+
+// Tagged-template or (text, ...params) normalizer
+function buildQuery(strings, values) {
+  let text = '';
+  for (let i = 0; i < strings.length; i++) {
+    text += strings[i];
+    if (i < values.length) text += `$${i + 1}`;
+  }
+  return { text, values };
+}
+function normalizeArgs(args) {
+  const first = args[0];
+  if (Array.isArray(first) && Object.prototype.hasOwnProperty.call(first, 'raw')) {
+    return buildQuery(first, args.slice(1)); // q`... ${x} ...`
+  }
+  return { text: String(first), values: args.slice(1) }; // q('...', x)
+}
+
+// Convert SQLite '?' placeholders to Postgres $1,$2,... (ignores '?' inside quotes)
+function qmarkToDollar(sql) {
+  let out = '', n = 0, inS=false, inD=false, i=0;
+  while (i < sql.length) {
+    const ch = sql[i];
+    if (ch === "'" && !inD) { inS = !inS; out += ch; i++; continue; }
+    if (ch === '"' && !inS) { inD = !inD; out += ch; i++; continue; }
+    if (ch === '?' && !inS && !inD) { n++; out += `$${n}`; i++; continue; }
+    out += ch; i++;
+  }
+  return { text: out, count: n };
+}
+
+export async function run(...args) {
+  const { text, values } = normalizeArgs(args);
+  return pool.query(text, values);
+}
+
+export async function q(...args) {
+  const { text, values } = normalizeArgs(args);
+  const { rows } = await pool.query(text, values);
+  return rows;
+}
+
+export async function one(...args) {
+  const rows = await q(...args);
+  return rows[0] ?? null;
+}
+export const all = q;
+export const get = one;
+
+// better-sqlite3-like facade backed by pg; translates '?' → $n
+export function prepare(text) {
+  const sql = String(text);
+  const { text: pgText } = qmarkToDollar(sql);
+  return {
+    async run(...params) { return pool.query(pgText, params); },
+    async get(...params) { const { rows } = await pool.query(pgText, params); return rows[0] ?? null; },
+    async all(...params) { const { rows } = await pool.query(pgText, params); return rows; },
+    finalize() { /* no-op */ },
+  };
+}
+
+export async function tableExists(name) {
+  const { rows } = await pool.query(
+    `SELECT EXISTS(
+       SELECT 1 FROM information_schema.tables
+        WHERE table_schema='public' AND table_name=$1
+     ) AS ok`,
+    [String(name)]
+  );
+  return !!rows[0]?.ok;
+}
+
+// default export — minimal shim used by legacy code: db.prepare(...).run()
+const db = { prepare, exec: async (sql) => { if (sql?.trim()) await pool.query(String(sql)); } };
+export default db;
+
+const useSSL = /sslmode=require/i.test(process.env.DATABASE_URL || '') || process.env.FORCE_PG_SSL === '1';
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ...(useSSL ? { ssl: { rejectUnauthorized: false } } : {}),
+});

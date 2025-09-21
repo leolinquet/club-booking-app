@@ -1,6 +1,15 @@
 {
+  "scripts": {
+    "dev": "concurrently \"npm:server:start\" \"npm:client:dev\"",
+    "server:start": "node server/server.js",
+    "client:dev": "(cd client && npm run dev)"
+  },
   "dependencies": {
+    "dotenv": "^17.2.2",
     "framer-motion": "^12.23.12",
     "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
   }
 }

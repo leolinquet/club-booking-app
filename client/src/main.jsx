@@ -5,5 +5,7 @@ import './index.css'
 import './mobile.css';
 import './styles/theme.css';
 import './styles/ui.css';
+import "./a2hs.js";
 
-createRoot(document.getElementById('root')).render(<App />)
+const el = document.getElementById("root");
+createRoot(el).render(<App />);
