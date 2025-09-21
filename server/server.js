@@ -1704,6 +1704,36 @@ app.delete('/clubs/:clubId/tournaments', async (req, res) => {
 // -------------------------------
 // Clubs & Membership
 // -------------------------------
+// Helper: generate a short unique club code
+function makeClubCode() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+// Ensure the given club has a non-null unique code. Tries several times on conflict.
+async function ensureClubHasCode(clubId) {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const code = makeClubCode();
+    try {
+      // Try to set the code only if it's still null to avoid races
+      const r = await pool.query(
+        `UPDATE clubs SET code = $1 WHERE id = $2 AND (code IS NULL OR code = '') RETURNING code`,
+        [code, clubId]
+      );
+      if (r.rows && r.rows.length) return r.rows[0].code;
+      // if no rows returned, maybe another process set the code; fetch it
+      const got = await pool.query('SELECT code FROM clubs WHERE id = $1', [clubId]);
+      if (got.rows && got.rows[0] && got.rows[0].code) return got.rows[0].code;
+      // otherwise loop to try a new code
+    } catch (e) {
+      // Unique violation or other DB race -> try again
+      if (String(e.code) === '23505') continue;
+      // If unexpected error, break and rethrow
+      console.error('ensureClubHasCode error', e && e.message ? e.message : e);
+      throw e;
+    }
+  }
+  throw new Error('could not generate unique club code');
+}
 // Create a club
 app.post('/clubs', async (req, res) => {
   try {
@@ -1807,11 +1837,11 @@ app.get('/users/:id/club', async (req, res) => {
     const { id } = req.params;
     const { rows } = await pool.query(
       `WITH all_clubs AS (
-         SELECT c.id, c.name, c.sport, c.manager_id
+         SELECT c.id, c.name, c.sport, c.manager_id, c.code
            FROM clubs c
           WHERE c.manager_id = $1
          UNION
-         SELECT c.id, c.name, c.sport, c.manager_id
+         SELECT c.id, c.name, c.sport, c.manager_id, c.code
            FROM user_clubs uc
            JOIN clubs c ON c.id = uc.club_id
           WHERE uc.user_id = $1
@@ -1822,7 +1852,18 @@ app.get('/users/:id/club', async (req, res) => {
       [id]
     );
     if (!rows.length) return res.status(404).json({ error: 'no club' });
-    res.json(rows[0]);
+
+    const club = rows[0];
+    if (!club.code) {
+      try {
+        const newCode = await ensureClubHasCode(club.id);
+        club.code = newCode;
+      } catch (e) {
+        console.error('Failed to ensure club code for', club.id, e && e.message ? e.message : e);
+      }
+    }
+
+    res.json(club);
   } catch (e) {
     console.error('GET /users/:id/club', e);
     res.status(500).json({ error: 'unexpected error' });
@@ -1834,17 +1875,30 @@ app.get('/users/:id/clubs', async (req, res) => {
   try {
     const { id } = req.params;
     const { rows } = await pool.query(
-      `SELECT c.id, c.name, c.sport, c.manager_id
+      `SELECT c.id, c.name, c.sport, c.manager_id, c.code
          FROM clubs c
         WHERE c.manager_id = $1
         UNION
-       SELECT c.id, c.name, c.sport, c.manager_id
+       SELECT c.id, c.name, c.sport, c.manager_id, c.code
          FROM user_clubs uc
          JOIN clubs c ON c.id = uc.club_id
         WHERE uc.user_id = $1
         ORDER BY id`,
       [id]
     );
+
+    // Backfill any missing codes so the client always receives a code value
+    for (const r of rows) {
+      if (!r.code) {
+        try {
+          const newCode = await ensureClubHasCode(r.id);
+          r.code = newCode;
+        } catch (e) {
+          console.error('Failed to ensure club code for', r.id, e && e.message ? e.message : e);
+        }
+      }
+    }
+
     res.json(rows); // [] if none
   } catch (e) {
     console.error('GET /users/:id/clubs', e);

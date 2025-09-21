@@ -35,6 +35,34 @@ async function j(path, opts = {}) {
 function Card({ children }) {
   return <div className="bg-white rounded-xl shadow p-4">{children}</div>;
 }
+// Small helper to show a club code with a copy button
+function CodeWithCopy({ code }) {
+  const [copied, setCopied] = useState(false);
+  const doCopy = async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(String(code));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      // fallback: prompt the user to copy manually
+      try { window.prompt('Copy the club code', String(code)); } catch { /* ignore */ }
+    }
+  };
+  return (
+    <span className="inline-flex items-center gap-2 text-gray-600 text-xs">
+      <span>code {code || '—'}</span>
+      <button
+        onClick={doCopy}
+        title="Copy club code"
+        className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100"
+        type="button"
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </span>
+  );
+}
 function Button({ children, ...props }) {
   return <button className="px-4 py-2 rounded-lg bg-black text-white hover:opacity-90 disabled:opacity-50" {...props}>{children}</button>;
 }
@@ -119,6 +147,23 @@ export default function App(){
     }
   }
 
+  // Ensure we fetch the authoritative active club (this will backfill code if missing)
+  useEffect(() => {
+    (async () => {
+      if (!user) return;
+      try {
+        const r = await fetch(`${API}/users/${user.id}/club`, { credentials: 'include' });
+        if (!r.ok) return;
+        const c = await r.json().catch(() => null);
+        if (c) {
+          saveClub(c);
+        }
+      } catch (e) {
+        // ignore failures — app still works with cached club
+      }
+    })();
+  }, [user?.id]);
+
   if (user && !club) {
     return (
       <ClubGate
@@ -138,9 +183,6 @@ export default function App(){
         onTournaments={() => setView('tournaments')}
         onRankings={() => setView('rankings')}
         isManager={isManager}
-        user={user}
-        club={club}
-        onLogout={() => { localStorage.clear(); location.reload(); }}
       />
       <div className="max-w-5xl mx-auto p-4 space-y-4 flex-1">
         {effectivePage === 'clubs' ? (
@@ -156,7 +198,8 @@ export default function App(){
               <div className="text-sm text-gray-600 flex items-center gap-2">
                 <span>{user.name} ({user.role})</span>
                 <span className="mx-2">•</span>
-                <span>{club.name} (code {club.code})</span>
+                <span>{club.name} </span>
+                <CodeWithCopy code={club.code} />
                 <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
               </div>
             </header>
@@ -169,7 +212,8 @@ export default function App(){
               <div className="text-sm text-gray-600 flex items-center gap-2">
                 <span>{user.name} ({user.role})</span>
                 <span className="mx-2">•</span>
-                <span>{club.name} (code {club.code})</span>
+                <span>{club.name} </span>
+                <CodeWithCopy code={club.code} />
                 <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
               </div>
             </header>
@@ -183,7 +227,8 @@ export default function App(){
               <div className="text-sm text-gray-600 flex items-center gap-2">
                 <span>{user.name} ({user.role})</span>
                 <span className="mx-2">•</span>
-                <span>{club.name} (code {club.code})</span>
+                <span>{club.name} </span>
+                <CodeWithCopy code={club.code} />
                 <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
               </div>
             </header>
@@ -196,7 +241,8 @@ export default function App(){
               <div className="text-sm text-gray-600 flex items-center gap-2">
                 <span>{user.name} ({user.role})</span>
                 <span className="mx-2">•</span>
-                <span>{club.name} (code {club.code})</span>
+                <span>{club.name} </span>
+                <CodeWithCopy code={club.code} />
                 <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
               </div>
             </header>
@@ -973,9 +1019,9 @@ function ClubsPage({ user, club, onSetActive }) {
         <div className="grid gap-2">
           {clubs.map(c => (
             <div key={c.id} className="flex items-center justify-between border rounded-lg p-3">
-              <div className="text-sm">
+                <div className="text-sm">
                 <div className="font-medium">{c.name}</div>
-                <div className="text-gray-600 text-xs">code {c.code}</div>
+                <div className="text-gray-600 text-xs"><CodeWithCopy code={c.code} /></div>
               </div>
               {club && club.id === c.id ? (
                 <span className="text-xs px-2 py-1 rounded bg-gray-200">Active</span>

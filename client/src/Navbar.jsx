@@ -9,7 +9,6 @@ export default function Navbar({
   onLogout = () => {},
   isManager = false,
   user = null,
-  club = null,
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
@@ -75,10 +74,9 @@ export default function Navbar({
 
           {user ? (
             <>
-              <span className="ml-2 text-sm opacity-75">Hi, {user.display_name ?? user.name ?? "you"}</span>
-              {club && (
-                <span className="ml-3 text-sm text-gray-600">{club.name} (code {club.code})</span>
-              )}
+              <span className="ml-2 text-sm opacity-75">
+                Hi, {user.display_name ?? user.name ?? "you"}
+              </span>
               <button onClick={onLogout} className={navBtn}>Log out</button>
             </>
           ) : null}
@@ -145,14 +143,9 @@ export default function Navbar({
             </button>
 
             {user ? (
-              <>
-                {club && (
-                  <div className="px-3 py-2 text-sm text-gray-700">{club.name} (code {club.code})</div>
-                )}
-                <button onClick={handle(onLogout)} className={`${menuItem} text-red-600`}>
-                  Log out
-                </button>
-              </>
+              <button onClick={handle(onLogout)} className={`${menuItem} text-red-600`}>
+                Log out
+              </button>
             ) : null}
           </div>
         </div>
