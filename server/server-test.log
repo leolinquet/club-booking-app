@@ -1,0 +1,575 @@
+
+> club-booking-api@0.1.0 dev
+> node server.js
+
+Manager account already exists: leolinquet
+server listening on :5051
+POST /book payload: {
+  clubId: 5,
+  sport: 'tennis',
+  courtIndex: 0,
+  date: '2000-01-01',
+  time: '09:00',
+  userId: 4,
+  asUsername: undefined
+}
+DEBUG legacy booking mapping: {
+  clubId: 5,
+  requestedSport: 'tennis',
+  includeLegacyNull: true,
+  sql: 'SELECT id FROM courts WHERE club_id = ? AND (sport = ? OR sport IS NULL) ORDER BY id ASC LIMIT 1 OFFSET ?'
+}
+booking check (legacy starts_at) {
+  clubId: 5,
+  clubTz3: 'America/Chicago',
+  requestedDT: '2000-01-01T09:00:00.000-06:00',
+  nowDT: '2025-09-21T21:47:52.331-05:00',
+  valid: true
+}
+Rejecting past booking (legacy starts_at) {
+  clubId: 5,
+  clubTz3: 'America/Chicago',
+  requested: '2000-01-01T09:00:00.000-06:00',
+  now: '2025-09-21T21:47:52.331-05:00'
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 1
+DEBUG availability: sample bookings [
+  {
+    id: 1,
+    court_index: '1',
+    time: '11:00',
+    user_id: 2,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-22',
+  bookingsCount: 1,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 1
+DEBUG availability: sample bookings [
+  {
+    id: 1,
+    court_index: '1',
+    time: '11:00',
+    user_id: 2,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-22',
+  bookingsCount: 1,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 1
+DEBUG availability: sample bookings [
+  {
+    id: 1,
+    court_index: '1',
+    time: '11:00',
+    user_id: 2,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-22',
+  bookingsCount: 1,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 0
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-17',
+  bookingsCount: 0,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+POST /book payload: {
+  clubId: 3,
+  sport: 'tennis',
+  courtIndex: 1,
+  date: '2025-09-17',
+  time: '09:00',
+  userId: 4,
+  asUsername: 'leolinquet'
+}
+DEBUG legacy booking mapping: {
+  clubId: 3,
+  requestedSport: 'tennis',
+  includeLegacyNull: true,
+  sql: 'SELECT id FROM courts WHERE club_id = ? AND (sport = ? OR sport IS NULL) ORDER BY id ASC LIMIT 1 OFFSET ?'
+}
+booking check (legacy starts_at) {
+  clubId: 3,
+  clubTz3: 'America/Chicago',
+  requestedDT: '2025-09-17T09:00:00.000-05:00',
+  nowDT: '2025-09-21T21:52:46.034-05:00',
+  valid: true
+}
+Rejecting past booking (legacy starts_at) {
+  clubId: 3,
+  clubTz3: 'America/Chicago',
+  requested: '2025-09-17T09:00:00.000-05:00',
+  now: '2025-09-21T21:52:46.034-05:00'
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 2
+DEBUG availability: sample bookings [
+  {
+    id: 2,
+    court_index: '0',
+    time: '09:00',
+    user_id: 4,
+    booked_by: 'leolinquet'
+  },
+  {
+    id: 3,
+    court_index: '1',
+    time: '10:00',
+    user_id: 2,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 2,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 1
+DEBUG availability: sample bookings [
+  {
+    id: 3,
+    court_index: '1',
+    time: '10:00',
+    user_id: 2,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-21',
+  bookingsCount: 1,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+POST /book payload: {
+  clubId: 3,
+  sport: 'tennis',
+  courtIndex: 2,
+  date: '2025-09-21',
+  time: '10:00',
+  userId: 4,
+  asUsername: 'leolinquet'
+}
+DEBUG legacy booking mapping: {
+  clubId: 3,
+  requestedSport: 'tennis',
+  includeLegacyNull: true,
+  sql: 'SELECT id FROM courts WHERE club_id = ? AND (sport = ? OR sport IS NULL) ORDER BY id ASC LIMIT 1 OFFSET ?'
+}
+booking check (legacy starts_at) {
+  clubId: 3,
+  clubTz3: 'America/Chicago',
+  requestedDT: '2025-09-21T10:00:00.000-05:00',
+  nowDT: '2025-09-21T21:53:00.094-05:00',
+  valid: true
+}
+Rejecting past booking (legacy starts_at) {
+  clubId: 3,
+  clubTz3: 'America/Chicago',
+  requested: '2025-09-21T10:00:00.000-05:00',
+  now: '2025-09-21T21:53:00.094-05:00'
+}
+POST /book payload: {
+  clubId: 3,
+  sport: 'tennis',
+  courtIndex: 2,
+  date: '2025-09-21',
+  time: '21:00',
+  userId: 4,
+  asUsername: 'leolinquet'
+}
+DEBUG legacy booking mapping: {
+  clubId: 3,
+  requestedSport: 'tennis',
+  includeLegacyNull: true,
+  sql: 'SELECT id FROM courts WHERE club_id = ? AND (sport = ? OR sport IS NULL) ORDER BY id ASC LIMIT 1 OFFSET ?'
+}
+booking check (legacy starts_at) {
+  clubId: 3,
+  clubTz3: 'America/Chicago',
+  requestedDT: '2025-09-21T21:00:00.000-05:00',
+  nowDT: '2025-09-21T21:53:09.816-05:00',
+  valid: true
+}
+Rejecting past booking (legacy starts_at) {
+  clubId: 3,
+  clubTz3: 'America/Chicago',
+  requested: '2025-09-21T21:00:00.000-05:00',
+  now: '2025-09-21T21:53:09.816-05:00'
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 1
+DEBUG availability: sample bookings [
+  {
+    id: 1,
+    court_index: '1',
+    time: '11:00',
+    user_id: 2,
+    booked_by: 'user1'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-22',
+  bookingsCount: 1,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+POST /book payload: {
+  clubId: 3,
+  sport: 'tennis',
+  courtIndex: 2,
+  date: '2025-09-22',
+  time: '17:00',
+  userId: 4,
+  asUsername: 'leolinquet'
+}
+DEBUG legacy booking mapping: {
+  clubId: 3,
+  requestedSport: 'tennis',
+  includeLegacyNull: true,
+  sql: 'SELECT id FROM courts WHERE club_id = ? AND (sport = ? OR sport IS NULL) ORDER BY id ASC LIMIT 1 OFFSET ?'
+}
+booking check (legacy starts_at) {
+  clubId: 3,
+  clubTz3: 'America/Chicago',
+  requestedDT: '2025-09-22T17:00:00.000-05:00',
+  nowDT: '2025-09-21T21:53:20.616-05:00',
+  valid: true
+}
+DEBUG booking insert params: {
+  clubId: 3,
+  courtId: 38,
+  startsAtISO: '2025-09-22T22:00:00.000Z',
+  endsAtISO: '2025-09-22T23:00:00.000Z',
+  targetUserId: 4
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 2
+DEBUG availability: sample bookings [
+  {
+    id: 1,
+    court_index: '1',
+    time: '11:00',
+    user_id: 2,
+    booked_by: 'user1'
+  },
+  {
+    id: 9,
+    court_index: '2',
+    time: '22:00',
+    user_id: 4,
+    booked_by: 'leolinquet'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-22',
+  bookingsCount: 2,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+POST /book payload: {
+  clubId: 3,
+  sport: 'tennis',
+  courtIndex: 1,
+  date: '2025-09-22',
+  time: '08:00',
+  userId: 4,
+  asUsername: 'user1'
+}
+DEBUG legacy booking mapping: {
+  clubId: 3,
+  requestedSport: 'tennis',
+  includeLegacyNull: true,
+  sql: 'SELECT id FROM courts WHERE club_id = ? AND (sport = ? OR sport IS NULL) ORDER BY id ASC LIMIT 1 OFFSET ?'
+}
+booking check (legacy starts_at) {
+  clubId: 3,
+  clubTz3: 'America/Chicago',
+  requestedDT: '2025-09-22T08:00:00.000-05:00',
+  nowDT: '2025-09-21T21:53:25.499-05:00',
+  valid: true
+}
+DEBUG booking insert params: {
+  clubId: 3,
+  courtId: 37,
+  startsAtISO: '2025-09-22T13:00:00.000Z',
+  endsAtISO: '2025-09-22T14:00:00.000Z',
+  targetUserId: 2
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 3
+DEBUG availability: sample bookings [
+  {
+    id: 1,
+    court_index: '1',
+    time: '11:00',
+    user_id: 2,
+    booked_by: 'user1'
+  },
+  {
+    id: 10,
+    court_index: '1',
+    time: '13:00',
+    user_id: 2,
+    booked_by: 'user1'
+  },
+  {
+    id: 9,
+    court_index: '2',
+    time: '22:00',
+    user_id: 4,
+    booked_by: 'leolinquet'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-22',
+  bookingsCount: 3,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+POST /book payload: {
+  clubId: 3,
+  sport: 'tennis',
+  courtIndex: 0,
+  date: '2025-09-22',
+  time: '08:00',
+  userId: 4,
+  asUsername: 'user2'
+}
+DEBUG legacy booking mapping: {
+  clubId: 3,
+  requestedSport: 'tennis',
+  includeLegacyNull: true,
+  sql: 'SELECT id FROM courts WHERE club_id = ? AND (sport = ? OR sport IS NULL) ORDER BY id ASC LIMIT 1 OFFSET ?'
+}
+booking check (legacy starts_at) {
+  clubId: 3,
+  clubTz3: 'America/Chicago',
+  requestedDT: '2025-09-22T08:00:00.000-05:00',
+  nowDT: '2025-09-21T21:53:31.685-05:00',
+  valid: true
+}
+DEBUG booking insert params: {
+  clubId: 3,
+  courtId: 36,
+  startsAtISO: '2025-09-22T13:00:00.000Z',
+  endsAtISO: '2025-09-22T14:00:00.000Z',
+  targetUserId: 5
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 4
+DEBUG availability: sample bookings [
+  {
+    id: 11,
+    court_index: '0',
+    time: '13:00',
+    user_id: 5,
+    booked_by: 'user2'
+  },
+  {
+    id: 1,
+    court_index: '1',
+    time: '11:00',
+    user_id: 2,
+    booked_by: 'user1'
+  },
+  {
+    id: 10,
+    court_index: '1',
+    time: '13:00',
+    user_id: 2,
+    booked_by: 'user1'
+  },
+  {
+    id: 9,
+    court_index: '2',
+    time: '22:00',
+    user_id: 4,
+    booked_by: 'leolinquet'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-22',
+  bookingsCount: 4,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+POST /book payload: {
+  clubId: 3,
+  sport: 'tennis',
+  courtIndex: 2,
+  date: '2025-09-22',
+  time: '08:00',
+  userId: 4,
+  asUsername: 'user3'
+}
+DEBUG legacy booking mapping: {
+  clubId: 3,
+  requestedSport: 'tennis',
+  includeLegacyNull: true,
+  sql: 'SELECT id FROM courts WHERE club_id = ? AND (sport = ? OR sport IS NULL) ORDER BY id ASC LIMIT 1 OFFSET ?'
+}
+booking check (legacy starts_at) {
+  clubId: 3,
+  clubTz3: 'America/Chicago',
+  requestedDT: '2025-09-22T08:00:00.000-05:00',
+  nowDT: '2025-09-21T21:53:36.982-05:00',
+  valid: true
+}
+DEBUG booking insert params: {
+  clubId: 3,
+  courtId: 38,
+  startsAtISO: '2025-09-22T13:00:00.000Z',
+  endsAtISO: '2025-09-22T14:00:00.000Z',
+  targetUserId: 6
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 5
+DEBUG availability: sample bookings [
+  {
+    id: 11,
+    court_index: '0',
+    time: '13:00',
+    user_id: 5,
+    booked_by: 'user2'
+  },
+  {
+    id: 1,
+    court_index: '1',
+    time: '11:00',
+    user_id: 2,
+    booked_by: 'user1'
+  },
+  {
+    id: 10,
+    court_index: '1',
+    time: '13:00',
+    user_id: 2,
+    booked_by: 'user1'
+  },
+  {
+    id: 9,
+    court_index: '2',
+    time: '22:00',
+    user_id: 4,
+    booked_by: 'leolinquet'
+  },
+  {
+    id: 12,
+    court_index: '2',
+    time: '13:00',
+    user_id: 6,
+    booked_by: 'user3'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-22',
+  bookingsCount: 5,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}
+POST /book payload: {
+  clubId: 3,
+  sport: 'tennis',
+  courtIndex: 3,
+  date: '2025-09-22',
+  time: '13:00',
+  userId: 4,
+  asUsername: 'leolinquet'
+}
+DEBUG legacy booking mapping: {
+  clubId: 3,
+  requestedSport: 'tennis',
+  includeLegacyNull: true,
+  sql: 'SELECT id FROM courts WHERE club_id = ? AND (sport = ? OR sport IS NULL) ORDER BY id ASC LIMIT 1 OFFSET ?'
+}
+booking check (legacy starts_at) {
+  clubId: 3,
+  clubTz3: 'America/Chicago',
+  requestedDT: '2025-09-22T13:00:00.000-05:00',
+  nowDT: '2025-09-21T21:53:46.084-05:00',
+  valid: true
+}
+DEBUG booking insert params: {
+  clubId: 3,
+  courtId: 39,
+  startsAtISO: '2025-09-22T18:00:00.000Z',
+  endsAtISO: '2025-09-22T19:00:00.000Z',
+  targetUserId: 4
+}
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 6
+DEBUG availability: sample bookings [
+  {
+    id: 11,
+    court_index: '0',
+    time: '13:00',
+    user_id: 5,
+    booked_by: 'user2'
+  },
+  {
+    id: 1,
+    court_index: '1',
+    time: '11:00',
+    user_id: 2,
+    booked_by: 'user1'
+  },
+  {
+    id: 10,
+    court_index: '1',
+    time: '13:00',
+    user_id: 2,
+    booked_by: 'user1'
+  },
+  {
+    id: 9,
+    court_index: '2',
+    time: '22:00',
+    user_id: 4,
+    booked_by: 'leolinquet'
+  },
+  {
+    id: 12,
+    court_index: '2',
+    time: '13:00',
+    user_id: 6,
+    booked_by: 'user3'
+  }
+]
+DEBUG availability response sample for {
+  clubId: 3,
+  sport: 'tennis',
+  date: '2025-09-22',
+  bookingsCount: 6,
+  sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
+}

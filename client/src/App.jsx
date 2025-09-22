@@ -962,6 +962,9 @@ function ClubsPage({ user, club, onSetActive }) {
   const [clubs, setClubs] = useState([]);
   const [joinCode, setJoinCode] = useState('');
   const [newName, setNewName] = useState('');
+  const [newTimezone, setNewTimezone] = useState(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; }
+  });
   const [error, setError] = useState('');
   const isManager = user.role === 'manager';
 
@@ -1003,7 +1006,7 @@ function ClubsPage({ user, club, onSetActive }) {
     try {
       const res = await fetch(`${API}/clubs`, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ name: newName.trim(), managerId: user.id })
+        body: JSON.stringify({ name: newName.trim(), managerId: user.id, timezone: newTimezone })
       });
       const data = await res.json().catch(()=>null);
       if (!res.ok) throw new Error((data && data.error) || 'Create failed');
@@ -1055,7 +1058,15 @@ function ClubsPage({ user, club, onSetActive }) {
         <Card>
           <h3 className="text-lg font-medium mb-3">{isManager ? 'Create a new club' : 'Request a new club (manager only)'}</h3>
           <div className="flex gap-2">
-            <TextInput placeholder="Club name" value={newName} onChange={e=>setNewName(e.target.value)} disabled={!isManager}/>
+            <div className="flex-1">
+              <TextInput placeholder="Club name" value={newName} onChange={e=>setNewName(e.target.value)} disabled={!isManager}/>
+            </div>
+            <div className="w-56">
+              <select className="border rounded-lg px-3 py-2 w-full" value={newTimezone} onChange={e=>setNewTimezone(e.target.value)}>
+                <option value={newTimezone}>{newTimezone}</option>
+                <option value="UTC">UTC</option>
+              </select>
+            </div>
             <Button onClick={create} disabled={!newName.trim() || !isManager}>Create</Button>
           </div>
         </Card>
