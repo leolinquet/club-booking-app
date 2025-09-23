@@ -965,6 +965,23 @@ function ClubsPage({ user, club, onSetActive }) {
   const [newTimezone, setNewTimezone] = useState(() => {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; }
   });
+  // curated list for club creation/editing (UTC first, then host tz if different, then common US timezones)
+  const HOST_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
+  const US_TIMEZONES = [
+    'America/New_York',
+    'America/Chicago',
+    'America/Denver',
+    'America/Los_Angeles',
+    'America/Phoenix',
+    'America/Anchorage',
+    'America/Adak'
+  ];
+  const CLUB_TIMEZONE_OPTIONS = (() => {
+    const opts = ['UTC'];
+    if (HOST_TZ && HOST_TZ !== 'UTC') opts.push(HOST_TZ);
+    for (const tz of US_TIMEZONES) if (!opts.includes(tz)) opts.push(tz);
+    return opts;
+  })();
   const [error, setError] = useState('');
   const isManager = user.role === 'manager';
 
@@ -1033,11 +1050,42 @@ function ClubsPage({ user, club, onSetActive }) {
                 <div className="font-medium">{c.name}</div>
                 <div className="text-gray-600 text-xs"><CodeWithCopy code={c.code} /></div>
               </div>
-              {club && club.id === c.id ? (
-                <span className="text-xs px-2 py-1 rounded bg-gray-200">Active</span>
-              ) : (
-                <Button onClick={() => onSetActive(c)}>Set active</Button>
-              )}
+              <div className="flex items-center gap-2">
+                {/* Timezone selector only visible to the club's manager (creator) */}
+                {Number(c.manager_id) === Number(user.id) && (
+                  <div className="w-64">
+                    <select
+                      className="border rounded-lg px-3 py-2 w-full"
+                      value={c.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
+                      onChange={async (e) => {
+                        const tz = e.target.value;
+                        try {
+                          const r = await fetch(`${API}/clubs/${c.id}/timezone`, {
+                            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ managerId: user.id, timezone: tz })
+                          });
+                          const d = await r.json().catch(()=>null);
+                          if (!r.ok) return alert(d?.error || 'Failed to update timezone');
+                          // Refresh clubs list to pick up updated timezone
+                          await (async () => { const rr = await fetch(`${API}/users/${user.id}/clubs`); const dat = await rr.json().catch(()=>null); setClubs(Array.isArray(dat)?dat:[]); })();
+                        } catch (err) {
+                          console.error('update tz error', err);
+                          alert('Failed to update timezone');
+                        }
+                      }}
+                    >
+                      {CLUB_TIMEZONE_OPTIONS.map(tz => (
+                        <option key={tz} value={tz}>{tz}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {club && club.id === c.id ? (
+                  <span className="text-xs px-2 py-1 rounded bg-gray-200">Active</span>
+                ) : (
+                  <Button onClick={() => onSetActive(c)}>Set active</Button>
+                )}
+              </div>
             </div>
           ))}
           {clubs.length === 0 && !error && (
@@ -1057,14 +1105,15 @@ function ClubsPage({ user, club, onSetActive }) {
 
         <Card>
           <h3 className="text-lg font-medium mb-3">{isManager ? 'Create a new club' : 'Request a new club (manager only)'}</h3>
-          <div className="flex gap-2">
+            <div className="flex gap-2">
             <div className="flex-1">
               <TextInput placeholder="Club name" value={newName} onChange={e=>setNewName(e.target.value)} disabled={!isManager}/>
             </div>
             <div className="w-56">
               <select className="border rounded-lg px-3 py-2 w-full" value={newTimezone} onChange={e=>setNewTimezone(e.target.value)}>
-                <option value={newTimezone}>{newTimezone}</option>
-                <option value="UTC">UTC</option>
+                {CLUB_TIMEZONE_OPTIONS.map(tz => (
+                  <option key={tz} value={tz}>{tz}</option>
+                ))}
               </select>
             </div>
             <Button onClick={create} disabled={!newName.trim() || !isManager}>Create</Button>

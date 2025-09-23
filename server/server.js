@@ -1940,11 +1940,11 @@ app.get('/users/:id/club', async (req, res) => {
     const { id } = req.params;
     const { rows } = await pool.query(
       `WITH all_clubs AS (
-         SELECT c.id, c.name, c.sport, c.manager_id, c.code
+         SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone
            FROM clubs c
           WHERE c.manager_id = $1
          UNION
-         SELECT c.id, c.name, c.sport, c.manager_id, c.code
+         SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone
            FROM user_clubs uc
            JOIN clubs c ON c.id = uc.club_id
           WHERE uc.user_id = $1
@@ -1978,11 +1978,11 @@ app.get('/users/:id/clubs', async (req, res) => {
   try {
     const { id } = req.params;
     const { rows } = await pool.query(
-      `SELECT c.id, c.name, c.sport, c.manager_id, c.code
+      `SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone
          FROM clubs c
         WHERE c.manager_id = $1
         UNION
-       SELECT c.id, c.name, c.sport, c.manager_id, c.code
+       SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone
          FROM user_clubs uc
          JOIN clubs c ON c.id = uc.club_id
         WHERE uc.user_id = $1
@@ -2174,6 +2174,30 @@ app.post('/clubs/:clubId/sports', async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     console.error('POST /clubs/:clubId/sports ->', e.code || '', e.message);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// Allow club manager to update the club timezone
+app.put('/clubs/:clubId/timezone', async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const { managerId, timezone } = req.body || {};
+    if (!clubId || !timezone) return res.status(400).json({ error: 'clubId and timezone required' });
+
+    const mid = Number(managerId || req.body.userId || req.query.managerId || req.query.userId);
+    if (!mid) return res.status(400).json({ error: 'managerId or userId required' });
+
+    const ok = await isClubManager(mid, clubId);
+    if (!ok) return res.status(403).json({ error: 'only club manager can update club timezone' });
+
+    await pool.query('ALTER TABLE clubs ADD COLUMN IF NOT EXISTS timezone TEXT');
+    await pool.query('UPDATE clubs SET timezone=$1 WHERE id=$2', [timezone, clubId]);
+    const { rows } = await pool.query('SELECT id, name, sport, manager_id, code, timezone FROM clubs WHERE id=$1', [clubId]);
+    if (!rows.length) return res.status(404).json({ error: 'club not found' });
+    res.json(rows[0]);
+  } catch (e) {
+    console.error('PUT /clubs/:clubId/timezone', e && e.message ? e.message : e);
     res.status(500).json({ error: 'unexpected error' });
   }
 });
@@ -2444,20 +2468,25 @@ app.post('/book', async (req, res) => {
       targetUserId = u.id;
     }
 
-    // enforce "1 active booking" for regular users only and choose queries according to bookings schema
-    const bInfo = await tableInfo('bookings');
-    const bCols = new Set((bInfo || []).map(c => c.name));
+  // enforce "1 active booking" for regular users only and choose queries according to bookings schema
+  const bInfo = await tableInfo('bookings');
+  const bCols = new Set((bInfo || []).map(c => c.name));
 
-    // Helper: unified active-booking check using club-local now
-    let hasActive = null;
-    const { date: curDate, time: curTime } = await getClubNow(clubId);
+  // Determine club timezone: prefer DB value, fall back to client-provided timezone in the request,
+  // then environment default or UTC.
+  const clubRowForTzRoot = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(Number(clubId));
+  const clubTzRoot = clubRowForTzRoot && clubRowForTzRoot.timezone ? String(clubRowForTzRoot.timezone) : (req.body && req.body.clubTimezone) || (process.env.DEFAULT_TIMEZONE || 'UTC');
+
+  // Helper: unified active-booking check using club-local now
+  let hasActive = null;
+  const { date: curDate, time: curTime } = nowInTimeZone(clubTzRoot);
 
     if (bCols.has('date') && bCols.has('time')) {
       // For date/time schema, consider a booking "active" if its end time is
       // strictly after or equal to club-local now. We assume bookings are 1 hour
       // durations.
       // Build club-local now as DateTime and compare against booking end.
-      const clubNow = DateTime.fromISO(`${curDate}T${curTime}`, { zone: (await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(Number(clubId)))?.timezone || (process.env.DEFAULT_TIMEZONE || 'UTC') });
+  const clubNow = DateTime.fromISO(`${curDate}T${curTime}`, { zone: clubTzRoot });
       // SQL: find any booking where (date = curDate AND time + 1 hour >= curTime) OR date > curDate
       // We compare using strings for simplicity: compute booking end as time + 1 hour in HH:MM
       // Note: this is a heuristic to avoid heavy SQL date math; it's sufficient for 1-hour slots.
@@ -2478,7 +2507,7 @@ app.post('/book', async (req, res) => {
       // Legacy schema stores a timestamp in starts_at. Consider a booking active
       // if its ends_at (or starts_at + 1h) is >= club-local now. We'll compute
       // a club-local ISO and compare against ends_at >= that (or starts_at >= that - 1h).
-      const clubNow = await getClubNow(clubId);
+      const clubNow = nowInTimeZone(clubTzRoot);
       const clubNowISO = `${clubNow.date}T${clubNow.time}:00Z`;
       // Prefer using ends_at if present, otherwise compare starts_at + 1 hour.
       hasActive = await db.prepare(`
@@ -2502,8 +2531,7 @@ app.post('/book', async (req, res) => {
     if (bCols.has('club_id') && bCols.has('sport') && bCols.has('date') && bCols.has('time') && bCols.has('court_index')) {
       // Preferred modern schema
       // Prevent booking in the past according to club-local now (luxon)
-  const clubRowForTz = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(Number(clubId));
-  const clubTz = clubRowForTz && clubRowForTz.timezone ? String(clubRowForTz.timezone) : (process.env.DEFAULT_TIMEZONE || 'UTC');
+  const clubTz = clubTzRoot;
       const requestedDT = DateTime.fromISO(`${String(date)}T${String(time)}`, { zone: clubTz });
       const requestedEndDT = requestedDT.plus({ hours: 1 });
       const nowDT = DateTime.now().setZone(clubTz);
@@ -2545,8 +2573,7 @@ app.post('/book', async (req, res) => {
       const courtIdToUse = Number(courtRow.id);
 
       // Prevent booking in the past per club-local now (luxon)
-  const clubRowForTz2 = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(Number(clubId));
-  const clubTz2 = clubRowForTz2 && clubRowForTz2.timezone ? String(clubRowForTz2.timezone) : (process.env.DEFAULT_TIMEZONE || 'UTC');
+  const clubTz2 = clubTzRoot;
       const requestedDT2 = DateTime.fromISO(`${String(date)}T${String(time)}`, { zone: clubTz2 });
       const requestedEndDT2 = requestedDT2.plus({ hours: 1 });
       const nowDT2 = DateTime.now().setZone(clubTz2);
@@ -2592,21 +2619,14 @@ app.post('/book', async (req, res) => {
 
       // Build a timestamp from date + time and check starts_at
       const startsAt = `${String(date)} ${String(time)}`; // 'YYYY-MM-DD HH:MM'
-      // Parse client-provided date/time into a club-local moment. We'll construct
-      // an ISO string assuming the club's timezone, then compare against club-now.
-  const clubRowForTz = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(Number(clubId));
-  const clubTz = clubRowForTz && clubRowForTz.timezone ? String(clubRowForTz.timezone) : (process.env.DEFAULT_TIMEZONE || 'UTC');
-
-  // Build an ISO-like string for comparison; note: Date parsing with timezones in
-  // Node without external libs is limited; so we compare using club-local date/time strings.
-  const clubRowForTz3 = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(Number(clubId));
-  const clubTz3 = clubRowForTz3 && clubRowForTz3.timezone ? String(clubRowForTz3.timezone) : (process.env.DEFAULT_TIMEZONE || 'UTC');
-      const requestedDT3 = DateTime.fromISO(`${String(date)}T${String(time)}`, { zone: clubTz3 });
+      // Parse client-provided date/time into a club-local moment using the resolved club timezone.
+      const clubTzFinal = clubTzRoot;
+      const requestedDT3 = DateTime.fromISO(`${String(date)}T${String(time)}`, { zone: clubTzFinal });
       const requestedEndDT3 = requestedDT3.plus({ hours: 1 });
-      const nowDT3 = DateTime.now().setZone(clubTz3);
-      console.debug('booking check (legacy starts_at)', { clubId, clubTz3, requestedStart: requestedDT3.toISO(), requestedEnd: requestedEndDT3.toISO(), now: nowDT3.toISO(), valid: requestedDT3.isValid });
+      const nowDT3 = DateTime.now().setZone(clubTzFinal);
+      console.debug('booking check (legacy starts_at)', { clubId, clubTz: clubTzFinal, requestedStart: requestedDT3.toISO(), requestedEnd: requestedEndDT3.toISO(), now: nowDT3.toISO(), valid: requestedDT3.isValid });
       if (!requestedDT3.isValid || requestedEndDT3.toMillis() <= nowDT3.toMillis()) {
-        console.warn('Rejecting past booking (legacy starts_at)', { clubId, clubTz3, requestedStart: requestedDT3.toISO(), requestedEnd: requestedEndDT3.toISO(), now: nowDT3.toISO() });
+        console.warn('Rejecting past booking (legacy starts_at)', { clubId, clubTz: clubTzFinal, requestedStart: requestedDT3.toISO(), requestedEnd: requestedEndDT3.toISO(), now: nowDT3.toISO() });
         return res.status(400).json({ error: 'Cannot book a slot in the past' });
       }
 
