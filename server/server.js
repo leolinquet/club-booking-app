@@ -2182,12 +2182,19 @@ app.put('/clubs/:clubId/sports/:id', async (req, res) => {
   try {
     const clubId = Number(req.params.clubId);
     const id = Number(req.params.id);
-    const { sport, courts, openHour, closeHour, slotMinutes, managerId } = req.body || {};
+    const { sport, courts, openHour, closeHour, slotMinutes } = req.body || {};
+    // Accept managerId or userId from body OR query (some clients send via query)
+    const managerIdProvided = Number(
+      (req.body && (req.body.managerId ?? req.body.userId))
+      ?? (req.query && (req.query.managerId ?? req.query.userId))
+      ?? null
+    );
 
-    const row = await db.prepare('SELECT manager_id FROM clubs WHERE id = ?').get(clubId);
-    if (!row || Number(row.manager_id) !== Number(managerId)) {
-      return res.status(403).json({ error: 'only club manager can modify sports' });
-    }
+    console.debug('PUT /clubs/:clubId/sports/:id auth check', { clubId, id, managerIdProvided, body: req.body, query: req.query });
+    if (!managerIdProvided) return res.status(400).json({ error: 'managerId or userId required' });
+    const ok = await isClubManager(managerIdProvided, clubId);
+    console.debug('isClubManager result', { ok });
+    if (!ok) return res.status(403).json({ error: 'only club manager can modify sports' });
 
     db.prepare(`
       UPDATE club_sports
@@ -2207,12 +2214,17 @@ app.delete('/clubs/:clubId/sports/:id', async (req, res) => {
   try {
     const clubId = Number(req.params.clubId);
     const id = Number(req.params.id);
-    const { managerId } = req.body || {};
-
-    const row = await db.prepare('SELECT manager_id FROM clubs WHERE id = ?').get(clubId);
-    if (!row || Number(row.manager_id) !== Number(managerId)) {
-      return res.status(403).json({ error: 'only club manager can delete sports' });
-    }
+    // Accept managerId or userId from body OR query (some clients send via query)
+    const managerIdProvided = Number(
+      (req.body && (req.body.managerId ?? req.body.userId))
+      ?? (req.query && (req.query.managerId ?? req.query.userId))
+      ?? null
+    );
+    console.debug('DELETE /clubs/:clubId/sports/:id auth check', { clubId, id, managerIdProvided, body: req.body, query: req.query });
+    if (!managerIdProvided) return res.status(400).json({ error: 'managerId or userId required' });
+    const ok = await isClubManager(managerIdProvided, clubId);
+    console.debug('isClubManager result', { ok });
+    if (!ok) return res.status(403).json({ error: 'only club manager can delete sports' });
 
     await db.prepare('DELETE FROM club_sports WHERE id = ? AND club_id = ?').run(id, clubId);
     res.json({ ok: true });
