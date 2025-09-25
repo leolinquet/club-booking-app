@@ -19,6 +19,20 @@ import { DateTime } from 'luxon';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
+// Helpful startup check: verify the configured DATABASE_URL can be reached early
+// so deploy logs show a clear hint when DNS/host resolution fails (e.g. ENOTFOUND 'base').
+try {
+  // run a tiny query to force the pool to attempt a connection
+  await pool.query('SELECT 1');
+} catch (e) {
+  console.error('\nFATAL: cannot connect to the database at startup.');
+  console.error('Check your DATABASE_URL environment variable; Render should have a valid Postgres URL like:');
+  console.error("  postgres://username:password@HOST:PORT/dbname\n");
+  console.error('Error details:', e && e.message ? e.message : e);
+  // Exit with non-zero to fail the deploy quickly and clearly
+  process.exit(1);
+}
+
 try {
   await addColumnsIfMissing('standings', {
     points: 'points INTEGER DEFAULT 0',
@@ -245,29 +259,88 @@ try {
 // Create manager account if missing (best-effort)
 await ensureManagerAccount();
 
+// Temporary admin endpoint to create manager user when shell/one-off is unavailable.
+// Protect with ADMIN_CREATE_TOKEN env var. Remove this route after use.
+app.post('/__admin/create-manager', async (req, res) => {
+  try {
+    const token = String(req.get('x-admin-token') || req.query.token || '').trim();
+    const secret = process.env.ADMIN_CREATE_TOKEN || '';
+    if (!secret || !token || token !== secret) return res.status(403).json({ error: 'forbidden' });
+
+    const username = String(req.body?.username || 'leolinquet').trim();
+    const password = String(req.body?.password || '1234');
+
+    // Inspect users table for a suitable lookup column and check existence case-insensitively
+    const adminUInfo = await tableInfo('users');
+    const adminUCols = (adminUInfo || []).map(c => c.name);
+    const lookupCandidates = ['username', 'display_name', 'name', 'email'];
+    const lookupCol = lookupCandidates.find(c => adminUCols.includes(c));
+    if (lookupCol) {
+      const existing = await one(`SELECT id FROM users WHERE LOWER(${lookupCol})=LOWER($1) LIMIT 1`, username);
+      if (existing) return res.json({ ok: true, message: 'already exists', id: existing.id });
+    } else {
+      console.warn('POST /__admin/create-manager: no lookup column found on users table; skipping existence check');
+    }
+
+    // Hash password
+    const password_hash = await bcrypt.hash(password, 10);
+
+  // reuse adminUInfo/adminUCols from above
+    const insertCols = [];
+    const insertVals = [];
+    if (adminUCols.includes('display_name')) { insertCols.push('display_name'); insertVals.push(username); }
+    if (adminUCols.includes('username'))     { insertCols.push('username'); insertVals.push(username); }
+    if (adminUCols.includes('password_hash')){ insertCols.push('password_hash'); insertVals.push(password_hash); }
+    if (adminUCols.includes('role'))         { insertCols.push('role'); insertVals.push('manager'); }
+    if (adminUCols.includes('is_manager'))   { insertCols.push('is_manager'); insertVals.push(true); }
+    if (adminUCols.includes('email_verified_at')) { insertCols.push('email_verified_at'); insertVals.push(new Date().toISOString()); }
+
+    if (!insertCols.length) return res.status(500).json({ error: 'no compatible users columns available' });
+
+    const ph = insertVals.map((_, i) => `$${i+1}`).join(', ');
+    const sql = `INSERT INTO users (${insertCols.join(', ')}) VALUES (${ph}) RETURNING id`;
+    const { rows } = await pool.query(sql, insertVals);
+    if (rows && rows[0] && rows[0].id) return res.status(201).json({ ok: true, id: rows[0].id });
+    return res.status(500).json({ error: 'failed to create user' });
+  } catch (e) {
+    console.error('POST /__admin/create-manager error', e && e.message ? e.message : e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
 // Ensure a manager user exists (safe idempotent startup helper)
 async function ensureManagerAccount() {
   try {
     const managerUsername = 'leolinquet';
     const managerPassword = '1234';
 
-    // Check if user already exists (case-insensitive)
-    const existing = await one(`SELECT id FROM users WHERE LOWER(username)=LOWER($1) LIMIT 1`, managerUsername);
-    if (existing) {
-      console.log('Manager account already exists:', managerUsername);
-      return;
+    // Inspect users table for a suitable lookup column and check existence case-insensitively
+    const uInfo = await tableInfo('users');
+    const uCols = (uInfo || []).map(c => c.name);
+    const lookupCandidates = ['username', 'display_name', 'name', 'email'];
+    const lookupCol = lookupCandidates.find(c => uCols.includes(c));
+    if (lookupCol) {
+      try {
+        const existing = await one(`SELECT id FROM users WHERE LOWER(${lookupCol})=LOWER($1) LIMIT 1`, managerUsername);
+        if (existing) {
+          console.log('Manager account already exists:', managerUsername);
+          return;
+        }
+      } catch (e) {
+        console.warn('ensureManagerAccount: lookup query failed, continuing to creation:', e && e.message ? e.message : e);
+      }
+    } else {
+      console.warn('ensureManagerAccount: no lookup column found on users table; will attempt to insert a manager row');
     }
 
     // Hash the password
     const password_hash = await bcrypt.hash(managerPassword, 10);
 
-    // Inspect available users columns and insert a compatible row
-    const uInfo = await tableInfo('users');
-    const uCols = (uInfo || []).map(c => c.name);
+  // Inspect available users columns and insert a compatible row (reuse uCols from above)
     const insertCols = [];
     const insertVals = [];
 
-    if (uCols.includes('display_name')) { insertCols.push('display_name'); insertVals.push(managerUsername); }
+  if (uCols.includes('display_name')) { insertCols.push('display_name'); insertVals.push(managerUsername); }
     if (uCols.includes('username'))     { insertCols.push('username'); insertVals.push(managerUsername); }
     if (uCols.includes('password_hash')){ insertCols.push('password_hash'); insertVals.push(password_hash); }
     if (uCols.includes('role'))         { insertCols.push('role'); insertVals.push('manager'); }
