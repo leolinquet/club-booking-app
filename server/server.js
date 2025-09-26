@@ -120,13 +120,16 @@ const corsOptions = {
   credentials: true,
 };
 
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
-  credentials: true,
+// Use the dynamic corsOptions (defined above) but ensure we also expose
+// the allowed HTTP methods and headers for browser preflight checks.
+const corsOptionsWithMethods = {
+  ...corsOptions,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-app.options('*', cors()); // preflight
+};
+
+app.use(cors(corsOptionsWithMethods));
+app.options('*', cors(corsOptionsWithMethods)); // preflight
 
 // Body parser
 app.use(express.json());
