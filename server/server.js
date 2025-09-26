@@ -259,54 +259,10 @@ try {
 // Create manager account if missing (best-effort)
 await ensureManagerAccount();
 
-// Temporary admin endpoint to create manager user when shell/one-off is unavailable.
-// Protect with ADMIN_CREATE_TOKEN env var. Remove this route after use.
-app.post('/__admin/create-manager', async (req, res) => {
-  try {
-    const token = String(req.get('x-admin-token') || req.query.token || '').trim();
-    const secret = process.env.ADMIN_CREATE_TOKEN || '';
-    if (!secret || !token || token !== secret) return res.status(403).json({ error: 'forbidden' });
-
-    const username = String(req.body?.username || 'leolinquet').trim();
-    const password = String(req.body?.password || '1234');
-
-    // Inspect users table for a suitable lookup column and check existence case-insensitively
-    const adminUInfo = await tableInfo('users');
-    const adminUCols = (adminUInfo || []).map(c => c.name);
-    const lookupCandidates = ['username', 'display_name', 'name', 'email'];
-    const lookupCol = lookupCandidates.find(c => adminUCols.includes(c));
-    if (lookupCol) {
-      const existing = await one(`SELECT id FROM users WHERE LOWER(${lookupCol})=LOWER($1) LIMIT 1`, username);
-      if (existing) return res.json({ ok: true, message: 'already exists', id: existing.id });
-    } else {
-      console.warn('POST /__admin/create-manager: no lookup column found on users table; skipping existence check');
-    }
-
-    // Hash password
-    const password_hash = await bcrypt.hash(password, 10);
-
-  // reuse adminUInfo/adminUCols from above
-    const insertCols = [];
-    const insertVals = [];
-    if (adminUCols.includes('display_name')) { insertCols.push('display_name'); insertVals.push(username); }
-    if (adminUCols.includes('username'))     { insertCols.push('username'); insertVals.push(username); }
-    if (adminUCols.includes('password_hash')){ insertCols.push('password_hash'); insertVals.push(password_hash); }
-    if (adminUCols.includes('role'))         { insertCols.push('role'); insertVals.push('manager'); }
-    if (adminUCols.includes('is_manager'))   { insertCols.push('is_manager'); insertVals.push(true); }
-    if (adminUCols.includes('email_verified_at')) { insertCols.push('email_verified_at'); insertVals.push(new Date().toISOString()); }
-
-    if (!insertCols.length) return res.status(500).json({ error: 'no compatible users columns available' });
-
-    const ph = insertVals.map((_, i) => `$${i+1}`).join(', ');
-    const sql = `INSERT INTO users (${insertCols.join(', ')}) VALUES (${ph}) RETURNING id`;
-    const { rows } = await pool.query(sql, insertVals);
-    if (rows && rows[0] && rows[0].id) return res.status(201).json({ ok: true, id: rows[0].id });
-    return res.status(500).json({ error: 'failed to create user' });
-  } catch (e) {
-    console.error('POST /__admin/create-manager error', e && e.message ? e.message : e);
-    res.status(500).json({ error: 'unexpected error' });
-  }
-});
+// NOTE: temporary admin create-manager endpoint removed for security.
+// If you still need to create an admin user in environments without shell access,
+// run the idempotent scripts in server/scripts/ locally against your DATABASE_URL
+// or temporarily re-add a protected endpoint. Do NOT leave admin tokens active in prod.
 
 // Ensure a manager user exists (safe idempotent startup helper)
 async function ensureManagerAccount() {
@@ -411,6 +367,15 @@ function nowInTimeZone(timeZone) {
   }
 }
 
+// Password strength: at least 5 characters, at least one uppercase letter, at least one digit
+function isStrongPassword(pw) {
+  if (!pw || typeof pw !== 'string') return false;
+  if (pw.length < 5) return false;
+  if (!/[A-Z]/.test(pw)) return false;
+  if (!/[0-9]/.test(pw)) return false;
+  return true;
+}
+
 async function getClubNow(clubId) {
   try {
     const row = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(Number(clubId));
@@ -435,6 +400,11 @@ app.post('/auth/register', async (req, res) => {
     const { username, email, password, role } = req.body || {};
     if ((!username && !email) || !password) {
       return res.status(400).json({ error: 'username/email and password required' });
+    }
+
+    // enforce password strength
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({ error: 'password must be at least 5 characters, include 1 uppercase letter and 1 number' });
     }
 
     const targetRole = normalizeRole(role);
@@ -480,6 +450,11 @@ app.post('/auth/signup', async (req, res) => {
   try {
     const { email, password, name } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+
+    // enforce password strength for signup
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({ error: 'password must be at least 5 characters, include 1 uppercase letter and 1 number' });
+    }
 
     // reject duplicates (case-insensitive)
     const dup = await pool.query(

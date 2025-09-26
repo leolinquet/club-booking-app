@@ -1,7 +1,17 @@
 // client/src/ClubGate.jsx
 import React, { useState } from 'react';
 
-const API = import.meta.env.VITE_API_BASE || 'http://localhost:5051';
+// Resolve API base at runtime so deployed pages on Render talk to the correct host
+const API = (() => {
+  const h = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isRender = /\.onrender\.com$/i.test(h);
+  let base = typeof window !== 'undefined' ? window.API_BASE : '';
+  if (isRender && (!base || /localhost/.test(base))) {
+    base = 'https://club-booking-app.onrender.com';
+    if (typeof window !== 'undefined') window.API_BASE = base;
+  }
+  return base || 'http://localhost:5051';
+})();
 
 export default function ClubGate({ user, onJoin, onCreate }) {
   const [code, setCode] = useState('');

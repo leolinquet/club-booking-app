@@ -23,7 +23,8 @@ const API = (() => {
 })();
 
 async function j(path, opts = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
+  // Use the runtime-resolved API base (handles onrender-hosted pages)
+  const res = await fetch(`${API}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
     credentials: 'include',
     ...opts,
@@ -80,6 +81,24 @@ export default function App(){
 
   function saveUser(u){ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }
   function saveClub(c){ setClub(c); localStorage.setItem('club', JSON.stringify(c)); }
+
+  // Ensure we fetch the authoritative active club (this will backfill code if missing)
+  // This effect must run (be declared) on every render to keep Hooks order stable.
+  useEffect(() => {
+    (async () => {
+      if (!user) return;
+      try {
+        const r = await fetch(`${API}/users/${user.id}/club`, { credentials: 'include' });
+        if (!r.ok) return;
+        const c = await r.json().catch(() => null);
+        if (c) {
+          saveClub(c);
+        }
+      } catch (e) {
+        // ignore failures — app still works with cached club
+      }
+    })();
+  }, [user?.id]);
 
   if (!user) {
     const handleAuthed = async (u) => {
@@ -147,22 +166,6 @@ export default function App(){
     }
   }
 
-  // Ensure we fetch the authoritative active club (this will backfill code if missing)
-  useEffect(() => {
-    (async () => {
-      if (!user) return;
-      try {
-        const r = await fetch(`${API}/users/${user.id}/club`, { credentials: 'include' });
-        if (!r.ok) return;
-        const c = await r.json().catch(() => null);
-        if (c) {
-          saveClub(c);
-        }
-      } catch (e) {
-        // ignore failures — app still works with cached club
-      }
-    })();
-  }, [user?.id]);
 
   if (user && !club) {
     return (
