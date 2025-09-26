@@ -252,7 +252,13 @@ await ensureRankingsSchema();
 
 // Ensure clubs table has a timezone column so bookings can be validated
 try {
+  // Ensure the minimal set of columns the server expects exist. Many older
+  // installs may have a trimmed `clubs` table; add missing columns idempotently
+  // so server code that references them will not crash on deploy.
   await addColumnsIfMissing('clubs', {
+    sport: "sport TEXT NOT NULL DEFAULT 'tennis'",
+    code:  "code TEXT",
+    manager_id: 'manager_id BIGINT',
     timezone: "timezone TEXT"
   });
 } catch (e) {
