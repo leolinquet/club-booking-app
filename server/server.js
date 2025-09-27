@@ -2352,7 +2352,7 @@ app.get('/availability', async (req, res) => {
     // Preferred shape: club_id, sport, date, time, court_index
     if (bCols.has('club_id') && bCols.has('sport') && bCols.has('date') && bCols.has('time') && bCols.has('court_index')) {
       bookings = await db.prepare(`
-        SELECT b.id, b.court_index, b.time, b.user_id, u.username AS booked_by
+  SELECT b.id, b.court_index, b.time, b.user_id, COALESCE(u.username, u.display_name) AS booked_by
         FROM bookings b
         LEFT JOIN users u ON u.id = b.user_id
         WHERE b.club_id=? AND b.sport=? AND b.date=?
@@ -2369,7 +2369,7 @@ app.get('/availability', async (req, res) => {
       bookings = await db.prepare(`
         SELECT b.id,
                (row_number() OVER (PARTITION BY c.club_id ORDER BY c.id) - 1) AS court_index,
-               b.time, b.user_id, u.username AS booked_by
+               b.time, b.user_id, COALESCE(u.username, u.display_name) AS booked_by
         FROM bookings b
         JOIN courts c ON c.id = b.court_id
         LEFT JOIN users u ON u.id = b.user_id
@@ -2405,7 +2405,7 @@ app.get('/availability', async (req, res) => {
         SELECT b.id,
                co.court_index,
                b.starts_at AS starts_at,
-               b.user_id, u.username AS booked_by
+               b.user_id, COALESCE(u.username, u.display_name) AS booked_by
         FROM bookings b
         JOIN courts_ordered co ON co.id = b.court_id
         LEFT JOIN users u ON u.id = b.user_id
