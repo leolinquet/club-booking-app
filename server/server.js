@@ -2346,17 +2346,23 @@ app.get('/availability', async (req, res) => {
     // bookings table historically used different column names in various installs.
     // Inspect columns and query accordingly to avoid "column does not exist" errors.
     const bInfo = await tableInfo('bookings');
+    // Inspect users table shape so we can avoid referencing username when it doesn't exist.
+    const uInfo = await tableInfo('users');
+    const uCols = new Set((uInfo || []).map(c => c.name));
+    const bookedByExpr = uCols.has('username')
+      ? 'COALESCE(u.username, u.display_name) AS booked_by'
+      : (uCols.has('display_name') ? 'u.display_name AS booked_by' : (uCols.has('name') ? 'u.name AS booked_by' : 'NULL AS booked_by'));
     const bCols = new Set((bInfo || []).map(c => c.name));
     let bookings;
 
     // Preferred shape: club_id, sport, date, time, court_index
     if (bCols.has('club_id') && bCols.has('sport') && bCols.has('date') && bCols.has('time') && bCols.has('court_index')) {
-      bookings = await db.prepare(`
-  SELECT b.id, b.court_index, b.time, b.user_id, COALESCE(u.username, u.display_name) AS booked_by
-        FROM bookings b
-        LEFT JOIN users u ON u.id = b.user_id
-        WHERE b.club_id=? AND b.sport=? AND b.date=?
-      `).all(clubId, sport, date);
+  bookings = await db.prepare(`
+  SELECT b.id, b.court_index, b.time, b.user_id, ${bookedByExpr}
+    FROM bookings b
+    LEFT JOIN users u ON u.id = b.user_id
+    WHERE b.club_id=? AND b.sport=? AND b.date=?
+  `).all(clubId, sport, date);
 
     // Alternate newer schema: bookings use court_id and time/date columns
     } else if (bCols.has('club_id') && bCols.has('sport') && bCols.has('date') && bCols.has('time') && bCols.has('court_id')) {
@@ -2373,20 +2379,20 @@ app.get('/availability', async (req, res) => {
       if (courtsCols.has('sport')) {
         bookings = await db.prepare(`
           SELECT b.id,
-                 (row_number() OVER (PARTITION BY c.club_id ORDER BY c.id) - 1) AS court_index,
-                 b.time, b.user_id, COALESCE(u.username, u.display_name) AS booked_by
-          FROM bookings b
-          JOIN courts c ON c.id = b.court_id
-          LEFT JOIN users u ON u.id = b.user_id
-          WHERE b.club_id=? AND b.sport=? AND b.date=?
-            AND (c.sport = ? ${includeLegacyNull ? 'OR c.sport IS NULL' : ''})
-        `).all(clubId, sport, date, sport);
+               (row_number() OVER (PARTITION BY c.club_id ORDER BY c.id) - 1) AS court_index,
+               b.time, b.user_id, ${bookedByExpr}
+        FROM bookings b
+        JOIN courts c ON c.id = b.court_id
+        LEFT JOIN users u ON u.id = b.user_id
+        WHERE b.club_id=? AND b.sport=? AND b.date=?
+          AND (c.sport = ? ${includeLegacyNull ? 'OR c.sport IS NULL' : ''})
+      `).all(clubId, sport, date, sport);
       } else {
         // Fallback: court rows have no sport column; just map by court id ordering within the club
         bookings = await db.prepare(`
           SELECT b.id,
                  (row_number() OVER (PARTITION BY c.club_id ORDER BY c.id) - 1) AS court_index,
-                 b.time, b.user_id, COALESCE(u.username, u.display_name) AS booked_by
+                 b.time, b.user_id, ${bookedByExpr}
           FROM bookings b
           JOIN courts c ON c.id = b.court_id
           LEFT JOIN users u ON u.id = b.user_id
@@ -2412,7 +2418,7 @@ app.get('/availability', async (req, res) => {
       // Build a derived, ordered list of courts for this club/sport
       const courtsFilterCond = `c2.club_id = ? AND (c2.sport = ? ${includeLegacyNull ? 'OR c2.sport IS NULL' : ''})`;
       // Select raw starts_at so we can interpret it as UTC and convert to club-local time in JS
-      let rawRows = await db.prepare(`
+        let rawRows = await db.prepare(`
         WITH courts_ordered AS (
           SELECT id, (row_number() OVER (ORDER BY id) - 1) AS court_index
           FROM courts c2
@@ -2422,7 +2428,7 @@ app.get('/availability', async (req, res) => {
         SELECT b.id,
                co.court_index,
                b.starts_at AS starts_at,
-               b.user_id, COALESCE(u.username, u.display_name) AS booked_by
+               b.user_id, ${bookedByExpr}
         FROM bookings b
         JOIN courts_ordered co ON co.id = b.court_id
         LEFT JOIN users u ON u.id = b.user_id
