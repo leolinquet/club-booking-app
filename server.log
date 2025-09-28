@@ -1,0 +1,4 @@
+Manager account already exists: leolinquet
+[db] connected to "clubbooking_local" as "leolopez-linquet"
+[db] PostgreSQL 16.10 (Homebrew) on aarch64-apple-darwin24.4.0, compiled by Apple clang version 17.0.0 (clang-1700.0.13.3), 64-bit
+server listening on :5051

@@ -27,6 +27,8 @@ const files = [
   '006_players_and_points_reset.sql',
   '007_add_user_columns.sql',
   '008_add_club_columns.sql',
+  '009_create_club_sports.sql',
+  '010_add_club_timezone.sql',
 ].map(f => path.join(MIG_DIR, f));
 
 (async () => {

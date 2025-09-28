@@ -2424,7 +2424,12 @@ app.get('/availability', async (req, res) => {
       const clubTz = clubSportRow && clubSportRow.timezone ? String(clubSportRow.timezone) : (process.env.DEFAULT_TIMEZONE || 'UTC');
 
       // Build a derived, ordered list of courts for this club/sport
-      const courtsFilterCond = `c2.club_id = ? AND (c2.sport = ? ${includeLegacyNull ? 'OR c2.sport IS NULL' : ''})`;
+      // If the courts table lacks a 'sport' column (older installs), omit sport filters
+      const courtsInfoForLegacy = await tableInfo('courts');
+      const courtsColsForLegacy = new Set((courtsInfoForLegacy || []).map(c => c.name));
+      const courtsFilterCond = courtsColsForLegacy.has('sport')
+        ? `c2.club_id = ? AND (c2.sport = ? ${includeLegacyNull ? 'OR c2.sport IS NULL' : ''})`
+        : `c2.club_id = ?`;
       // Select raw starts_at so we can interpret it as UTC and convert to club-local time in JS
         let rawRows = await db.prepare(`
         WITH courts_ordered AS (
@@ -2440,7 +2445,7 @@ app.get('/availability', async (req, res) => {
         FROM bookings b
         JOIN courts_ordered co ON co.id = b.court_id
         LEFT JOIN users u ON u.id = b.user_id
-      `).all(clubId, String(sport));
+  `).all.apply(null, courtsColsForLegacy.has('sport') ? [clubId, String(sport)] : [clubId]);
 
       // Filter and normalize rows to the shape expected by the rest of the code:
       // { id, court_index, time, user_id, booked_by }

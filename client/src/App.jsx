@@ -12,14 +12,40 @@ const safeParse = (s) => {
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5051';
 
 const API = (() => {
-  const h = typeof window !== 'undefined' ? window.location.hostname : '';
-  const isRender = /\.onrender\.com$/i.test(h);
-  let base = typeof window !== 'undefined' ? window.API_BASE : '';
-  if (isRender && (!base || /localhost/.test(base))) {
-    base = 'https://club-booking-app.onrender.com';   // same API URL as above
-    if (typeof window !== 'undefined') window.API_BASE = base;
+  // runtime-resolved API base (preferred). Fall back to Vite env or hardcoded localhost.
+  const runtimeBase = typeof window !== 'undefined' ? window.API_BASE : '';
+  const envBase = typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_API_BASE || '') : '';
+  let base = runtimeBase || envBase || 'http://localhost:5051';
+
+  // If hosted on Render, prefer the Render API URL unless explicitly overridden
+  try {
+    const h = typeof window !== 'undefined' ? window.location.hostname : '';
+    if (/\.onrender\.com$/i.test(h) && (!runtimeBase || /localhost/.test(runtimeBase))) {
+      base = 'https://club-booking-app.onrender.com';
+      if (typeof window !== 'undefined') window.API_BASE = base;
+    }
+  } catch (e) {
+    // ignore
   }
-  return base || 'http://localhost:5051';
+
+  // Normalize base to a full absolute URL so fetch(`${API}${path}`) is always valid.
+  function normalize(u) {
+    if (!u) return 'http://localhost:5051';
+    // :5051  -> http://localhost:5051
+    if (/^:\d+$/.test(u)) return 'http://localhost' + u;
+    // //host  -> use current protocol
+    if (/^\/\//.test(u)) return (typeof window !== 'undefined' ? window.location.protocol : 'http:') + u;
+    // host:port or host without protocol -> add current protocol
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(u)) {
+      return (typeof window !== 'undefined' ? window.location.protocol : 'http:') + '//' + u;
+    }
+    return u;
+  }
+
+  const final = normalize(String(base));
+  // helpful debug: show the resolved API base in the browser console during development
+  try { if (typeof window !== 'undefined' && import.meta.env?.MODE === 'development') console.debug('Resolved API base ->', final); } catch (e) {}
+  return final;
 })();
 
 async function j(path, opts = {}) {
