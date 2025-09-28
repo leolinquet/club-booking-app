@@ -6,7 +6,7 @@ const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 (async ()=>{
   try {
     const res = await pool.query(`
-      SELECT b.id, b.court_id, b.starts_at, b.ends_at, b.user_id, u.username,
+      SELECT b.id, b.court_id, b.starts_at, b.ends_at, b.user_id, COALESCE(u.username, u.display_name) AS username,
         c.id AS court_row_id, c.club_id AS court_club_id, c.sport AS court_sport,
         cl.id AS club_id, cl.timezone AS club_tz, cl.sport AS club_sport
       FROM bookings b

@@ -2366,16 +2366,33 @@ app.get('/availability', async (req, res) => {
       const clubDefaultSport = clubSportRow ? String(clubSportRow.sport || '').toLowerCase() : '';
       const includeLegacyNull = (String(sport).toLowerCase() === clubDefaultSport);
 
-      bookings = await db.prepare(`
-        SELECT b.id,
-               (row_number() OVER (PARTITION BY c.club_id ORDER BY c.id) - 1) AS court_index,
-               b.time, b.user_id, COALESCE(u.username, u.display_name) AS booked_by
-        FROM bookings b
-        JOIN courts c ON c.id = b.court_id
-        LEFT JOIN users u ON u.id = b.user_id
-        WHERE b.club_id=? AND b.sport=? AND b.date=?
-          AND (c.sport = ? ${includeLegacyNull ? 'OR c.sport IS NULL' : ''})
-      `).all(clubId, sport, date, sport);
+      // Inspect courts table shape to avoid referencing c.sport when the column is absent.
+      const courtsInfo = await tableInfo('courts');
+      const courtsCols = new Set((courtsInfo || []).map(c => c.name));
+
+      if (courtsCols.has('sport')) {
+        bookings = await db.prepare(`
+          SELECT b.id,
+                 (row_number() OVER (PARTITION BY c.club_id ORDER BY c.id) - 1) AS court_index,
+                 b.time, b.user_id, COALESCE(u.username, u.display_name) AS booked_by
+          FROM bookings b
+          JOIN courts c ON c.id = b.court_id
+          LEFT JOIN users u ON u.id = b.user_id
+          WHERE b.club_id=? AND b.sport=? AND b.date=?
+            AND (c.sport = ? ${includeLegacyNull ? 'OR c.sport IS NULL' : ''})
+        `).all(clubId, sport, date, sport);
+      } else {
+        // Fallback: court rows have no sport column; just map by court id ordering within the club
+        bookings = await db.prepare(`
+          SELECT b.id,
+                 (row_number() OVER (PARTITION BY c.club_id ORDER BY c.id) - 1) AS court_index,
+                 b.time, b.user_id, COALESCE(u.username, u.display_name) AS booked_by
+          FROM bookings b
+          JOIN courts c ON c.id = b.court_id
+          LEFT JOIN users u ON u.id = b.user_id
+          WHERE b.club_id=? AND b.sport=? AND b.date=?
+        `).all(clubId, sport, date);
+      }
 
     // Legacy schema (migrations/001_init.sql): bookings store court_id and starts_at/ends_at without club_id or sport
     } else if (bCols.has('court_id') && bCols.has('starts_at')) {
@@ -2772,6 +2789,15 @@ export async function logDbIdentity() {
 }
 // Ensure PORT is a number (some platforms provide it as a string)
 const PORT = Number(process.env.PORT) || 5051;
+
+// Log DB identity at startup to help diagnose which DATABASE_URL the
+// running process actually connected to (useful on Render where envs vary).
+try {
+  await logDbIdentity();
+} catch (e) {
+  console.warn('logDbIdentity failed at startup:', e && e.message ? e.message : e);
+}
+
 app.listen(PORT, () => console.log(`server listening on :${PORT}`));
 
 
