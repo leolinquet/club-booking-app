@@ -2539,11 +2539,30 @@ app.post('/book', async (req, res) => {
     const isOwnClubManager = clubRow && Number(clubRow.manager_id) === Number(userId);
 
     let targetUserId = Number(userId);
+    // When the manager assigns bookings to other users (asUsername), avoid
+    // referencing a missing `username` column. Inspect the users table and
+    // search by a column that actually exists (username, display_name, email, name).
     if (asUsername !== undefined && asUsername !== null) {
       if (!isOwnClubManager) {
         return res.status(403).json({ error: 'Only the club manager can assign bookings to other users.' });
       }
-      const u = await db.prepare('SELECT id FROM users WHERE username = ?').get(String(asUsername).trim());
+
+      const uInfoForLookup = await tableInfo('users');
+      const uColsForLookup = new Set((uInfoForLookup || []).map(c => c.name));
+      const lookup = String(asUsername).trim();
+      let u = null;
+      if (uColsForLookup.has('username')) {
+        u = await db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)').get(lookup);
+      } else if (uColsForLookup.has('display_name')) {
+        u = await db.prepare('SELECT id FROM users WHERE LOWER(display_name) = LOWER(?)').get(lookup);
+      } else if (uColsForLookup.has('email')) {
+        u = await db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(lookup);
+      } else if (uColsForLookup.has('name')) {
+        u = await db.prepare('SELECT id FROM users WHERE LOWER(name) = LOWER(?)').get(lookup);
+      } else {
+        return res.status(500).json({ error: 'Cannot lookup user: users table has no username/display_name/email/name column' });
+      }
+
       if (!u) return res.status(400).json({ error: 'User not found' });
       targetUserId = u.id;
     }
