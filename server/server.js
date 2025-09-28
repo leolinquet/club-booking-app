@@ -24,6 +24,14 @@ const __dirname  = path.dirname(__filename);
 try {
   // run a tiny query to force the pool to attempt a connection
   await pool.query('SELECT 1');
+  // Ensure we have a sensible search_path so unqualified CREATE/ALTER statements
+  // operate in the 'public' schema. Some hosted Postgres instances require an
+  // explicit search_path or will error with "no schema has been selected to create in".
+  try {
+    await pool.query("SET search_path TO public");
+  } catch (spErr) {
+    console.warn('Could not set search_path to public at startup:', spErr && spErr.message ? spErr.message : spErr);
+  }
 } catch (e) {
   console.error('\nFATAL: cannot connect to the database at startup.');
   console.error('Check your DATABASE_URL environment variable; Render should have a valid Postgres URL like:');
