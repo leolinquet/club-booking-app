@@ -1,0 +1,81 @@
+/* Mobile Testing and Debug Styles */
+/* Add this to mobile.css temporarily to identify overlapping elements */
+
+/* Uncomment these styles for debugging overlapping elements */
+/*
+.debug-mobile * {
+  outline: 1px solid rgba(255, 0, 0, 0.3) !important;
+  background: rgba(0, 255, 0, 0.1) !important;
+}
+
+.debug-mobile button {
+  outline: 2px solid blue !important;
+  background: rgba(0, 0, 255, 0.2) !important;
+}
+
+.debug-mobile .sticky, .debug-mobile .fixed {
+  outline: 3px solid purple !important;
+  background: rgba(255, 0, 255, 0.3) !important;
+}
+*/
+
+/* Additional mobile improvements */
+@media (max-width: 640px) {
+  /* Ensure navbar doesn't cover content */
+  body {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  /* Improve modal positioning on mobile */
+  .fixed.inset-0 {
+    top: env(safe-area-inset-top);
+    bottom: env(safe-area-inset-bottom);
+    left: env(safe-area-inset-left);
+    right: env(safe-area-inset-right);
+  }
+  
+  /* Better scroll behavior on mobile */
+  .overflow-auto {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+  
+  /* Prevent zoom on input focus (iOS Safari) */
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  select,
+  textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+  
+  /* Better button spacing in flex containers */
+  .flex.gap-2 button,
+  .flex.gap-3 button {
+    flex-shrink: 0;
+  }
+  
+  /* Ensure dropdown menus are accessible */
+  .absolute.top-full {
+    z-index: 60;
+  }
+  
+  /* Fix for cards that might overlap */
+  .space-y-6 > * + * {
+    margin-top: 24px !important;
+  }
+  
+  /* Improve touch area for small buttons */
+  button:not(.btn) {
+    padding: 8px 16px;
+    min-height: 44px;
+  }
+  
+  /* Fix for table cells that might be too small */
+  .table td {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}

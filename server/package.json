@@ -8,12 +8,15 @@
   },
   "scripts": {
     "dev": "node server.js",
+    "dev:local": "DATABASE_URL='postgres://leolopez-linquet@localhost:5432/clubbooking_local' node server.js",
     "start": "node server.js",
     "start:local": "nohup env $(cat .env | xargs) node -r dotenv/config server.js > server.log 2>&1 & echo $! > server.pid",
     "stop:local": "if [ -f server.pid ]; then kill $(cat server.pid) && rm -f server.pid; else echo 'no server.pid'; fi",
-  "migrate": "node migrate.mjs",
-  "migrate:force": "ALLOW_DESTRUCTIVE_MIGRATIONS=1 node migrate.mjs",
+    "migrate": "node migrate.mjs",
+    "migrate:local": "DATABASE_URL='postgres://leolopez-linquet@localhost:5432/clubbooking_local' node migrate.mjs",
+    "migrate:force": "ALLOW_DESTRUCTIVE_MIGRATIONS=1 node migrate.mjs",
     "check:db": "node check_db.mjs",
+    "check:db:local": "DATABASE_URL='postgres://leolopez-linquet@localhost:5432/clubbooking_local' node check_db.mjs",
     "check:seed": "node check_seed.mjs"
   },
   "dependencies": {

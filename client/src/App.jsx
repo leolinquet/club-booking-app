@@ -277,7 +277,7 @@ export default function App(){
           onMarkRead={markAnnouncementRead}
         />
       )}
-      <div className="max-w-5xl mx-auto p-4 space-y-4 flex-1">
+      <div className="max-w-5xl mx-auto p-4 space-y-6 flex-1 main-content pt-6">
         {effectivePage === 'clubs' ? (
           <ClubsPage
             user={user}
@@ -712,7 +712,7 @@ function ManagerDashboard({ user, club }){
           {editingId ? 'Edit sport' : 'Add a sport'}
         </h3>
 
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4">
           {/* Sport */}
           <div>
             <label htmlFor="sportChoice" className="text-xs text-gray-600 mb-1 block">Sport</label>
@@ -987,7 +987,7 @@ function UserBooking({ user, club }){
   return (
     <div className="space-y-4">
       <Card>
-        <div className="grid md:grid-cols-4 gap-3 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
           <div>
             <div className="text-sm text-gray-600">Sport</div>
             <Select value={sport} onChange={e=>setSport(e.target.value)}>
@@ -1663,28 +1663,28 @@ function TournamentsView({ API, club, user, isManager }) {
       {loading ? (
         <div className="text-sm text-gray-500">Loading…</div>
       ) : (
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {list.map(t => (
-            <div key={t.id} className="border rounded-lg p-3 bg-white shadow-sm">
-              <div className="text-sm font-semibold">{t.name} · {t.sport} {t.end_date ? '· Completed' : '· Active'}</div>
-              <div className="mt-2 flex items-center gap-2">
-                <button className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300" onClick={()=> openDetail(t.id)}>
+            <div key={t.id} className="border rounded-lg p-4 bg-white shadow-sm">
+              <div className="text-sm font-semibold mb-3">{t.name} · {t.sport} {t.end_date ? '· Completed' : '· Active'}</div>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <button className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 min-h-[44px]" onClick={()=> openDetail(t.id)}>
                   View
                 </button>
 
                 {!isManager && !t.end_date && (
                   joined[t.id] ? (
-                    <button className="px-3 py-1 rounded bg-red-100 hover:bg-red-200"
+                    <button className="px-4 py-2 rounded bg-red-100 hover:bg-red-200 min-h-[44px]"
                             onClick={()=> withdraw(t.id, t.name)}>Withdraw</button>
                   ) : (
-                    <button className="px-3 py-1 rounded bg-black text-white"
+                    <button className="px-4 py-2 rounded bg-black text-white min-h-[44px]"
                             onClick={()=> signIn(t.id, t.name)}>Sign in</button>
                   )
                 )}
 
                 {isManager && (
                   <button
-                    className="ml-auto px-3 py-1 rounded bg-red-100 hover:bg-red-200"
+                    className="sm:ml-auto px-4 py-2 rounded bg-red-100 hover:bg-red-200 min-h-[44px]"
                     onClick={()=> deleteTournament(t.id, t.name)}
                     title="Delete this tournament"
                   >
