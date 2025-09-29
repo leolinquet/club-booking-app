@@ -50,7 +50,7 @@ export default function Navbar({
     "w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10";
 
   return (
-    <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-gray-200">
+    <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-gray-200">
       <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
         {/* Brand */}
         <button
@@ -127,7 +127,7 @@ export default function Navbar({
       {/* Backdrop */}
       <div
         className={`sm:hidden fixed inset-0 bg-black/40 transition-opacity duration-200 ${
-          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          open ? "opacity-100 pointer-events-auto z-40" : "opacity-0 pointer-events-none z-0"
         }`}
       />
 
@@ -137,7 +137,9 @@ export default function Navbar({
         ref={menuRef}
         role="dialog"
         aria-modal="true"
-        className="sm:hidden fixed left-0 right-0 top-14 z-50 px-3"
+        className={`sm:hidden fixed left-0 right-0 top-14 px-3 transition-all duration-200 ${
+          open ? "z-50 pointer-events-auto" : "z-0 pointer-events-none"
+        }`}
       >
         <div
           className={`rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden

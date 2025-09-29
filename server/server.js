@@ -315,6 +315,7 @@ async function ensureManagerAccount() {
 
   if (uCols.includes('display_name')) { insertCols.push('display_name'); insertVals.push(managerUsername); }
     if (uCols.includes('username'))     { insertCols.push('username'); insertVals.push(managerUsername); }
+    if (uCols.includes('email'))        { insertCols.push('email'); insertVals.push(`${managerUsername}@example.com`); }
     if (uCols.includes('password_hash')){ insertCols.push('password_hash'); insertVals.push(password_hash); }
     if (uCols.includes('role'))         { insertCols.push('role'); insertVals.push('manager'); }
     if (uCols.includes('is_manager'))   { insertCols.push('is_manager'); insertVals.push(true); }
@@ -2001,6 +2002,48 @@ app.post('/clubs', async (req, res) => {
   }
 });
 
+// Lightweight lookup for client-side convenience: resolve a short name to a user id
+// Query: /users/lookup?name=alice
+app.get('/users/lookup', async (req, res) => {
+  try {
+    const name = String(req.query.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'name required' });
+
+    const uCols = (await tableInfo('users')).map(c => c.name);
+    const where = [];
+    const params = [];
+    
+    // Build separate parameters for each searchable column
+    if (uCols.includes('username')) { 
+      where.push(`LOWER(username)=LOWER($${params.length + 1})`); 
+      params.push(name); 
+    }
+    if (uCols.includes('display_name')) { 
+      where.push(`LOWER(display_name)=LOWER($${params.length + 1})`); 
+      params.push(name); 
+    }
+    if (uCols.includes('email')) { 
+      where.push(`LOWER(email)=LOWER($${params.length + 1})`); 
+      params.push(name); 
+    }
+
+    if (!where.length) return res.status(500).json({ error: 'users table missing searchable columns' });
+
+    // Use DISTINCT to avoid duplicate rows when multiple columns match the same row
+    const sql = `SELECT DISTINCT id, display_name, username, email FROM users WHERE ${where.join(' OR ')}`;
+    const rows = (await pool.query(sql, params)).rows || [];
+    
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    if (rows.length > 1) return res.status(300).json({ error: 'ambiguous', candidates: rows.map(r => ({ id: r.id, display_name: r.display_name, username: r.username, email: r.email })) });
+    
+    const r = rows[0];
+    res.json({ id: r.id, display_name: r.display_name, username: r.username, email: r.email });
+  } catch (e) {
+    console.error('GET /users/lookup', e && e.message ? e.message : e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
 app.get('/users/:id', async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -2016,34 +2059,7 @@ app.get('/users/:id', async (req, res) => {
   }
 });
 
-// Lightweight lookup for client-side convenience: resolve a short name to a user id
-// Query: /users/lookup?name=alice
-app.get('/users/lookup', async (req, res) => {
-  try {
-    const name = String(req.query.name || '').trim();
-    if (!name) return res.status(400).json({ error: 'name required' });
 
-    const uCols = (await tableInfo('users')).map(c => c.name);
-    const where = [];
-    const params = [];
-    if (uCols.includes('username')) { where.push('LOWER(username)=LOWER($1)'); params.push(name); }
-    if (uCols.includes('display_name')) { where.push('LOWER(display_name)=LOWER($1)'); params.push(name); }
-    if (uCols.includes('email')) { where.push('LOWER(email)=LOWER($1)'); params.push(name); }
-
-    if (!where.length) return res.status(500).json({ error: 'users table missing searchable columns' });
-
-    // Use a UNION to avoid duplicate rows when multiple columns match the same row
-    const sql = `SELECT id, display_name, username, email FROM users WHERE ${where.join(' OR ')}`;
-    const rows = (await pool.query(sql, params)).rows || [];
-    if (!rows.length) return res.status(404).json({ error: 'not found' });
-    if (rows.length > 1) return res.status(300).json({ error: 'ambiguous', candidates: rows.map(r => ({ id: r.id, display_name: r.display_name, username: r.username, email: r.email })) });
-    const r = rows[0];
-    res.json({ id: r.id, display_name: r.display_name, username: r.username, email: r.email });
-  } catch (e) {
-    console.error('GET /users/lookup', e && e.message ? e.message : e);
-    res.status(500).json({ error: 'unexpected error' });
-  }
-});
 
 app.post('/clubs/join', async (req, res) => {
   try {

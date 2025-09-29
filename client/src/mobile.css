@@ -16,14 +16,18 @@ img { max-width: 100%; height: auto; display: block; }
 .card { background: #fff; border-radius: var(--radius); padding: var(--space); box-shadow: var(--shadow); }
 .section-title { margin: 4px 0 8px; font-weight: 700; font-size: 18px; }
 
-/* Buttons: big enough for thumbs */
+/* Buttons: big enough for thumbs with proper spacing */
 .btn {
   display: inline-flex; align-items: center; justify-content: center;
   min-height: 48px; padding: 0 16px; gap: 8px;
   border-radius: 999px; border: none; background: #1a73e8; color: #fff; font-weight: 600;
+  margin: 4px 0; /* add vertical margin to prevent overlaps */
+  position: relative; /* ensure proper stacking */
+  z-index: 1;
 }
 .btn.secondary { background: #e9eef6; color: #1a73e8; }
 .btn:disabled { opacity: .6; }
+.btn:active { transform: scale(0.98); } /* visual feedback on tap */
 
 /* Forms */
 label { display: block; font-size: 14px; color: #444; margin-bottom: 6px; }
@@ -32,13 +36,14 @@ input[type="text"], input[type="number"], input[type="date"], input[type="time"]
   width: 100%; min-height: 48px; border-radius: 10px; border: 1px solid #e5e7eb; padding: 10px 12px; background: #fff;
 }
 
-/* Top nav: sticky */
+/* Top nav: sticky - increased z-index to prevent overlaps */
 .navbar {
-  position: sticky; top: 0; z-index: 20;
+  position: sticky; top: 0; z-index: 50;
   backdrop-filter: blur(8px);
-  background: rgba(255,255,255,.85);
+  background: rgba(255,255,255,.95);
   border-bottom: 1px solid #eee;
   padding: 8px 12px;
+  min-height: 56px; /* ensure consistent height */
 }
 
 /* Tables -> Cards on mobile */
@@ -49,8 +54,15 @@ input[type="text"], input[type="number"], input[type="date"], input[type="time"]
 @media (max-width: 640px){
   .table, .table thead, .table tbody, .table th, .table td, .table tr { display: block; }
   .table thead { display: none; }
-  .table tr { margin: 0 0 var(--space); border-radius: var(--radius); box-shadow: var(--shadow); background: #fff; }
-  .table td { border: none; padding: 12px; }
+  .table tr { 
+    margin: 0 0 var(--space); 
+    border-radius: var(--radius); 
+    box-shadow: var(--shadow); 
+    background: #fff;
+    position: relative;
+    z-index: 1;
+  }
+  .table td { border: none; padding: 12px; min-height: 48px; /* ensure touch target size */ }
   .table td::before {
     content: attr(data-label);
     display: block; font-size: 12px; color: #666; margin-bottom: 4px;
@@ -72,10 +84,12 @@ input[type="text"], input[type="number"], input[type="date"], input[type="time"]
 .slot.available { cursor: pointer; }
 .slot.selected { outline: 2px solid #1a73e8; }
 
-/* Sticky action bar for confirm buttons */
+/* Sticky action bar for confirm buttons - higher z-index */
 .action-bar {
-  position: sticky; bottom: 0; z-index: 10; padding: 8px; background: rgba(255,255,255,.9);
+  position: sticky; bottom: 0; z-index: 40; padding: 12px; background: rgba(255,255,255,.95);
   border-top: 1px solid #eee; backdrop-filter: blur(8px);
+  box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+  min-height: 72px; /* ensure enough space for touch targets */
 }
 
 /* Reduce tap highlight and accidental text selection on buttons */
@@ -87,12 +101,95 @@ button { -webkit-tap-highlight-color: transparent; }
 /* mobile.css (near bottom) */
 button { -webkit-tap-highlight-color: transparent; }
 
-/* Navbar component helpers */
-.nav-btn {
-  @apply px-3 py-1.5 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10;
+/* Mobile-specific fixes for overlapping elements */
+@media (max-width: 768px) {
+  /* Ensure proper spacing between navbar and content */
+  .main-content {
+    margin-top: 8px; /* Small gap after navbar */
+    padding-bottom: 100px; /* space for sticky action bars */
+  }
+  
+  /* Ensure proper spacing between sections */
+  .space-y-6 > :not(:first-child) {
+    margin-top: 24px;
+  }
+  
+  /* Fix grid overlaps on mobile */
+  .grid {
+    display: grid;
+    gap: 16px; /* increased gap for mobile */
+  }
+  
+  /* Ensure buttons don't overlap */
+  .flex.gap-2, .flex.gap-3 {
+    gap: 12px;
+  }
+  
+  /* Add margin to cards to prevent touch issues */
+  .bg-white.rounded-lg, .bg-white.rounded-xl {
+    margin-bottom: 16px;
+    position: relative;
+    z-index: 1;
+  }
+  
+  /* Improve touch targets for interactive elements */
+  button, .cursor-pointer {
+    min-height: 44px;
+    min-width: 44px;
+    position: relative;
+    z-index: 2;
+  }
+  
+  /* Fix overlapping modals and dropdowns - only when active */
+  .fixed.z-50 {
+    z-index: 50;
+  }
+  
+  /* Ensure text inputs are accessible */
+  input, select, textarea {
+    min-height: 48px;
+    position: relative;
+    z-index: 1;
+  }
+  
+  /* Ensure interactive elements in header areas are clickable */
+  .flex.items-center.gap-3,
+  .flex.items-center.gap-2 {
+    position: relative;
+    z-index: 5;
+  }
 }
+
+/* Navbar component helpers - converted from @apply to standard CSS */
+.nav-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: transparent;
+  transition: background-color 0.2s;
+}
+.nav-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+.nav-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+}
+
 .menu-item {
-  @apply w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  transition: background-color 0.2s;
+}
+.menu-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+.menu-item:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
 }
 .burger-line {
   pointer-events: none;
