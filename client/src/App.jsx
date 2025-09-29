@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Navbar from "./Navbar";
 import './styles/theme.css';
 import './styles/ui.css';
-import "./a2hs.js";
+// removed a2hs (add-to-home-screen) to hide the Install App button in the navbar
 import ClubGate from './ClubGate.jsx';
 
 const safeParse = (s) => {
@@ -108,11 +108,31 @@ export default function App(){
   function saveUser(u){ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }
   function saveClub(c){ setClub(c); localStorage.setItem('club', JSON.stringify(c)); }
 
+  // Single canonical handler for successful auth (used by Auth component)
+  async function handleAuthed(u) {
+    // Persist user and update state
+    console.debug('handleAuthed: setting user', u && u.id);
+    saveUser(u);
+
+    // load club(s) with credentials so the server sees the authenticated cookie/session
+    try {
+      const r = await fetch(`${API}/users/${u.id}/clubs`, { credentials: 'include' });
+      if (r.ok) {
+        const clubs = await r.json().catch(()=>[]);
+        if (clubs && clubs.length) {
+          saveClub(clubs[0]);
+          setView('book');
+        }
+      }
+    } catch (e) {
+      // ignore failures; UI will keep working with persisted user
+    }
+  }
   // Ensure we fetch the authoritative active club (this will backfill code if missing)
   // This effect must run (be declared) on every render to keep Hooks order stable.
   useEffect(() => {
     (async () => {
-      if (!user) return;
+      if (!user || !user.id) return;
       try {
         const r = await fetch(`${API}/users/${user.id}/club`, { credentials: 'include' });
         if (!r.ok) return;
@@ -126,43 +146,76 @@ export default function App(){
     })();
   }, [user?.id]);
 
-  if (!user) {
-    const handleAuthed = async (u) => {
-      localStorage.setItem('user', JSON.stringify(u));
-      setUser(u);
+  // Announcements (in-app messages) - moved above early returns so hooks stay stable
+  const [showAnnouncements, setShowAnnouncements] = useState(false);
+  const [announcements, setAnnouncements] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-      try {
-        // try to restore saved club if still valid for this user
-        const saved = JSON.parse(localStorage.getItem('club') || 'null');
-        const clubs = await fetchUserClubs(u.id);
-
-        let nextClub = null;
-        if (saved && clubs.some(c => c.id === saved.id)) {
-          nextClub = saved;                     // keep previously selected club
-        } else if (clubs.length) {
-          nextClub = clubs[0];                  // fallback: first club
-        }
-
-        if (nextClub) {
-          localStorage.setItem('club', JSON.stringify(nextClub));
-          setClub(nextClub);
-          setView('book');
-        } else {
-          localStorage.removeItem('club');
-          setClub(null);
-        }
-      } catch {
-        setClub(null);
-      }
-    };
-
-    async function fetchUserClubs(userId) {
-      const r = await fetch(`${API}/users/${userId}/clubs`);
-      if (!r.ok) return [];
-      return r.json();
+  const loadAnnouncements = async () => {
+    if (!user || !user.id) return;
+    try {
+      const r = await fetch(`${API}/users/${user.id}/announcements`, { credentials: 'include' });
+      if (!r.ok) return;
+      const data = await r.json().catch(() => null);
+      if (!Array.isArray(data)) return;
+      // Normalize server rows to a stable client-side shape:
+      // server returns: { ua_id, read, read_at, announcement_id, title, body, created_at, send_push }
+      const norm = data.map(a => ({
+        id: Number(a.announcement_id ?? a.id ?? a.announcementId),
+        title: a.title ?? '',
+        body: a.body ?? '',
+        read: !!a.read,
+        created_at: a.created_at || a.created || a.ts || null
+      }));
+      setAnnouncements(norm);
+      setUnreadCount(norm.filter(a => !a.read).length);
+    } catch (e) {
+      // ignore
     }
+  };
 
+  useEffect(() => {
+    loadAnnouncements();
+    // poll every 20s
+    const id = setInterval(() => { loadAnnouncements(); }, 20000);
+    return () => clearInterval(id);
+  }, [user?.id]);
 
+  const createAnnouncement = async ({ title, body }) => {
+    if (!club || !user) return alert('Missing club or user');
+    try {
+      const r = await fetch(`${API}/announcements`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        // server expects managerId (not userId)
+        body: JSON.stringify({ clubId: club.id, managerId: user.id, title, body })
+      });
+      const d = await r.json().catch(()=>null);
+      if (!r.ok) return alert(d?.error || 'Failed to create announcement');
+      await loadAnnouncements();
+      return true;
+    } catch (e) {
+      alert('Failed to create announcement');
+      return false;
+    }
+  };
+
+  const markAnnouncementRead = async (announcementId) => {
+    if (!user) return;
+    try {
+      await fetch(`${API}/users/${user.id}/announcements/${announcementId}/read`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ userId: user.id })
+      });
+      // optimistic update
+      setAnnouncements(prev => prev.map(a => (Number(a.id) === Number(announcementId) ? { ...a, read: true } : a)));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  if (!user) {
     return <Auth onLogin={handleAuthed} onRegister={handleAuthed} />;
   }
 
@@ -172,25 +225,9 @@ export default function App(){
   const isManager = user.role === 'manager';
   const effectivePage = isManager ? view : (view === 'home' ? 'book' : view);
 
-  function saveUser(u) {
-    setUser(u);
-    localStorage.setItem('user', JSON.stringify(u));
-  }
-  function saveClub(c) {
-    setClub(c);
-    localStorage.setItem('club', JSON.stringify(c));
-  }
+  // (previously defined above) handleAuthed is used here
 
-  // after successful login, make sure user has role populated
-  async function handleAuthed(u) {
-    saveUser(u); // u must include role/is_manager from /auth/login
-    // load club(s)
-    const r = await fetch(`${API}/users/${u.id}/clubs`, { credentials: 'include' });
-    if (r.ok) {
-      const clubs = await r.json();
-      if (clubs.length) saveClub(clubs[0]);
-    }
-  }
+  
 
 
   if (user && !club) {
@@ -212,7 +249,34 @@ export default function App(){
         onTournaments={() => setView('tournaments')}
         onRankings={() => setView('rankings')}
         isManager={isManager}
+        user={user}
+        onLogout={async () => {
+          try {
+            // attempt to notify server (if route exists); don't block UI on failure
+            await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null);
+          } catch (e) {}
+          // clear local state and storage so Auth screen renders immediately
+          localStorage.removeItem('user');
+          localStorage.removeItem('club');
+          setUser(null);
+          setClub(null);
+          setView('book');
+        }}
+        onOpenAnnouncements={() => setShowAnnouncements(true)}
+        unreadCount={unreadCount}
       />
+      {showAnnouncements && (
+        <AnnouncementPanel
+          user={user}
+          club={club}
+          isManager={isManager}
+          announcements={announcements}
+          onClose={() => setShowAnnouncements(false)}
+          onRefresh={loadAnnouncements}
+          onCreate={createAnnouncement}
+          onMarkRead={markAnnouncementRead}
+        />
+      )}
       <div className="max-w-5xl mx-auto p-4 space-y-4 flex-1">
         {effectivePage === 'clubs' ? (
           <ClubsPage
@@ -229,7 +293,7 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
+                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); localStorage.removeItem('club'); setUser(null); setClub(null); setView('book'); }}>Logout</Button>
               </div>
             </header>
             <ManagerDashboard user={user} club={club} />
@@ -243,7 +307,7 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
+                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); localStorage.removeItem('club'); setUser(null); setClub(null); setView('book'); }}>Logout</Button>
               </div>
             </header>
             {/* ⬇️ Use the component we added earlier */}
@@ -258,7 +322,7 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
+                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); localStorage.removeItem('club'); setUser(null); setClub(null); setView('book'); }}>Logout</Button>
               </div>
             </header>
             <RankingsView API={API} club={club} user={user} isManager={isManager} />
@@ -272,12 +336,81 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={()=>{localStorage.clear(); location.reload();}}>Logout</Button>
+                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); localStorage.removeItem('club'); setUser(null); setClub(null); setView('book'); }}>Logout</Button>
               </div>
             </header>
             <UserBooking user={user} club={club} />
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* -------------------- Announcement Panel -------------------- */
+function AnnouncementPanel({ user, club, isManager, announcements = [], onClose, onRefresh, onCreate, onMarkRead }){
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!title.trim() || !body.trim()) return alert('Title and body required');
+    setBusy(true);
+    try {
+      const ok = await onCreate({ title: title.trim(), body: body.trim() });
+      if (ok) { setTitle(''); setBody(''); }
+      await onRefresh();
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
+      <div className="w-[720px] max-w-[95%] bg-white rounded-xl shadow p-4">
+        <div className="flex items-start justify-between">
+          <h3 className="text-lg font-medium">Announcements</h3>
+          <div className="flex items-center gap-2">
+            <button className="px-3 py-1 rounded bg-gray-200" onClick={async ()=>{ await onRefresh(); }}>Refresh</button>
+            <button className="px-3 py-1 rounded bg-gray-100" onClick={onClose}>Close</button>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-4">
+          <div>
+            {isManager && (
+              <div className="border rounded p-3 mb-3">
+                <div className="text-sm font-medium mb-2">Create announcement</div>
+                <input className="border rounded px-2 py-1 w-full mb-2" placeholder="Title" value={title} onChange={e=>setTitle(e.target.value)} />
+                <textarea className="border rounded px-2 py-1 w-full mb-2" rows={5} placeholder="Message" value={body} onChange={e=>setBody(e.target.value)} />
+                <div className="flex justify-end gap-2">
+                  <button className="px-3 py-1 rounded bg-gray-200" onClick={()=>{ setTitle(''); setBody(''); }}>Reset</button>
+                  <button className="px-3 py-1 rounded bg-black text-white" onClick={submit} disabled={busy}>Send</button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2 max-h-[60vh] overflow-auto">
+              {announcements.length === 0 && <div className="text-sm text-gray-500">No announcements.</div>}
+              {announcements.map(a => (
+                <div key={a.id} className={`border rounded p-3 ${a.read ? '' : 'bg-yellow-50'}`}>
+                  <div className="flex items-baseline justify-between">
+                    <div className="font-medium">{a.title}</div>
+                    <div className="text-xs text-gray-500">{new Date(a.created_at || a.created || a.ts || Date.now()).toLocaleString()}</div>
+                  </div>
+                  <div className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{a.body}</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    {!a.read && <button className="px-2 py-1 rounded bg-black text-white text-xs" onClick={()=> onMarkRead(a.id)}>Mark read</button>}
+                    {a.read && <span className="text-xs text-gray-500">Read</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-sm text-gray-600 mb-2">About</div>
+            <div className="text-sm text-gray-700">Announcements are in-app messages stored per-club. Only managers can create announcements for their club. Users will see unread messages highlighted.</div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -482,7 +615,7 @@ function ManagerDashboard({ user, club }){
     : Number(form.slotChoice);
 
   const load = async ()=> {
-    const r = await fetch(`${API}/clubs/${club.id}/sports`);
+  const r = await fetch(`${API}/clubs/${club.id}/sports`, { credentials: 'include' });
     const data = await r.json().catch(() => null);
     if (!r.ok || !Array.isArray(data)) {
       setSports([]);
@@ -769,7 +902,7 @@ function UserBooking({ user, club }){
   useEffect(()=>{
     if (!sport || !date) return;
     (async ()=>{
-      const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`);
+    const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`, { credentials: 'include' });
       const d = await r.json();
       if (r.ok) setGrid(d);
       else { setGrid(null); alert(d.error || 'error'); }
@@ -792,7 +925,7 @@ function UserBooking({ user, club }){
 
   const refresh = async () => {
     try {
-      const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`);
+    const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`, { credentials: 'include' });
       const d = await r.json().catch(()=>null);
       if (r.ok) setGrid(d);
       else {
@@ -815,8 +948,8 @@ function UserBooking({ user, club }){
     return;
   }
 
-  const res = await fetch(`${API}/book`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
+    const res = await fetch(`${API}/book`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials: 'include',
     body: JSON.stringify({
       clubId: club.id,
       sport,
@@ -843,7 +976,7 @@ function UserBooking({ user, club }){
     const yes = confirm('Cancel this reservation?');
     if (!yes) return;
     const res = await fetch(`${API}/cancel`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'application/json'}, credentials: 'include',
       body: JSON.stringify({ bookingId, userId: user.id })
     });
     const data = await res.json().catch(()=>null);
@@ -1017,7 +1150,7 @@ function ClubsPage({ user, club, onSetActive }) {
   const load = async () => {
     setError('');
     try {
-      const r = await fetch(`${API}/users/${user.id}/clubs`);
+    const r = await fetch(`${API}/users/${user.id}/clubs`, { credentials: 'include' });
       if (!r.ok) {
         const d = await r.json().catch(()=>null);
         throw new Error((d && d.error) || `Failed to load clubs (${r.status})`);
@@ -1035,7 +1168,7 @@ function ClubsPage({ user, club, onSetActive }) {
   const join = async () => {
     try {
       const res = await fetch(`${API}/clubs/join`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials: 'include',
         body: JSON.stringify({ code: joinCode.trim(), userId: user.id })
       });
       const data = await res.json().catch(()=>null);
@@ -1051,7 +1184,7 @@ function ClubsPage({ user, club, onSetActive }) {
   const create = async () => {
     try {
       const res = await fetch(`${API}/clubs`, {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', headers:{'Content-Type':'application/json'}, credentials: 'include',
         body: JSON.stringify({ name: newName.trim(), managerId: user.id, timezone: newTimezone })
       });
       const data = await res.json().catch(()=>null);
@@ -1090,13 +1223,13 @@ function ClubsPage({ user, club, onSetActive }) {
                         const tz = e.target.value;
                         try {
                           const r = await fetch(`${API}/clubs/${c.id}/timezone`, {
-                            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                            method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
                             body: JSON.stringify({ managerId: user.id, timezone: tz })
                           });
                           const d = await r.json().catch(()=>null);
                           if (!r.ok) return alert(d?.error || 'Failed to update timezone');
                           // Refresh clubs list to pick up updated timezone
-                          await (async () => { const rr = await fetch(`${API}/users/${user.id}/clubs`); const dat = await rr.json().catch(()=>null); setClubs(Array.isArray(dat)?dat:[]); })();
+                          await (async () => { const rr = await fetch(`${API}/users/${user.id}/clubs`, { credentials: 'include' }); const dat = await rr.json().catch(()=>null); setClubs(Array.isArray(dat)?dat:[]); })();
                         } catch (err) {
                           console.error('update tz error', err);
                           alert('Failed to update timezone');
@@ -1310,14 +1443,44 @@ function TournamentsView({ API, club, user, isManager }) {
     if (!selectedId) return;
     const names = playerIdsText.split(',').map(s => s.trim()).filter(Boolean);
     if (!names.length) return alert('Enter usernames separated by commas');
-    const r = await fetch(`${API}/tournaments/${selectedId}/players`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ usernames: names, managerId: user.id })
-    });
-    const data = await r.json();
-    if (!r.ok) return alert(data.error || 'Add players failed');
-    setPlayerIdsText('');
-    await openDetail(selectedId);
+    try {
+      // Best-effort: try to resolve the provided names to userIds via a simple lookup
+      // so we can send userIds when possible. This avoids ambiguity when display names collide.
+      const lookupRes = await Promise.all(names.map(n => fetch(`${API}/users/lookup?name=${encodeURIComponent(n)}`)));
+      const lookupJson = await Promise.all(lookupRes.map(r => r.json().catch(()=>null)));
+      const userIds = [];
+      const unresolved = [];
+      for (let i = 0; i < lookupJson.length; i++) {
+        const j = lookupJson[i];
+        if (j && j.id) userIds.push(j.id);
+        else unresolved.push(names[i]);
+      }
+
+      const payload = {};
+      if (userIds.length) payload.userIds = userIds;
+      if (unresolved.length) payload.usernames = unresolved;
+      payload.managerId = user.id;
+
+      const r = await fetch(`${API}/tournaments/${selectedId}/players`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await r.json().catch(()=>null);
+      if (!r.ok) {
+        // Show ambiguous errors returned by server in a readable way
+        if (data && data.error === 'Ambiguous usernames' && Array.isArray(data.ambiguous)) {
+          const msgs = data.ambiguous.map(a => `${a.name}: ${a.candidates.join(' / ')}`);
+          return alert('Ambiguous names:\n' + msgs.join('\n'));
+        }
+        return alert((data && data.error) || 'Add players failed');
+      }
+
+      setPlayerIdsText('');
+      await openDetail(selectedId);
+    } catch (e) {
+      console.error('addPlayers error', e);
+      alert('Add players failed: ' + (e && e.message ? e.message : String(e)));
+    }
   };
 
   const generateBracket = async () => {

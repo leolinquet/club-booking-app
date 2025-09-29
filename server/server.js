@@ -851,15 +851,45 @@ app.post('/tournaments/:id/players', async (req, res) => {
       return res.status(403).json({ error: 'only club manager can add players' });
     }
 
-    // 1) resolve usernames -> user ids
+    // 1) resolve usernames -> user ids (robust: try username, display_name, email case-insensitively)
     const ids = new Set(userIds.map(n => Number(n)).filter(Boolean));
     const notFound = [];
+    const ambiguous = [];
     for (const raw of usernames) {
       const name = String(raw).trim();
       if (!name) continue;
-      const u = await db.prepare('SELECT id, display_name FROM users WHERE display_name = ?').get(name);
-      if (u) ids.add(u.id);
-      else notFound.push(name);
+
+      // Inspect available users columns so we pick realistic lookup columns
+      const uCols = (await tableInfo('users')).map(c => c.name);
+      const whereParts = [];
+      const params = [];
+      if (uCols.includes('username')) { whereParts.push('LOWER(username)=LOWER(?)'); params.push(name); }
+      if (uCols.includes('display_name')) { whereParts.push('LOWER(display_name)=LOWER(?)'); params.push(name); }
+      if (uCols.includes('email')) { whereParts.push('LOWER(email)=LOWER(?)'); params.push(name); }
+
+      let matches = [];
+      if (whereParts.length) {
+        const sql = `SELECT id, username, display_name, email FROM users WHERE ${whereParts.join(' OR ')}`;
+        try {
+          matches = await db.prepare(sql).all(...params);
+        } catch (e) {
+          console.warn('Username lookup failed for', name, e && e.message ? e.message : e);
+          matches = [];
+        }
+      }
+
+      if (matches.length === 1) {
+        ids.add(Number(matches[0].id));
+      } else if (matches.length > 1) {
+        // Ambiguous identifier: report the candidate matches so the manager can correct input
+        ambiguous.push({ name, candidates: matches.map(m => (m.display_name || m.username || m.email || String(m.id))) });
+      } else {
+        notFound.push(name);
+      }
+    }
+    if (ambiguous.length) {
+      // Return a helpful error describing ambiguous entries and do not perform any writes
+      return res.status(400).json({ error: 'Ambiguous usernames', ambiguous });
     }
     if (ids.size === 0) {
       return res.status(400).json({ error: notFound.length ? `Users not found: ${notFound.join(', ')}` : 'No valid users found' });
@@ -868,16 +898,26 @@ app.post('/tournaments/:id/players', async (req, res) => {
     // 2) ensure players row exists for this club+user, then insert that players.id
     for (const uid of ids) {
       // upsert into players (club-scoped identity). display_name defaults to users.name
+      // Insert or update the players row for this club+user. Ensure the
+      // players.display_name is synced from users.display_name to avoid
+      // stale or mismatched names that confuse the UI.
       await db.prepare(`
         INSERT INTO players (club_id, user_id, display_name)
-        SELECT ?, ?, COALESCE(display_name, 'user' || ?) FROM users WHERE id = ?
-        ON CONFLICT (club_id, user_id) DO NOTHING
+        SELECT ?, ?, COALESCE(display_name, username, 'user' || ?) FROM users WHERE id = ?
+        ON CONFLICT (club_id, user_id) DO UPDATE SET display_name = EXCLUDED.display_name
       `).run(t.club_id, Number(uid), Number(uid), Number(uid));
 
 
       const p = await db.prepare(`
-        SELECT id FROM players WHERE club_id=? AND user_id=?
+        SELECT id, display_name FROM players WHERE club_id=? AND user_id=?
       `).get(t.club_id, Number(uid));
+
+      // Log the upsert result so we can regress later if display_name mismatches occur
+      try {
+        console.log('players upsert:', { club_id: t.club_id, user_id: Number(uid), player_id: p && p.id, display_name: p && p.display_name });
+      } catch (ie) {
+        // don't allow logging failures to break the flow
+      }
 
       if (!p || p.id == null) {
         // safety net: if user/player wasn't created properly, report a clear error
@@ -1656,12 +1696,14 @@ app.get('/tournaments/:id/joined', async (req, res) => {
     if (!t) return res.status(404).json({ error: 'tournament not found' });
 
     // find or create the player's club profile
-    let player = db.prepare(`SELECT id FROM players WHERE club_id=? AND user_id=?`)
+    // Ensure we await the DB calls - missing awaits cause Promises (truthy)
+    // which made the endpoint always return joined: true.
+    let player = await db.prepare(`SELECT id FROM players WHERE club_id=? AND user_id=?`)
       .get(t.club_id, userId);
 
     if (!player) return res.json({ joined: false });
 
-    const row = db.prepare(`
+    const row = await db.prepare(`
       SELECT 1 FROM tournament_players WHERE tournament_id=? AND player_id=? LIMIT 1
     `).get(tId, player.id);
 
@@ -1687,7 +1729,8 @@ app.post('/tournaments/:id/signin', async (req, res) => {
     if (t.end_date) return res.status(400).json({ error: 'tournament is completed' });
 
     // find or create player profile in this club
-    let player = db.prepare(`SELECT id FROM players WHERE club_id=? AND user_id=?`)
+    // IMPORTANT: await the DB call so `player` is the row (not a Promise)
+    let player = await db.prepare(`SELECT id FROM players WHERE club_id=? AND user_id=?`)
       .get(t.club_id, Number(userId));
     if (!player) {
       const u = await db.prepare(`SELECT display_name FROM users WHERE id=?`).get(Number(userId));
@@ -1736,7 +1779,7 @@ app.delete('/tournaments/:id/signin', async (req, res) => {
     const hasMatches = await db.prepare(`SELECT COUNT(*) AS c FROM matches WHERE tournament_id=?`).get(tId).c > 0;
     if (hasMatches) return res.status(400).json({ error: 'cannot withdraw (draw already generated)' });
 
-    const player = db.prepare(`SELECT id FROM players WHERE club_id=? AND user_id=?`)
+    const player = await db.prepare(`SELECT id FROM players WHERE club_id=? AND user_id=?`)
       .get(t.club_id, Number(userId));
     if (!player) return res.json({ ok: true }); // nothing to do
 
@@ -1973,6 +2016,35 @@ app.get('/users/:id', async (req, res) => {
   }
 });
 
+// Lightweight lookup for client-side convenience: resolve a short name to a user id
+// Query: /users/lookup?name=alice
+app.get('/users/lookup', async (req, res) => {
+  try {
+    const name = String(req.query.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'name required' });
+
+    const uCols = (await tableInfo('users')).map(c => c.name);
+    const where = [];
+    const params = [];
+    if (uCols.includes('username')) { where.push('LOWER(username)=LOWER($1)'); params.push(name); }
+    if (uCols.includes('display_name')) { where.push('LOWER(display_name)=LOWER($1)'); params.push(name); }
+    if (uCols.includes('email')) { where.push('LOWER(email)=LOWER($1)'); params.push(name); }
+
+    if (!where.length) return res.status(500).json({ error: 'users table missing searchable columns' });
+
+    // Use a UNION to avoid duplicate rows when multiple columns match the same row
+    const sql = `SELECT id, display_name, username, email FROM users WHERE ${where.join(' OR ')}`;
+    const rows = (await pool.query(sql, params)).rows || [];
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    if (rows.length > 1) return res.status(300).json({ error: 'ambiguous', candidates: rows.map(r => ({ id: r.id, display_name: r.display_name, username: r.username, email: r.email })) });
+    const r = rows[0];
+    res.json({ id: r.id, display_name: r.display_name, username: r.username, email: r.email });
+  } catch (e) {
+    console.error('GET /users/lookup', e && e.message ? e.message : e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
 app.post('/clubs/join', async (req, res) => {
   try {
     const { code, userId } = req.body || {};
@@ -2123,6 +2195,95 @@ async function isClubManager(userId, clubId) {
   console.log('isClubManager?', { clubId: cid, userId: uid, ok });
   return ok;
 }
+
+// -------------------------------
+// Announcements & push subscriptions
+// -------------------------------
+
+// Create an announcement (manager only)
+app.post('/announcements', async (req, res) => {
+  try {
+    const { clubId, managerId, title, body, sendPush } = req.body || {};
+    if (!clubId || !managerId || !title || !body) return res.status(400).json({ error: 'clubId, managerId, title, body required' });
+
+    const ok = await isClubManager(managerId, clubId);
+    if (!ok) return res.status(403).json({ error: 'not authorized' });
+
+    const insert = await pool.query(
+      `INSERT INTO announcements (club_id, manager_id, title, body, send_push) VALUES ($1,$2,$3,$4,$5) RETURNING id, created_at`,
+      [clubId, managerId, title, body, !!sendPush]
+    );
+    const id = insert.rows[0].id;
+
+    // For now, create user_announcements rows for all users in the club (simple approach)
+    // Fetch members (manager + user_clubs members)
+    const members = (await pool.query(`SELECT id FROM users WHERE id = $1 UNION SELECT user_id AS id FROM user_clubs WHERE club_id = $2`, [managerId, clubId])).rows;
+    for (const m of members) {
+      try {
+        await pool.query('INSERT INTO user_announcements (announcement_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [id, m.id]);
+      } catch (e) {
+        // ignore individual insert errors
+      }
+    }
+
+    res.status(201).json({ ok: true, id });
+  } catch (e) {
+    console.error('POST /announcements', e && e.stack ? e.stack : e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// Register a web-push subscription for the current user
+app.post('/push-subscriptions', async (req, res) => {
+  try {
+    const { userId, endpoint, p256dh, auth } = req.body || {};
+    if (!userId || !endpoint) return res.status(400).json({ error: 'userId and endpoint required' });
+
+    await pool.query(`INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES ($1,$2,$3,$4) ON CONFLICT (endpoint) DO UPDATE SET user_id=EXCLUDED.user_id, p256dh=EXCLUDED.p256dh, auth=EXCLUDED.auth`, [userId, endpoint, p256dh || null, auth || null]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /push-subscriptions', e && e.stack ? e.stack : e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// List announcements for a club (public list)
+app.get('/clubs/:clubId/announcements', async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const { rows } = await pool.query('SELECT a.id, a.title, a.body, a.send_push, a.created_at, u.id as manager_id, u.display_name as manager_name FROM announcements a JOIN users u ON u.id = a.manager_id WHERE a.club_id=$1 ORDER BY a.created_at DESC', [clubId]);
+    res.json(rows);
+  } catch (e) {
+    console.error('GET /clubs/:clubId/announcements', e && e.stack ? e.stack : e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// List announcements for a user (with read state)
+app.get('/users/:userId/announcements', async (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    const { rows } = await pool.query(`SELECT ua.id as ua_id, ua.read, ua.read_at, a.id as announcement_id, a.title, a.body, a.created_at, a.send_push FROM user_announcements ua JOIN announcements a ON a.id = ua.announcement_id WHERE ua.user_id=$1 ORDER BY a.created_at DESC`, [userId]);
+    res.json(rows);
+  } catch (e) {
+    console.error('GET /users/:userId/announcements', e && e.stack ? e.stack : e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// Mark an announcement as read for a user
+app.post('/users/:userId/announcements/:announcementId/read', async (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    const announcementId = Number(req.params.announcementId);
+    await pool.query('UPDATE user_announcements SET read = TRUE, read_at = now() WHERE user_id=$1 AND announcement_id=$2', [userId, announcementId]);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /users/:userId/announcements/:announcementId/read', e && e.stack ? e.stack : e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
 
 app.post('/clubs/:clubId/sports', async (req, res) => {
   try {
@@ -2834,6 +2995,20 @@ try {
   await logDbIdentity();
 } catch (e) {
   console.warn('logDbIdentity failed at startup:', e && e.message ? e.message : e);
+}
+
+// Safety guard: prevent accidental automatic execution of migration scripts
+// from within server startup. Some projects call migration runners during
+// deployment; if you add automation that triggers `node migrate.mjs`, ensure
+// you set ALLOW_DESTRUCTIVE_MIGRATIONS=1 explicitly. If an environment or
+// deployment system attempts to run migrations by setting AUTO_RUN_MIGRATIONS,
+// abort unless the destructive flag is set too.
+if (process.env.AUTO_RUN_MIGRATIONS === '1' && process.env.ALLOW_DESTRUCTIVE_MIGRATIONS !== '1') {
+  console.error('\nFATAL: AUTO_RUN_MIGRATIONS is enabled but ALLOW_DESTRUCTIVE_MIGRATIONS is not set.');
+  console.error('To run migrations automatically in this environment, explicitly set ALLOW_DESTRUCTIVE_MIGRATIONS=1.');
+  console.error('This prevents accidental execution of destructive SQL (DROP/TRUNCATE) against live databases.');
+  // Exit to fail fast and avoid running with a dangerous automated migration flag.
+  process.exit(2);
 }
 
 app.listen(PORT, () => console.log(`server listening on :${PORT}`));

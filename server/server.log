@@ -1,41 +1,58 @@
 Manager account already exists: leolinquet
 [db] connected to "clubbooking_local" as "leolopez-linquet"
 [db] PostgreSQL 16.10 (Homebrew) on aarch64-apple-darwin24.4.0, compiled by Apple clang version 17.0.0 (clang-1700.0.13.3), 64-bit
-node:events:496
-      throw er; // Unhandled 'error' event
-      ^
-
-Error: listen EADDRINUSE: address already in use :::5051
-    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
-    at listenInCluster (node:net:1997:12)
-    at Server.listen (node:net:2102:7)
-    at Function.listen (/Users/leolopez-linquet/Documents/club-booking-app/server/node_modules/express/lib/application.js:635:24)
-    at file:/isClubManager? { clubId: 2, userId: 1, ok: true }
-Creating 4 missing courts for club 2 sport tennis
-POST /clubs/:id/sports payload {
-  clubId: 2,
-  userId: 1,
-  sport: 'tennis',
-  courts: 4,
-  openHour: 8,
-  closeHour: 22,
-  slotMinutes: 60
-}
+server listening on :5051
 DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
-DEBUG availability: bookings count: 0
+DEBUG availability: bookings count: 2
+DEBUG availability: sample bookings [
+  {
+    id: 1,
+    court_index: '1',
+    time: '21:00',
+    user_id: 2,
+    booked_by: 'leolinquet',
+    _starts_at: 2025-09-30T02:00:00.000Z
+  },
+  {
+    id: 2,
+    court_index: '1',
+    time: '17:00',
+    user_id: 5,
+    booked_by: 'user3',
+    _starts_at: 2025-09-29T22:00:00.000Z
+  }
+]
 DEBUG availability response sample for {
   clubId: 2,
   sport: 'tennis',
-  date: '2025-09-28',
-  bookingsCount: 0,
+  date: '2025-09-29',
+  bookingsCount: 2,
   sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
 }
 DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
-DEBUG availability: bookings count: 0
+DEBUG availability: bookings count: 2
+DEBUG availability: sample bookings [
+  {
+    id: 1,
+    court_index: '1',
+    time: '21:00',
+    user_id: 2,
+    booked_by: 'leolinquet',
+    _starts_at: 2025-09-30T02:00:00.000Z
+  },
+  {
+    id: 2,
+    court_index: '1',
+    time: '17:00',
+    user_id: 5,
+    booked_by: 'user3',
+    _starts_at: 2025-09-29T22:00:00.000Z
+  }
+]
 DEBUG availability response sample for {
   clubId: 2,
   sport: 'tennis',
-  date: '2025-09-28',
-  bookingsCount: 0,
+  date: '2025-09-29',
+  bookingsCount: 2,
   sample: { time: '10:00', courts: [ [Object], [Object], [Object], [Object] ] }
 }
