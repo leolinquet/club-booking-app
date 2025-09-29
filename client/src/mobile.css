@@ -2,10 +2,23 @@
 
 /* Base */
 * { box-sizing: border-box; }
-html, body { height: 100%; }
+html, body { height: 100%; overflow-x: hidden; /* Prevent horizontal page scrolling */ }
 body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; font-size: 16px; color: #111; background: #f7f7f8; }
 a { color: #1a73e8; text-decoration: none; }
 img { max-width: 100%; height: auto; display: block; }
+
+/* Global mobile width constraints */
+@media (max-width: 768px) {
+  * {
+    max-width: 100vw;
+    box-sizing: border-box;
+  }
+  
+  html, body {
+    width: 100%;
+    overflow-x: hidden;
+  }
+}
 
 /* Layout */
 .container { padding: var(--space); max-width: 960px; margin: 0 auto; }
@@ -44,6 +57,17 @@ input[type="text"], input[type="number"], input[type="date"], input[type="time"]
   border-bottom: 1px solid #eee;
   padding: 8px 12px;
   min-height: 56px; /* ensure consistent height */
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Fix navbar container on mobile */
+@media (max-width: 768px) {
+  .navbar .max-w-5xl {
+    max-width: 100% !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
 }
 
 /* Tables -> Cards on mobile */
@@ -77,6 +101,19 @@ input[type="text"], input[type="number"], input[type="date"], input[type="time"]
 @media (max-width: 640px){
   .booking-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* Courts table horizontal scroll container */
+.courts-scroll-container {
+  overflow-x: auto;
+  overflow-y: visible;
+  max-width: 100vw;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Minimum width for courts table to allow horizontal scrolling */
+.courts-table {
+  min-width: fit-content;
+}
 .slot {
   border: 1px solid #e5e7eb; border-radius: 10px; background:#fff; padding: 10px;
   min-height: 56px; display: grid; place-items: center; text-align: center; box-shadow: var(--shadow);
@@ -103,60 +140,112 @@ button { -webkit-tap-highlight-color: transparent; }
 
 /* Mobile-specific fixes for overlapping elements */
 @media (max-width: 768px) {
-  /* Ensure proper spacing between navbar and content */
+  /* Prevent any horizontal scrolling on the page */
+  body, html {
+    overflow-x: hidden !important;
+    max-width: 100vw;
+    width: 100%;
+  }
+  
+  /* Fix main container width and padding */
+  .max-w-5xl {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  
+  /* Ensure all containers fit properly */
+  .mx-auto {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  
+  /* Fix main content padding */
   .main-content {
-    margin-top: 8px; /* Small gap after navbar */
-    padding-bottom: 100px; /* space for sticky action bars */
+    margin-top: 8px;
+    padding-bottom: 100px;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
   }
   
-  /* Ensure proper spacing between sections */
-  .space-y-6 > :not(:first-child) {
-    margin-top: 24px;
+  /* Reduce padding on all containers */
+  .p-4 {
+    padding: 12px !important;
   }
   
-  /* Fix grid overlaps on mobile */
+  /* Fix card containers */
+  .bg-white.rounded-xl,
+  .bg-white.rounded-lg {
+    margin-left: 0;
+    margin-right: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  
+  /* Fix grid layouts on mobile */
   .grid {
     display: grid;
-    gap: 16px; /* increased gap for mobile */
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
   }
   
-  /* Ensure buttons don't overlap */
-  .flex.gap-2, .flex.gap-3 {
+  /* Ensure responsive grids work properly */
+  .grid-cols-1.sm\:grid-cols-2.md\:grid-cols-4,
+  .grid-cols-1.sm\:grid-cols-2.md\:grid-cols-6 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .grid.md\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  /* Fix flex containers */
+  .flex {
+    flex-wrap: wrap;
+  }
+  
+  .flex.gap-2, .flex.gap-3, .flex.gap-4 {
+    gap: 8px;
+  }
+  
+  /* Fix header layouts */
+  .flex.items-center.justify-between {
+    flex-direction: column;
+    align-items: flex-start;
     gap: 12px;
   }
   
-  /* Add margin to cards to prevent touch issues */
-  .bg-white.rounded-lg, .bg-white.rounded-xl {
-    margin-bottom: 16px;
-    position: relative;
-    z-index: 1;
-  }
-  
-  /* Improve touch targets for interactive elements */
-  button, .cursor-pointer {
-    min-height: 44px;
-    min-width: 44px;
-    position: relative;
-    z-index: 2;
-  }
-  
-  /* Fix overlapping modals and dropdowns - only when active */
-  .fixed.z-50 {
-    z-index: 50;
-  }
-  
-  /* Ensure text inputs are accessible */
+  /* Fix form controls */
   input, select, textarea {
-    min-height: 48px;
-    position: relative;
-    z-index: 1;
+    width: 100% !important;
+    box-sizing: border-box;
+    max-width: 100%;
   }
   
-  /* Ensure interactive elements in header areas are clickable */
-  .flex.items-center.gap-3,
-  .flex.items-center.gap-2 {
-    position: relative;
-    z-index: 5;
+  /* Fix button layouts */
+  button {
+    box-sizing: border-box;
+    max-width: 100%;
+  }
+  
+  /* Fix tables and overflow containers */
+  .overflow-auto,
+  .courts-scroll-container {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  
+  /* Fix space-y utilities */
+  .space-y-6 > :not(:first-child) {
+    margin-top: 16px;
+  }
+  
+  .space-y-4 > :not(:first-child) {
+    margin-top: 12px;
   }
 }
 
@@ -198,4 +287,46 @@ button { -webkit-tap-highlight-color: transparent; }
   width: 20px; /* matches w-5 */
   background: #000;
   transition: all .2s ease-in-out;
+}
+
+/* Mobile logout button text centering */
+@media (max-width: 640px) {
+  .menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+/* Announcements modal mobile fixes */
+@media (max-width: 768px) {
+  .announcements-modal {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    max-height: 90vh;
+    overflow-y: auto;
+    margin: 5vh auto;
+  }
+  
+  .announcements-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .announcements-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .announcements-header {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e5e7eb;
+  }
 }

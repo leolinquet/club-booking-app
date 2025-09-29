@@ -365,16 +365,17 @@ function AnnouncementPanel({ user, club, isManager, announcements = [], onClose,
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
-      <div className="w-[720px] max-w-[95%] bg-white rounded-xl shadow p-4">
-        <div className="flex items-start justify-between">
-          <h3 className="text-lg font-medium">Announcements</h3>
-          <div className="flex items-center gap-2">
-            <button className="px-3 py-1 rounded bg-gray-200" onClick={async ()=>{ await onRefresh(); }}>Refresh</button>
-            <button className="px-3 py-1 rounded bg-gray-100" onClick={onClose}>Close</button>
+      <div className="w-[720px] max-w-[95%] bg-white rounded-xl shadow announcements-modal">
+        <div className="announcements-content p-4">
+          <div className="announcements-header flex items-start justify-between">
+            <h3 className="text-lg font-medium">Announcements</h3>
+            <div className="flex items-center gap-2">
+              <button className="px-3 py-1 rounded bg-gray-200" onClick={async ()=>{ await onRefresh(); }}>Refresh</button>
+              <button className="px-3 py-1 rounded bg-gray-100" onClick={onClose}>Close</button>
+            </div>
           </div>
-        </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-4">
+          <div className="announcements-grid mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             {isManager && (
               <div className="border rounded p-3 mb-3">
@@ -409,6 +410,7 @@ function AnnouncementPanel({ user, club, isManager, announcements = [], onClose,
           <div>
             <div className="text-sm text-gray-600 mb-2">About</div>
             <div className="text-sm text-gray-700">Announcements are in-app messages stored per-club. Only managers can create announcements for their club. Users will see unread messages highlighted.</div>
+          </div>
           </div>
         </div>
       </div>
@@ -1008,13 +1010,13 @@ function UserBooking({ user, club }){
 
       {grid && (
         <Card>
-          <div className="overflow-auto">
-            <table className="w-full border-separate border-spacing-1">
+          <div className="courts-scroll-container">
+            <table className="courts-table w-full border-separate border-spacing-1">
               <thead>
                 <tr>
-                  <th className="text-left p-2">Time</th>
+                  <th className="text-left p-2 min-w-16">Time</th>
                   {Array.from({length: grid.cfg.courts}).map((_, i) => (
-                    <th key={i} className="text-left p-2">Court {i+1}</th>
+                    <th key={i} className="text-left p-2 min-w-20">Court {i+1}</th>
                   ))}
                 </tr>
               </thead>
