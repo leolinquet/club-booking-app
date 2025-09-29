@@ -9,6 +9,8 @@ export default function Navbar({
   onLogout = () => {},
   isManager = false,
   user = null,
+  onOpenAnnouncements = () => {},
+  unreadCount = 0,
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
@@ -61,23 +63,36 @@ export default function Navbar({
 
         {/* Desktop nav */}
         <nav className="hidden sm:flex items-center gap-2">
+          {/* Notifications */}
+          <button
+            aria-label="Open announcements"
+            onClick={onOpenAnnouncements}
+            className={`relative ${navBtn}`}
+            title="Announcements"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 17H9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M12 22C13.1046 22 14 21.1046 14 20H10C10 21.1046 10.8954 22 12 22Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M18 8C18 5.79086 15.866 4 13.5 4C11.134 4 9 5.79086 9 8V11C9 12.0609 8.57857 13.0783 7.82843 13.8284L7 14.6569V16H18V14.6569L17.1716 13.8284C16.4214 13.0783 16 12.0609 16 11V8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-medium leading-none text-white bg-red-600 rounded-full">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
           <button onClick={onBook} className={navBtn}>Book</button>
           {isManager && <button onClick={onHome} className={navBtn}>Home</button>}
           <button onClick={onClubs} className={navBtn}>Clubs</button>
           <button onClick={onTournaments} className={navBtn}>Tournaments</button>
           <button onClick={onRankings} className={navBtn}>Rankings</button>
 
-          {/* PWA Install (shown by a2hs.js) */}
-          <button id="install-btn" className={navBtn} style={{ display: "none" }}>
-            Install App
-          </button>
-
           {user ? (
             <>
               <span className="ml-2 text-sm opacity-75">
                 Hi, {user.display_name ?? user.name ?? "you"}
               </span>
-              <button onClick={onLogout} className={navBtn}>Log out</button>
             </>
           ) : null}
         </nav>
@@ -131,16 +146,18 @@ export default function Navbar({
           style={{ transformOrigin: "top center" }}
         >
           <div className="p-1 flex flex-col">
+            {/* Notifications (mobile) */}
+            <button onClick={() => { setOpen(false); onOpenAnnouncements(); }} className={menuItem}>
+              Announcements
+            </button>
+
             <button onClick={handle(onBook)} className={menuItem}>Book</button>
             {isManager && <button onClick={handle(onHome)} className={menuItem}>Home</button>}
             <button onClick={handle(onClubs)} className={menuItem}>Clubs</button>
             <button onClick={handle(onTournaments)} className={menuItem}>Tournaments</button>
             <button onClick={handle(onRankings)} className={menuItem}>Rankings</button>
 
-            {/* PWA Install (mobile) */}
-            <button id="install-btn-mobile" className={menuItem} style={{ display: "none" }}>
-              Install App
-            </button>
+            {/* PWA Install (mobile) removed */}
 
             {user ? (
               <button onClick={handle(onLogout)} className={`${menuItem} text-red-600`}>

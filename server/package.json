@@ -9,7 +9,10 @@
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "migrate": "node migrate.mjs",
+    "start:local": "nohup env $(cat .env | xargs) node -r dotenv/config server.js > server.log 2>&1 & echo $! > server.pid",
+    "stop:local": "if [ -f server.pid ]; then kill $(cat server.pid) && rm -f server.pid; else echo 'no server.pid'; fi",
+  "migrate": "node migrate.mjs",
+  "migrate:force": "ALLOW_DESTRUCTIVE_MIGRATIONS=1 node migrate.mjs",
     "check:db": "node check_db.mjs",
     "check:seed": "node check_seed.mjs"
   },
