@@ -162,7 +162,7 @@ export default function Navbar({
             {/* PWA Install (mobile) removed */}
 
             {user ? (
-              <button onClick={handle(onLogout)} className={`${menuItem} text-red-600`}>
+              <button onClick={handle(onLogout)} className={`${menuItem} text-red-600 flex items-center justify-center`}>
                 Log out
               </button>
             ) : null}
