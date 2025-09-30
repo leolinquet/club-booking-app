@@ -212,11 +212,16 @@ button { -webkit-tap-highlight-color: transparent; }
     gap: 8px;
   }
   
-  /* Fix header layouts */
+  /* Fix header layouts: ensure header has enough height so bottom-aligned hamburger sits visually pinned */
   .flex.items-center.justify-between {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+  }
+
+  /* Make header slightly taller to allow bottom-aligned hamburger to sit comfortably */
+  .navbar, header[role="banner"], header {
+    min-height: 56px;
   }
   
   /* Fix form controls */
