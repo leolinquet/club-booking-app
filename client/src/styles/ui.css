@@ -201,6 +201,75 @@ input.border:focus,             select.border:focus {
   backdrop-filter: blur(2px) saturate(110%);
 }
 
+/* Ensure modal containers never cause horizontal page scroll on small screens.
+   Target the common pattern: fixed inset-0 grid place-items-center > div (the modal card).
+   Make the modal card use box-sizing and max-width relative to the viewport, and
+   ensure inner overflow is vertical-only. */
+.fixed.inset-0.grid.place-items-center > div,
+.fixed.inset-0.z-60.grid.place-items-center > div,
+.fixed.inset-0.z-50.grid.place-items-center > div {
+  box-sizing: border-box;
+  width: 100%;       /* allow shrink-to-fit */
+  max-width: 95%;    /* keep a small page margin on very small screens */
+  margin-left: auto;
+  margin-right: auto;
+  overflow-x: hidden; /* disallow horizontal overflow that causes body scroll */
+}
+
+/* Inside modals, prefer vertical scrolling only. This prevents inner elements from
+   producing a horizontal scrollbar while preserving vertical scroll for long lists. */
+.fixed.inset-0 .overflow-auto {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Make wide content (tables, booking grids) scroll within their container instead of
+   pushing the page horizontally. Use a utility class 'table-responsive' where appropriate. */
+.table-responsive, .courts-scroll-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.courts-table {
+  width: 100%;
+  min-width: 0; /* allow table to shrink inside the scroll container */
+  table-layout: auto;
+}
+
+/* Ensure images and SVGs never exceed their container width and thus never force
+   horizontal overflow on narrow viewports. */
+img, svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Mobile-specific tweaks: reduce paddings and force modal widths to fit better */
+@media (max-width: 640px) {
+  .max-w-5xl { padding-left: 1rem; padding-right: 1rem; }
+  /* make sure any explicit wide sizing on modal cards doesn't fight our max-width */
+  .w-\[720px\], .w-\[520px\], .w-\[360px\] { width: 100% !important; max-width: 95% !important; }
+}
+
+/* Mobile: remove horizontal scrolling entirely — app should only scroll vertically on phones */
+@media (max-width: 640px) {
+  /* Force body to hide horizontal overflow but keep vertical scroll */
+  body { overflow-x: hidden !important; -webkit-overflow-scrolling: touch; }
+
+  /* Allow min-width elements to shrink to fit the viewport instead of creating a horizontal scroll */
+  .min-w-\[240px\], .min-w-\[520px\], .min-w-\[16px\], .min-w-\[20px\] {
+    min-width: 0 !important;
+    width: auto !important;
+    white-space: normal !important;
+  }
+
+  /* tables: ensure they wrap within their responsive container rather than overflow the body */
+  .table-responsive table, .table-responsive { overflow-x: auto; width: 100%; }
+
+  /* bracket columns (min-w) should be flexible and allow the bracket to wrap or scroll within its container */
+  .min-w-\[240px\] { min-width: 140px !important; }
+}
+
 /* =========================
    TABLES (Tournaments, Rankings)
    ========================= */

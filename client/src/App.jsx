@@ -4,6 +4,7 @@ import './styles/theme.css';
 import './styles/ui.css';
 // removed a2hs (add-to-home-screen) to hide the Install App button in the navbar
 import ClubGate from './ClubGate.jsx';
+import LookingPanel from './LookingPanel.jsx';
 
 const safeParse = (s) => {
   try { return JSON.parse(s); } catch { return null; }
@@ -150,6 +151,16 @@ export default function App(){
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  // Looking-for-partner feature
+  const [showLooking, setShowLooking] = useState(false);
+  const [lookingList, setLookingList] = useState([]);
+  const [myLooking, setMyLooking] = useState(false);
+  const [lookingBusy, setLookingBusy] = useState(false);
+  // Track outgoing request statuses per player_id
+  const [pendingRequests, setPendingRequests] = useState({}); // { [player_id]: 'pending'|'accepted'|'declined' }
+  // Simulated recipient panel state (QA helper / cross-tab mocked behavior)
+  const [simRecipient, setSimRecipient] = useState(null);
+  const [showSimRecipient, setShowSimRecipient] = useState(false);
 
   const loadAnnouncements = async () => {
     if (!user || !user.id) return;
@@ -180,6 +191,98 @@ export default function App(){
     const id = setInterval(() => { loadAnnouncements(); }, 20000);
     return () => clearInterval(id);
   }, [user?.id]);
+
+  // Fetch list of players looking for partner in current club
+  const loadLooking = async () => {
+    if (!club) return;
+    try {
+      const { res, data } = await j(`/clubs/${club.id}/looking`);
+      if (!res.ok) return setLookingList([]);
+      setLookingList(Array.isArray(data) ? data : []);
+      // also check whether current user is marked (if present in list)
+      const me = (data || []).find(p => p.user_id && user && Number(p.user_id) === Number(user.id));
+      setMyLooking(!!me);
+    } catch (e) {
+      setLookingList([]);
+    }
+  };
+
+  // Listen for presence updates emitted from LookingPanel or other tabs
+  useEffect(() => {
+    const onCustom = (e) => {
+      try {
+        const d = e.detail || {};
+        if (!d || !d.clubId) return;
+        if (club && String(club.id) === String(d.clubId)) {
+          // reload looking list so count updates
+          loadLooking();
+        }
+      } catch (err) {}
+    };
+    const onStorage = (e) => {
+      try {
+        if (!e.key) return;
+        if (String(e.key).startsWith(`club_booking_looking:${club?.id}:`)) {
+          loadLooking();
+        }
+      } catch (err) {}
+    };
+    window.addEventListener('club_booking_looking_change', onCustom);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('club_booking_looking_change', onCustom);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [club?.id, user?.id]);
+
+  // Centralized storage listener to detect incoming mocked requests (for recipient simulation)
+  useEffect(() => {
+    const onStorage = (e) => {
+      try {
+        if (!e.key || !e.newValue) return;
+        const key = String(e.key);
+        // request keys look like: club_booking_request:<recipientUserId>:<reqId>
+        if (key.startsWith('club_booking_request:')) {
+          const parts = key.split(':');
+          const recipientId = parts[1];
+          // If the current user is the recipient, show the simulated recipient panel
+          if (user && String(user.id) === String(recipientId)) {
+            const payload = JSON.parse(e.newValue || '{}');
+            setSimRecipient({ player: payload.player || { player_id: payload.player_id }, from: payload.fromName || payload.from || 'Someone', reqId: payload.reqId });
+            setShowSimRecipient(true);
+          }
+        }
+        // responses: club_booking_response:<requesterUserId>:<reqId>
+        if (key.startsWith('club_booking_response:')) {
+          const payload = JSON.parse(e.newValue || '{}');
+          if (payload && payload.player_id) {
+            setPendingRequests(prev => ({ ...prev, [payload.player_id]: payload.status }));
+          }
+        }
+      } catch (err) {
+        // ignore malformed storage entries
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [user?.id]);
+
+  const toggleLooking = async (value) => {
+    if (!user || !club) return;
+    setLookingBusy(true);
+    try {
+      const payload = { userId: user.id };
+      if (typeof value === 'boolean') payload.looking = value;
+      const r = await fetch(`${API}/clubs/${club.id}/looking`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json().catch(()=>null);
+      if (!r.ok) return alert(d?.error || 'Failed');
+      setMyLooking(!!d.looking);
+      await loadLooking();
+    } finally { setLookingBusy(false); }
+  };
 
   const createAnnouncement = async ({ title, body }) => {
     if (!club || !user) return alert('Missing club or user');
@@ -245,11 +348,14 @@ export default function App(){
       <Navbar
         onBook={() => setView('book')}
         onHome={() => setView('home')}
+        onOpenAnnouncements={() => setShowAnnouncements(true)}
         onClubs={() => setView('clubs')}
         onTournaments={() => setView('tournaments')}
         onRankings={() => setView('rankings')}
         isManager={isManager}
         user={user}
+        onOpenLooking={() => { setShowLooking(true); loadLooking(); }}
+  lookingCount={lookingList.length}
         onLogout={async () => {
           try {
             // attempt to notify server (if route exists); don't block UI on failure
@@ -262,7 +368,7 @@ export default function App(){
           setClub(null);
           setView('book');
         }}
-        onOpenAnnouncements={() => setShowAnnouncements(true)}
+        
         unreadCount={unreadCount}
       />
       {showAnnouncements && (
@@ -276,6 +382,52 @@ export default function App(){
           onCreate={createAnnouncement}
           onMarkRead={markAnnouncementRead}
         />
+      )}
+      {showLooking && (
+        <LookingPanel show={showLooking} onClose={() => setShowLooking(false)} user={user} club={club} />
+      )}
+      {/* Mocked recipient confirmation panel (non-blocking) */}
+      {showSimRecipient && simRecipient && (
+        <div className="absolute right-6 bottom-6 z-60 pointer-events-auto">
+          <div className="w-[360px] max-w-[95%] bg-white rounded-xl shadow p-4 border">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-medium">Request received (mock)</h3>
+              <button className="text-sm text-gray-500" onClick={() => { setShowSimRecipient(false); setSimRecipient(null); }}>Close</button>
+            </div>
+
+            <div className="mb-4">
+              <div className="text-sm">{simRecipient.from} wants to hit with you — Accept or Decline?</div>
+              <div className="mt-4 flex gap-3">
+                <button onClick={() => {
+                  const pid = simRecipient.player.player_id;
+                  setPendingRequests(prev => ({ ...prev, [pid]: 'accepted' }));
+                  // write response to localStorage so requester tab can update
+                  try {
+                    const respKey = `club_booking_response:${simRecipient.player.user_id || simRecipient.player.player_id}:${simRecipient.reqId || String(Date.now())}`;
+                    const payload = { reqId: simRecipient.reqId || null, player_id: pid, status: 'accepted' };
+                    localStorage.setItem(respKey, JSON.stringify(payload));
+                  } catch (e) { /* ignore */ }
+                  setShowSimRecipient(false);
+                  setSimRecipient(null);
+                  alert('Request accepted (mock).');
+                }} className="px-4 py-2 rounded bg-green-500 text-white">Accept</button>
+
+                <button onClick={() => {
+                  const pid = simRecipient.player.player_id;
+                  setPendingRequests(prev => ({ ...prev, [pid]: 'declined' }));
+                  try {
+                    const respKey = `club_booking_response:${simRecipient.player.user_id || simRecipient.player.player_id}:${simRecipient.reqId || String(Date.now())}`;
+                    const payload = { reqId: simRecipient.reqId || null, player_id: pid, status: 'declined' };
+                    localStorage.setItem(respKey, JSON.stringify(payload));
+                  } catch (e) { /* ignore */ }
+                  setShowSimRecipient(false);
+                  setSimRecipient(null);
+                  alert('Request declined (mock).');
+                }} className="px-4 py-2 rounded bg-red-100 text-red-700">Decline</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
       <div className="max-w-5xl mx-auto p-4 space-y-6 flex-1 main-content pt-6">
         {effectivePage === 'clubs' ? (
@@ -1011,7 +1163,8 @@ function UserBooking({ user, club }){
       {grid && (
         <Card>
           <div className="courts-scroll-container">
-            <table className="courts-table w-full border-separate border-spacing-1">
+            <div className="table-responsive">
+              <table className="courts-table w-full border-separate border-spacing-1">
               <thead>
                 <tr>
                   <th className="text-left p-2 min-w-16">Time</th>
@@ -1082,7 +1235,8 @@ function UserBooking({ user, club }){
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         </Card>
       )}
@@ -1911,7 +2065,7 @@ function RankingsView({ API, club, user, isManager }) {
       ) : rows.length === 0 ? (
         <div className="text-sm text-gray-500">No rankings yet.</div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="table-responsive">
           <table className="min-w-[520px] text-sm">
             <thead>
               <tr className="text-left border-b">
