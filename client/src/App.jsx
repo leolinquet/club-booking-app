@@ -120,7 +120,10 @@ export default function App(){
       const r = await fetch(`${API}/users/${u.id}/clubs`, { credentials: 'include' });
       if (r.ok) {
         const clubs = await r.json().catch(()=>[]);
-        if (clubs && clubs.length) {
+        // Only set the active club from server if the user does not already
+        // have a club selected locally. This preserves an explicit user
+        // selection across logout/login cycles.
+        if (clubs && clubs.length && (!club || !club.id)) {
           saveClub(clubs[0]);
           setView('book');
         }
@@ -129,11 +132,16 @@ export default function App(){
       // ignore failures; UI will keep working with persisted user
     }
   }
-  // Ensure we fetch the authoritative active club (this will backfill code if missing)
-  // This effect must run (be declared) on every render to keep Hooks order stable.
+  // Ensure we fetch the authoritative active club (backfill code if missing).
+  // Important: do NOT overwrite an already-selected local active club. Only
+  // fetch & save the server club when the user is authenticated and we don't
+  // yet have a club stored locally. This preserves the user's explicit choice
+  // across reloads/logouts.
   useEffect(() => {
     (async () => {
       if (!user || !user.id) return;
+      // If a club is already selected locally, keep it and skip the server fetch.
+      if (club && club.id) return;
       try {
         const r = await fetch(`${API}/users/${user.id}/club`, { credentials: 'include' });
         if (!r.ok) return;
@@ -145,7 +153,7 @@ export default function App(){
         // ignore failures — app still works with cached club
       }
     })();
-  }, [user?.id]);
+  }, [user?.id, club?.id]);
 
   // Announcements (in-app messages) - moved above early returns so hooks stay stable
   const [showAnnouncements, setShowAnnouncements] = useState(false);
@@ -361,11 +369,11 @@ export default function App(){
             // attempt to notify server (if route exists); don't block UI on failure
             await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null);
           } catch (e) {}
-          // clear local state and storage so Auth screen renders immediately
+          // clear local user only so Auth screen renders immediately.
+          // Preserve the active club in localStorage so it remains "sticky"
+          // across logouts until the user explicitly changes it.
           localStorage.removeItem('user');
-          localStorage.removeItem('club');
           setUser(null);
-          setClub(null);
           setView('book');
         }}
         
@@ -445,7 +453,7 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); localStorage.removeItem('club'); setUser(null); setClub(null); setView('book'); }}>Logout</Button>
+                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); setUser(null); setView('book'); }}>Logout</Button>
               </div>
             </header>
             <ManagerDashboard user={user} club={club} />
@@ -459,7 +467,7 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); localStorage.removeItem('club'); setUser(null); setClub(null); setView('book'); }}>Logout</Button>
+                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); setUser(null); setView('book'); }}>Logout</Button>
               </div>
             </header>
             {/* ⬇️ Use the component we added earlier */}
@@ -474,7 +482,7 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); localStorage.removeItem('club'); setUser(null); setClub(null); setView('book'); }}>Logout</Button>
+                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); setUser(null); setView('book'); }}>Logout</Button>
               </div>
             </header>
             <RankingsView API={API} club={club} user={user} isManager={isManager} />
@@ -488,7 +496,7 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); localStorage.removeItem('club'); setUser(null); setClub(null); setView('book'); }}>Logout</Button>
+                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); setUser(null); setView('book'); }}>Logout</Button>
               </div>
             </header>
             <UserBooking user={user} club={club} />
@@ -631,8 +639,11 @@ export function Auth({ onLogin, onRegister }) {
       if (!r.ok) return alert((data && data.error) || "Signup failed");
 
       alert("We sent a verification email. Verify, then log in.");
-      setMode("login");
-      onRegister?.(data);
+  setMode("login");
+  // Call onRegister with the actual user object when available so the
+  // app's handleAuthed() receives a user with `id` and can immediately
+  // fetch the user's clubs. Server returns { user: { ... } } on success.
+  onRegister?.(data && data.user ? data.user : data);
     } finally {
       setBusy(false);
     }

@@ -94,8 +94,10 @@ self.addEventListener('fetch', (event) => {
       caches.match(req).then((cached) => {
         const network = fetch(req)
           .then((resp) => {
-            const clone = resp.clone();
-            caches.open(STATIC_CACHE).then((c) => c.put(req, clone).catch(() => {}));
+            if (resp && resp.ok) {
+              const clone = resp.clone();
+              caches.open(STATIC_CACHE).then((c) => c.put(req, clone).catch(() => {}));
+            }
             return resp;
           })
           .catch(() => cached); // offline → use cache
@@ -105,8 +107,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Default: try network, fallback to cache
+  // Default: try network, fallback to cache, then minimal response
   event.respondWith(
-    fetch(req).catch(() => caches.match(req))
+    fetch(req).catch(() => {
+      return caches.match(req).then(cached => {
+        if (cached) return cached;
+        // Return a minimal response as last resort
+        return new Response('Resource not available offline', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'text/plain' }
+        });
+      });
+    })
   );
 });

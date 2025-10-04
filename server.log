@@ -1,25 +1,85 @@
 Manager account already exists: leolinquet
 [db] connected to "clubbooking_local" as "leolopez-linquet"
 [db] PostgreSQL 16.10 (Homebrew) on aarch64-apple-darwin24.4.0, compiled by Apple clang version 17.0.0 (clang-1700.0.13.3), 64-bit
-node:events:496
-      throw er; // Unhandled 'error' event
-      ^
-
-Error: listen EADDRINUSE: address already in use :::5051
-    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
-    at listenInCluster (node:net:1997:12)
-    at Server.listen (node:net:2102:7)
-    at Function.listen (/Users/leolopez-linquet/Documents/club-booking-app/server/node_modules/express/lib/application.js:635:24)
-    at file:///Users/leolopez-linquet/Documents/club-booking-app/server/server.js:3153:5
-    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-Emitted 'error' event on Server instance at:
-    at emitErrorNT (node:net:1976:8)
-    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
-  code: 'EADDRINUSE',
-  errno: -48,
-  syscall: 'listen',
-  address: '::',
-  port: 5051
+server listening on :5051
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 0
+DEBUG availability response sample for {
+  clubId: 2,
+  sport: 'soccer',
+  date: '2025-10-04',
+  bookingsCount: 0,
+  sample: {
+    time: '14:00',
+    isPast: false,
+    courts: [
+      [Object], [Object],
+      [Object], [Object],
+      [Object], [Object],
+      [Object], [Object]
+    ]
+  }
 }
-
-Node.js v22.18.0
+[auth/login] lookup {
+  select: 'id, display_name, email, password_hash, role, is_manager',
+  where: 'LOWER(email) = LOWER($1) OR LOWER(display_name) = LOWER($1) OR LOWER(username) = LOWER($1)',
+  params: [ 'leolinquet' ]
+}
+[auth/login] userRow {
+  id: 2,
+  email: 'leolinquet@example.local',
+  display_name: 'leolinquet'
+}
+players upsert: { club_id: 3, user_id: 2, player_id: 69, display_name: 'leolinquet' }
+players upsert: { club_id: 3, user_id: 3, player_id: 70, display_name: 'user1' }
+players upsert: { club_id: 3, user_id: 4, player_id: 71, display_name: 'user2' }
+players upsert: { club_id: 3, user_id: 5, player_id: 72, display_name: 'user3' }
+players upsert: { club_id: 3, user_id: 7, player_id: 73, display_name: 'user4' }
+Save result: match 33 winnerId 73 round 3 slot 2
+Advancing winner to nextRound 2
+Computed nextSlot 1
+Existing next match? false null
+Sibling slot 3 found? true siblingWinner 70
+Inserted next match with both players { p1: 73, p2: 70, nextSlot: 1 }
+DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
+DEBUG availability: bookings count: 0
+DEBUG availability response sample for {
+  clubId: 2,
+  sport: 'soccer',
+  date: '2025-10-04',
+  bookingsCount: 0,
+  sample: {
+    time: '14:00',
+    isPast: false,
+    courts: [
+      [Object], [Object],
+      [Object], [Object],
+      [Object], [Object],
+      [Object], [Object]
+    ]
+  }
+}
+GET /clubs/2/standings from ::1
+  -> standings rows: 5 [
+  {
+    player_id: 1,
+    name: 'leolinquet',
+    tournaments_played: 7,
+    points: 1410
+  },
+  { player_id: 8, name: 'user3', tournaments_played: 6, points: 570 },
+  { player_id: 2, name: 'user1', tournaments_played: 7, points: 385 },
+  { player_id: 3, name: 'user2', tournaments_played: 7, points: 385 },
+  { player_id: 25, name: 'user42', tournaments_played: 1, points: 20 }
+]
+players upsert: { club_id: 2, user_id: 2, player_id: 1, display_name: 'leolinquet' }
+players upsert: { club_id: 2, user_id: 3, player_id: 2, display_name: 'user1' }
+players upsert: { club_id: 2, user_id: 4, player_id: 3, display_name: 'user2' }
+players upsert: { club_id: 2, user_id: 5, player_id: 8, display_name: 'user3' }
+players upsert: { club_id: 2, user_id: 7, player_id: 78, display_name: 'user4' }
+Save result: match 38 winnerId 78 round 3 slot 2
+Advancing winner to nextRound 2
+Computed nextSlot 1
+Existing next match? false null
+Sibling slot 3 found? true siblingWinner 8
+Inserted next match with both players { p1: 78, p2: 8, nextSlot: 1 }
