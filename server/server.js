@@ -538,10 +538,18 @@ app.post('/auth/login', async (req, res) => {
     const where  = preds.length ? preds.join(' OR ') : 'FALSE';
     const params = preds.length ? [identifier] : [];   // ← IMPORTANT
 
+    // DEBUG: log lookup details to help diagnose login failures in dev
+    try {
+      console.debug('[auth/login] lookup', { select: select.join(', '), where, params });
+    } catch (e) {}
+
     const user = await one(
       `SELECT ${select.join(', ')} FROM users WHERE ${where} LIMIT 1`,
       ...params
     );
+    try {
+      console.debug('[auth/login] userRow', user && { id: user.id, email: user.email, display_name: user.display_name });
+    } catch (e) {}
     if (!user) return res.status(401).json({ error: 'invalid credentials' });
 
     // check password only if a valid hash exists
@@ -2528,6 +2536,11 @@ app.get('/availability', async (req, res) => {
       cur += step;
     }
 
+    // Determine club timezone early so we can mark which slots are in the past
+    const clubTzRow = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(clubId);
+    const clubTz = clubTzRow && clubTzRow.timezone ? String(clubTzRow.timezone) : (process.env.DEFAULT_TIMEZONE || 'UTC');
+    const nowDT_for_slots = DateTime.now().setZone(clubTz);
+
     // bookings table historically used different column names in various installs.
     // Inspect columns and query accordingly to avoid "column does not exist" errors.
     const bInfo = await tableInfo('bookings');
@@ -2682,6 +2695,8 @@ app.get('/availability', async (req, res) => {
 
     const grid = times.map(t => ({
       time: t,
+      // mark whether this slot starts before the club-local now
+      isPast: DateTime.fromISO(`${String(date)}T${t}`, { zone: clubTz }).toMillis() < nowDT_for_slots.toMillis(),
       courts: Array.from({ length: Number(cfg.courts) }).map((_, idx) => {
         const key = `${idx}@${t}`;
         return {
@@ -2705,7 +2720,21 @@ app.get('/availability', async (req, res) => {
       console.log('DEBUG availability response logging failed', ie && ie.message ? ie.message : ie);
     }
 
-    res.json({ cfg: { courts: Number(cfg.courts) }, slots: grid });
+    // Include a server-side NOW() value (canonical DB/server time) so clients
+    // can recompute "past" state consistently. Also include each slot's UTC
+    // start so clients can compare against the server time without needing
+    // timezone math on the client.
+    const nowRow = await pool.query("SELECT NOW() AS now");
+    const serverNowRaw = nowRow && nowRow.rows && nowRow.rows[0] ? nowRow.rows[0].now : null;
+    const serverNowUtc = serverNowRaw ? (new Date(serverNowRaw)).toISOString() : (new Date()).toISOString();
+
+    // Attach slotStartUtc to each row so clients can compare against serverNowUtc.
+    const gridWithUtc = grid.map(r => ({
+      ...r,
+      slotStartUtc: DateTime.fromISO(`${String(date)}T${r.time}`, { zone: clubTz }).toUTC().toISO()
+    }));
+
+    res.json({ cfg: { courts: Number(cfg.courts) }, slots: gridWithUtc, serverNowUtc });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'unexpected error' });
@@ -2761,54 +2790,79 @@ app.post('/book', async (req, res) => {
   const bInfo = await tableInfo('bookings');
   const bCols = new Set((bInfo || []).map(c => c.name));
 
-  // Determine club timezone: prefer DB value, fall back to client-provided timezone in the request,
-  // then environment default or UTC.
-  const clubRowForTzRoot = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(Number(clubId));
-  const clubTzRoot = clubRowForTzRoot && clubRowForTzRoot.timezone ? String(clubRowForTzRoot.timezone) : (req.body && req.body.clubTimezone) || (process.env.DEFAULT_TIMEZONE || 'UTC');
+    // Determine club timezone and slot length by querying club_sports so we compute
+    // booking end-times using the configured slot_minutes instead of assuming 1 hour.
+    const clubRowForTzRoot = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(Number(clubId));
+    const clubTzRoot = clubRowForTzRoot && clubRowForTzRoot.timezone ? String(clubRowForTzRoot.timezone) : (req.body && req.body.clubTimezone) || (process.env.DEFAULT_TIMEZONE || 'UTC');
+    // Fetch configured slot length for this sport/club (fallback to 60 minutes)
+    let slotMinutes = 60;
+    try {
+      const cfgRow = await db.prepare('SELECT slot_minutes FROM club_sports WHERE club_id = ? AND sport = ?').get(Number(clubId), String(sport));
+      if (cfgRow && cfgRow.slot_minutes) slotMinutes = Number(cfgRow.slot_minutes) || 60;
+    } catch (e) {
+      // ignore and default to 60
+    }
 
-  // Helper: unified active-booking check using club-local now
-  let hasActive = null;
-  const { date: curDate, time: curTime } = nowInTimeZone(clubTzRoot);
+    // Helper: unified active-booking check using DB NOW(). Block if any booking
+    // for this user has status in ('upcoming','active') AND end_time > NOW().
+    // Adapt queries to the available schema.
+    let hasActive = null;
 
-    if (bCols.has('date') && bCols.has('time')) {
-      // For date/time schema, consider a booking "active" if its end time is
-      // strictly after or equal to club-local now. We assume bookings are 1 hour
-      // durations.
-      // Build club-local now as DateTime and compare against booking end.
-  const clubNow = DateTime.fromISO(`${curDate}T${curTime}`, { zone: clubTzRoot });
-      // SQL: find any booking where (date = curDate AND time + 1 hour >= curTime) OR date > curDate
-      // We compare using strings for simplicity: compute booking end as time + 1 hour in HH:MM
-      // Note: this is a heuristic to avoid heavy SQL date math; it's sufficient for 1-hour slots.
-      const curTimeStr = curTime; // 'HH:MM'
-      hasActive = await db.prepare(`
-        SELECT 1 FROM bookings
-        WHERE user_id = ?
-          AND club_id = ?
-          AND (
-            date > ?
-            OR (
-              date = ? AND to_char(to_timestamp(time, 'HH24:MI') + interval '1 hour','HH24:MI') >= ?
+  const hasStatusCol = bCols.has('status');
+
+  if (bCols.has('date') && bCols.has('time')) {
+      // Modern schema: bookings store date + time (slot start). We assume 1-hour
+      // durations and compare booking end (time + interval '1 hour') against NOW().
+      // Use the database's NOW() as the canonical time.
+      // Use configured slotMinutes when computing booking end
+      // Build SQL defensively: only reference `status` when the column exists.
+      // Use the club's timezone when interpreting stored date+time strings so
+      // comparisons against NOW() are correct regardless of DB timezone.
+      if (hasStatusCol) {
+        hasActive = await db.prepare(`
+          SELECT 1 FROM bookings
+          WHERE user_id = ? AND club_id = ?
+            AND (
+              (status IS NOT NULL AND status IN ('upcoming','active') AND ((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE ?) + ($3 * interval '1 minute')) > NOW())
+              OR
+              (status IS NULL AND ((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE ?) + ($3 * interval '1 minute')) > NOW())
             )
-          )
-        LIMIT 1
-      `).get(Number(targetUserId), Number(clubId), curDate, curDate, curTimeStr);
-    } else if (bCols.has('starts_at')) {
-      // Legacy schema stores a timestamp in starts_at. Consider a booking active
-      // if its ends_at (or starts_at + 1h) is >= club-local now. We'll compute
-      // a club-local ISO and compare against ends_at >= that (or starts_at >= that - 1h).
-      const clubNow = nowInTimeZone(clubTzRoot);
-      const clubNowISO = `${clubNow.date}T${clubNow.time}:00Z`;
-      // Prefer using ends_at if present, otherwise compare starts_at + 1 hour.
-      hasActive = await db.prepare(`
-        SELECT 1 FROM bookings
-        WHERE user_id = ? AND (
-          (ends_at IS NOT NULL AND ends_at >= ?)
-          OR (ends_at IS NULL AND (starts_at + interval '1 hour') >= ?)
-        )
-        LIMIT 1
-      `).get(Number(targetUserId), clubNowISO, clubNowISO);
+          LIMIT 1
+        `).get(Number(targetUserId), Number(clubId), String(clubTzRoot), Number(slotMinutes), String(clubTzRoot));
+      } else {
+        hasActive = await db.prepare(`
+          SELECT 1 FROM bookings
+          WHERE user_id = ? AND club_id = ?
+            AND (((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE ?) + ($3 * interval '1 minute')) > NOW())
+          LIMIT 1
+        `).get(Number(targetUserId), Number(clubId), String(clubTzRoot), Number(slotMinutes));
+      }
+
+  } else if (bCols.has('starts_at')) {
+      // Legacy schema: bookings have starts_at/ends_at timestamps. Prefer ends_at when present.
+      // Use slotMinutes for legacy starts_at when ends_at is null
+      if (hasStatusCol) {
+        hasActive = await db.prepare(`
+          SELECT 1 FROM bookings
+          WHERE user_id = ?
+            AND (
+              (status IS NOT NULL AND status IN ('upcoming','active') AND ((ends_at IS NOT NULL AND ends_at > NOW()) OR (ends_at IS NULL AND (starts_at + ($2 * interval '1 minute')) > NOW())))
+              OR
+              (status IS NULL AND ((ends_at IS NOT NULL AND ends_at > NOW()) OR (ends_at IS NULL AND (starts_at + ($2 * interval '1 minute')) > NOW())))
+            )
+          LIMIT 1
+        `).get(Number(targetUserId), Number(slotMinutes));
+      } else {
+        hasActive = await db.prepare(`
+          SELECT 1 FROM bookings
+          WHERE user_id = ?
+            AND ((ends_at IS NOT NULL AND ends_at > NOW()) OR (ends_at IS NULL AND (starts_at + ($2 * interval '1 minute')) > NOW()))
+          LIMIT 1
+        `).get(Number(targetUserId), Number(slotMinutes));
+      }
+
     } else {
-      // If bookings schema is unknown, be conservative and skip the active-check
+      // Unknown schema: be conservative and skip DB check (avoid false blocks)
       hasActive = null;
     }
 
@@ -2821,8 +2875,8 @@ app.post('/book', async (req, res) => {
       // Preferred modern schema
       // Prevent booking in the past according to club-local now (luxon)
   const clubTz = clubTzRoot;
-      const requestedDT = DateTime.fromISO(`${String(date)}T${String(time)}`, { zone: clubTz });
-      const requestedEndDT = requestedDT.plus({ hours: 1 });
+  const requestedDT = DateTime.fromISO(`${String(date)}T${String(time)}`, { zone: clubTz });
+  const requestedEndDT = requestedDT.plus({ minutes: slotMinutes });
       const nowDT = DateTime.now().setZone(clubTz);
       console.debug('booking check (modern schema)', { clubId, clubTz, requestedStart: requestedDT.toISO(), requestedEnd: requestedEndDT.toISO(), now: nowDT.toISO(), valid: requestedDT.isValid });
       // Allow booking if the booking's end time is strictly after now (i.e., you may book up until the last minute before it ends)
@@ -2863,8 +2917,8 @@ app.post('/book', async (req, res) => {
 
       // Prevent booking in the past per club-local now (luxon)
   const clubTz2 = clubTzRoot;
-      const requestedDT2 = DateTime.fromISO(`${String(date)}T${String(time)}`, { zone: clubTz2 });
-      const requestedEndDT2 = requestedDT2.plus({ hours: 1 });
+  const requestedDT2 = DateTime.fromISO(`${String(date)}T${String(time)}`, { zone: clubTz2 });
+  const requestedEndDT2 = requestedDT2.plus({ minutes: slotMinutes });
       const nowDT2 = DateTime.now().setZone(clubTz2);
       console.debug('booking check (court_id schema)', { clubId, clubTz2, requestedStart: requestedDT2.toISO(), requestedEnd: requestedEndDT2.toISO(), now: nowDT2.toISO(), valid: requestedDT2.isValid });
       if (!requestedDT2.isValid || requestedEndDT2.toMillis() <= nowDT2.toMillis()) {
@@ -2910,8 +2964,8 @@ app.post('/book', async (req, res) => {
       const startsAt = `${String(date)} ${String(time)}`; // 'YYYY-MM-DD HH:MM'
       // Parse client-provided date/time into a club-local moment using the resolved club timezone.
       const clubTzFinal = clubTzRoot;
-      const requestedDT3 = DateTime.fromISO(`${String(date)}T${String(time)}`, { zone: clubTzFinal });
-      const requestedEndDT3 = requestedDT3.plus({ hours: 1 });
+  const requestedDT3 = DateTime.fromISO(`${String(date)}T${String(time)}`, { zone: clubTzFinal });
+  const requestedEndDT3 = requestedDT3.plus({ minutes: slotMinutes });
       const nowDT3 = DateTime.now().setZone(clubTzFinal);
       console.debug('booking check (legacy starts_at)', { clubId, clubTz: clubTzFinal, requestedStart: requestedDT3.toISO(), requestedEnd: requestedEndDT3.toISO(), now: nowDT3.toISO(), valid: requestedDT3.isValid });
       if (!requestedDT3.isValid || requestedEndDT3.toMillis() <= nowDT3.toMillis()) {
@@ -2919,8 +2973,9 @@ app.post('/book', async (req, res) => {
         return res.status(400).json({ error: 'Cannot book a slot in the past' });
       }
 
-      const startDt = new Date(requestedDT3.toUTC().toISO());
-      const endDt = new Date(requestedDT3.plus({ hours: 1 }).toUTC().toISO());
+  const startDt = new Date(requestedDT3.toUTC().toISO());
+  // Use configured slotMinutes to compute end time consistently across schemas
+  const endDt = new Date(requestedDT3.plus({ minutes: slotMinutes }).toUTC().toISO());
 
       const dup = await db.prepare(`
         SELECT 1 FROM bookings b
@@ -2961,6 +3016,48 @@ app.post('/book', async (req, res) => {
   }
 });
 
+// Simple in-memory "looking" presence store for development.
+// Keys: clubId -> array of { player_id, user_id, display_name, looking_since, lookingFrom?, lookingTo? }
+const _devLookingStore = new Map();
+
+// GET /clubs/:clubId/looking -> list of lookers (dev-only). Returns 404 in prod.
+app.get('/clubs/:clubId/looking', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(404).json({ error: 'not available' });
+  try {
+    const clubId = Number(req.params.clubId);
+    const rows = _devLookingStore.get(clubId) || [];
+    return res.json(rows);
+  } catch (e) {
+    console.error('/clubs/:clubId/looking GET error', e && e.stack ? e.stack : e);
+    return res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// POST /clubs/:clubId/looking { userId, looking, lookingFrom?, lookingTo? }
+app.post('/clubs/:clubId/looking', express.json(), async (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(404).json({ error: 'not available' });
+  try {
+    const clubId = Number(req.params.clubId);
+    const { userId, looking, lookingFrom, lookingTo } = req.body || {};
+    if (!clubId || !userId || typeof looking === 'undefined') return res.status(400).json({ error: 'clubId, userId and looking required' });
+    const list = _devLookingStore.get(clubId) || [];
+    // remove any existing entry for this user
+    const filtered = list.filter(r => Number(r.user_id) !== Number(userId));
+    if (looking) {
+      const entry = { player_id: `local-${userId}`, user_id: Number(userId), display_name: `user${userId}`, looking_since: Date.now(), lookingFrom: lookingFrom || null, lookingTo: lookingTo || null };
+      filtered.unshift(entry);
+      _devLookingStore.set(clubId, filtered);
+      return res.json({ ok: true, looking: true });
+    } else {
+      _devLookingStore.set(clubId, filtered);
+      return res.json({ ok: true, looking: false });
+    }
+  } catch (e) {
+    console.error('/clubs/:clubId/looking POST error', e && e.stack ? e.stack : e);
+    return res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
 app.post('/cancel', async (req, res) => {
   try {
     const { bookingId, userId } = req.body || {};
@@ -2984,6 +3081,72 @@ app.post('/cancel', async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// Debug endpoint: reports whether a user has an active booking (development only)
+app.get('/debug/active-booking', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(404).json({ error: 'not available' });
+  try {
+    const userId = req.query.userId ? Number(req.query.userId) : null;
+    const clubId = req.query.clubId ? Number(req.query.clubId) : null;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+
+    const bInfo = await tableInfo('bookings');
+    const bCols = new Set((bInfo || []).map(c => c.name));
+    const hasStatusCol = bCols.has('status');
+
+    // Determine slot length for club when available
+    const cfg = await db.prepare('SELECT slot_minutes FROM club_sports WHERE club_id = ? LIMIT 1').get(clubId || null);
+    const slotMinutes = cfg && cfg.slot_minutes ? Number(cfg.slot_minutes) : 60;
+
+    if (bCols.has('date') && bCols.has('time')) {
+      // modern schema: convert date+time into timestamp using club timezone
+      const clubRow = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(clubId);
+      const clubTz = clubRow && clubRow.timezone ? String(clubRow.timezone) : 'UTC';
+
+      const selectStatus = hasStatusCol ? ', status' : '';
+      const q = `
+        SELECT id, user_id, club_id, date, time${selectStatus},
+          ((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE $3) + ($4 * interval '1 minute')) AS end_at
+        FROM bookings
+        WHERE user_id = $1
+          AND ($2 IS NULL OR club_id = $2)
+        ORDER BY end_at DESC LIMIT 50`;
+
+  const { rows } = await pool.query(q, [userId, clubId, clubTz, slotMinutes]);
+      const now = (await pool.query('SELECT NOW() AS now')).rows[0].now;
+      const hasActive = rows.some(r => {
+        const endAt = r.end_at;
+        if (!endAt || !(endAt > now)) return false;
+        if (!hasStatusCol) return true;
+        return (r.status == null || ['upcoming','active'].includes(r.status));
+      });
+      return res.json({ schema: 'modern', now, rows, hasActive });
+    }
+
+    if (bCols.has('starts_at')) {
+      const selectStatus = hasStatusCol ? ', status' : '';
+      const q = `
+        SELECT id, user_id, starts_at, ends_at${selectStatus}, COALESCE(ends_at, starts_at + ($2 * interval '1 minute')) AS end_at
+        FROM bookings
+        WHERE user_id = $1
+        ORDER BY end_at DESC LIMIT 50`;
+  const { rows } = await pool.query(q, [userId, slotMinutes]);
+      const now = (await pool.query('SELECT NOW() AS now')).rows[0].now;
+      const hasActive = rows.some(r => {
+        const endAt = r.end_at;
+        if (!endAt || !(endAt > now)) return false;
+        if (!hasStatusCol) return true;
+        return (r.status == null || ['upcoming','active'].includes(r.status));
+      });
+      return res.json({ schema: 'legacy', now, rows, hasActive });
+    }
+
+    return res.json({ schema: 'unknown', hasActive: null });
+  } catch (e) {
+    console.error('/debug/active-booking error', e && e.stack ? e.stack : e);
+    res.status(500).json({ error: String(e && e.message ? e.message : e) });
   }
 });
 

@@ -9,7 +9,14 @@ export async function tableInfo(table) {
       ORDER BY ordinal_position`,
     [table]
   );
-  return rows;
+  // Normalize shape to { name, data_type, is_nullable, column_default, notnull }
+  return rows.map(r => ({
+    name: r.column_name,
+    data_type: r.data_type,
+    is_nullable: r.is_nullable,
+    column_default: r.column_default,
+    notnull: r.is_nullable === 'NO' ? 1 : 0
+  }));
 }
 
 export async function addColumnsIfMissing(table, cols) {

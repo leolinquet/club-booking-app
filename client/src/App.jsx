@@ -1058,15 +1058,77 @@ function UserBooking({ user, club }){
     (async ()=>{
     const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`, { credentials: 'include' });
       const d = await r.json();
-      if (r.ok) setGrid(d);
-      else { setGrid(null); alert(d.error || 'error'); }
+      if (r.ok) {
+        // If server provided serverNowUtc and slotStartUtc values, use them; otherwise fall back to server-side isPast.
+        if (d && d.serverNowUtc && Array.isArray(d.slots)) {
+          const serverNowMs = Date.parse(d.serverNowUtc);
+          const slots = d.slots.map(row => ({
+            ...row,
+            // row.slotStartUtc exists per-slot (UTC string)
+            isPast: row.slotStartUtc ? (Date.parse(row.slotStartUtc) < serverNowMs) : !!row.isPast,
+          }));
+          setGrid({ ...d, slots });
+        } else {
+          setGrid(d);
+        }
+      } else { setGrid(null); alert(d.error || 'error'); }
     })();
   }, [sport, date, club.id, user.id]);
+
+  // Recompute 'isPast' locally every 30s and optionally refetch availability every 60s
+  useEffect(() => {
+    if (!grid || !grid.slots) return undefined;
+    let tick = null;
+    // recompute every 30s
+    tick = setInterval(() => {
+      setGrid(prev => {
+        if (!prev || !prev.slots) return prev;
+        const now = Date.now();
+        // If server provided serverNowUtc, compute offset between server and client
+        const serverNowMs = prev.serverNowUtc ? Date.parse(prev.serverNowUtc) : null;
+        const offset = serverNowMs ? (now - serverNowMs) : 0;
+        const slots = prev.slots.map(row => {
+          const slotMs = row.slotStartUtc ? Date.parse(row.slotStartUtc) : null;
+          const computedIsPast = slotMs ? (slotMs < (now - offset)) : !!row.isPast;
+          return { ...row, isPast: computedIsPast };
+        });
+        return { ...prev, slots };
+      });
+    }, 30000);
+
+    // optional refetch every 60s to pick up new bookings
+    const refetchId = setInterval(() => {
+      (async () => {
+        try {
+          const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`, { credentials: 'include' });
+          const d = await r.json().catch(()=>null);
+          if (r.ok && d) {
+            if (d && d.serverNowUtc && Array.isArray(d.slots)) {
+              const serverNowMs = Date.parse(d.serverNowUtc);
+              const slots = d.slots.map(row => ({
+                ...row,
+                isPast: row.slotStartUtc ? (Date.parse(row.slotStartUtc) < serverNowMs) : !!row.isPast,
+              }));
+              setGrid({ ...d, slots });
+            } else {
+              setGrid(d);
+            }
+          }
+        } catch (e) {
+          // ignore periodic fetch failures
+        }
+      })();
+    }, 60000);
+
+    return () => { clearInterval(tick); clearInterval(refetchId); };
+  }, [grid?.slots?.length, club.id, sport, date, user.id]);
 
   // Managers can book multiple & can cancel anyone's booking
   const isManager = user.role === 'manager';
   const isOwnClubManager = isManager && Number(club?.manager_id) === Number(user.id);
-  const hasOwnBooking = isManager ? false : grid?.slots?.some(row => row.courts.some(c => c.owned));
+  // Only consider owned slots that are NOT in the past. If the user's booking
+  // has already ended (row.isPast === true) it should not block new bookings.
+  const hasOwnBooking = isManager ? false : grid?.slots?.some(row => !row.isPast && row.courts.some(c => c.owned));
 
   const openConfirm = (courtIndex, time) => {
   if (hasOwnBooking && !isManager) return;
@@ -1219,16 +1281,23 @@ function UserBooking({ user, club }){
                             </div>
                           )
                         ) : (
-                          <button
-                            onClick={() => openConfirm(cell.courtIndex, row.time)}
-                            className={`w-full rounded bg-green-500 hover:opacity-90 relative
-                                        min-h-12 sm:h-10 active:scale-[.98] transition
-                                        ${hasOwnBooking ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            disabled={hasOwnBooking && !isManager}
-                            aria-pressed="false"
-                          >
-                            <span className="sr-only">Book this slot</span>
-                          </button>
+                          // slot is free
+                          (() => {
+                            const past = !!row.isPast;
+                            const disabled = (hasOwnBooking && !isManager) || (past && !isManager);
+                            const extraCls = past ? 'opacity-50 cursor-not-allowed' : '';
+                            return (
+                              <button
+                                onClick={() => openConfirm(cell.courtIndex, row.time)}
+                                className={`w-full rounded bg-green-500 hover:opacity-90 relative
+                                            min-h-12 sm:h-10 active:scale-[.98] transition ${extraCls}`}
+                                disabled={disabled}
+                                aria-pressed="false"
+                              >
+                                <span className="sr-only">Book this slot</span>
+                              </button>
+                            );
+                          })()
                         )}
                       </td>
                     ))}
