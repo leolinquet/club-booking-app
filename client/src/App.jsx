@@ -83,10 +83,18 @@ function CodeWithCopy({ code }) {
       <button
         onClick={doCopy}
         title="Copy club code"
-        className="px-2 py-0.5 text-xs border rounded hover:bg-gray-100"
+        className={`copy-btn ${copied ? 'copied' : ''}`}
         type="button"
       >
-        {copied ? 'Copied' : 'Copy'}
+        <div className="copy-effect"></div>
+        <svg className="copy-svg-icon" viewBox="0 0 24 24" fill="none">
+          {copied ? (
+            <path d="M20 6L9 17L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          ) : (
+            <path d="M16 4H18C19.1046 4 20 4.89543 20 6V18C20 19.1046 19.1046 20 18 20H6C4.89543 20 4 19.1046 4 18V6C4 4.89543 4.89543 4 6 4H8M16 4C16 2.89543 15.1046 2 14 2H10C8.89543 2 8 2.89543 8 4M16 4C16 5.10457 15.1046 6 14 6H10C8.89543 6 8 5.10457 8 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          )}
+        </svg>
+        <span className="copy-text">{copied ? 'Copied' : 'Copy'}</span>
       </button>
     </span>
   );
@@ -104,6 +112,38 @@ function LogoutButton({ onClick }) {
         </svg>
       </div>
       <div className="logout-text">Logout</div>
+    </button>
+  );
+}
+
+function SetActiveButton({ isActive, onClick }) {
+  return (
+    <label className="set-active-container">
+      <input type="checkbox" checked={isActive} onChange={onClick} />
+      <span className="set-active-checkmark">
+        <svg className="set-active-icon set-active-no" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7V10C2 16 6 20.5 12 22C18 20.5 22 16 22 10V7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        <span className="set-active-name set-active-no">Set Active</span>
+        
+        <svg className="set-active-icon set-active-yes" viewBox="0 0 24 24" fill="none">
+          <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        <span className="set-active-name set-active-yes">Active</span>
+      </span>
+    </label>
+  );
+}
+
+function SendButton({ onClick, disabled, children = "Send" }) {
+  return (
+    <button className="send-btn" onClick={onClick} disabled={disabled}>
+      <div className="send-svg-wrapper">
+        <svg className="send-btn-svg" viewBox="0 0 24 24" fill="none">
+          <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </div>
+      <span className="send-btn-span">{children}</span>
     </button>
   );
 }
@@ -567,7 +607,7 @@ function AnnouncementPanel({ user, club, isManager, announcements = [], onClose,
                 <textarea className="border border-gray-300 rounded-lg px-3 py-2 w-full mb-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" rows={5} placeholder="Message" value={body} onChange={e=>setBody(e.target.value)} />
                 <div className="flex justify-end gap-3">
                   <button className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium" onClick={()=>{ setTitle(''); setBody(''); }}>Reset</button>
-                  <button className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors text-sm font-medium" onClick={submit} disabled={busy}>Send</button>
+                  <SendButton onClick={submit} disabled={busy}>Send</SendButton>
                 </div>
               </div>
             )}
@@ -677,19 +717,23 @@ export function Auth({ onLogin, onRegister }) {
 
   return (
     <div className="min-h-screen grid place-items-center p-4">
-      <Card>
-        <div className="space-y-4 w-96">
-          <h2 className="text-xl font-medium">
+      <div className="auth-form">
+        <div className="form">
+          <h2 className="title">
             {mode === "login" ? "Log in" : "Create account"}
           </h2>
+          <p className="subtitle">
+            {mode === "login" ? "Welcome back!" : "Join us today"}
+          </p>
 
           {/* Login: label as "Email or Username" */}
-          <div className="space-y-2">
-            <div className="text-sm text-gray-600">Email or Username</div>
-            <TextInput
+          <div className="form-container">
+            <input
+              className="input"
+              type="text"
               name="login"
               autoComplete="username"
-              placeholder="you@example.com or yourname"
+              placeholder="Email or Username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
             />
@@ -697,25 +741,26 @@ export function Auth({ onLogin, onRegister }) {
 
           {/* Only show Email input in register mode */}
           {mode === "register" && (
-            <div className="space-y-2">
-              <div className="text-sm text-gray-600">Email</div>
-              <TextInput
+            <div className="form-container">
+              <input
+                className="input"
+                type="email"
                 name="email"
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder="Email Address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
           )}
 
-          <div className="space-y-2">
-            <div className="text-sm text-gray-600">Password</div>
-            <TextInput
-              name="password"
+          <div className="form-container">
+            <input
+              className="input"
               type="password"
+              name="password"
               autoComplete={mode === "login" ? "current-password" : "new-password"}
-              placeholder="••••••••"
+              placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -723,57 +768,31 @@ export function Auth({ onLogin, onRegister }) {
 
           {mode === "login" ? (
             <>
-              <Button onClick={doLogin} disabled={!canLogin || busy}>
+              <button onClick={doLogin} disabled={!canLogin || busy}>
                 Log in
-              </Button>
-              <div className="text-sm text-gray-600">
+              </button>
+              <div className="form-section">
                 Don’t have an account?{" "}
-                <button className="underline" onClick={() => setMode("register")}>
+                <a href="#" onClick={(e) => { e.preventDefault(); setMode("register"); }}>
                   Create one
-                </button>
+                </a>
               </div>
             </>
           ) : (
             <>
-              <Button onClick={doRegister} disabled={!canRegister || busy}>
+              <button onClick={doRegister} disabled={!canRegister || busy}>
                 Create account
-              </Button>
-              <div className="text-sm text-gray-600">
+              </button>
+              <div className="form-section">
                 Already have an account?{" "}
-                <button className="underline" onClick={() => setMode("login")}>
+                <a href="#" onClick={(e) => { e.preventDefault(); setMode("login"); }}>
                   Log in
-                </button>
+                </a>
               </div>
-
-              {/* Dev helper (optional). Keep only if you have this route wired. */}
-              {import.meta.env.MODE === "development" && (
-                <button
-                  className="text-xs underline opacity-70"
-                  onClick={async () => {
-                    try {
-                      const r = await fetch(`${API}/auth/register`, {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                          "x-test-signup-secret":
-                            import.meta.env.VITE_TEST_SECRET || "dev-only-long-random",
-                        },
-                        body: JSON.stringify({ username, password }),
-                      });
-                      const data = await r.json().catch(() => null);
-                      if (!r.ok) return alert((data && data.error) || "Dev register failed");
-                      alert("Dev test user created. Log in now.");
-                      setMode("login");
-                    } catch (_) {}
-                  }}
-                >
-                  Dev: quick test account (no email)
-                </button>
-              )}
             </>
           )}
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
@@ -1037,16 +1056,29 @@ function ManagerDashboard({ user, club }){
               </div>
               <div className="flex gap-2">
                 <button
-                  className="px-3 py-1 rounded-lg bg-gray-200 hover:bg-gray-300"
+                  className="edit-btn inline-flex items-center justify-center px-4 py-2 bg-blue-600 ease-in-out delay-75 hover:bg-blue-700 text-white text-sm font-medium rounded-md"
                   onClick={() => startEdit(s)}
                 >
+                  <svg
+                    className="h-4 w-4 mr-1"
+                    fill="none"
+                    stroke="currentColor"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 16 16"
+                  >
+                    <path
+                      d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325"
+                    ></path>
+                  </svg>
                   Edit
                 </button>
                 <button
-                  className="px-3 py-1 rounded-lg bg-red-500 text-white hover:opacity-90"
+                  className="delete-button"
                   onClick={() => remove(s)}
                 >
-                  Delete
+                  <svg className="svgIcon" viewBox="0 0 448 512">
+                    <path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z"></path>
+                  </svg>
                 </button>
               </div>
             </div>
@@ -1501,11 +1533,10 @@ function ClubsPage({ user, club, onSetActive }) {
                     </select>
                   </div>
                 )}
-                {club && club.id === c.id ? (
-                  <span className="text-xs px-2 py-1 rounded bg-gray-200">Active</span>
-                ) : (
-                  <Button onClick={() => onSetActive(c)}>Set active</Button>
-                )}
+                <SetActiveButton 
+                  isActive={club && club.id === c.id}
+                  onClick={() => onSetActive(c)}
+                />
               </div>
             </div>
           ))}
