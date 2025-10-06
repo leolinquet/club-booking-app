@@ -94,6 +94,19 @@ function CodeWithCopy({ code }) {
 function Button({ children, ...props }) {
   return <button className="px-4 py-2 rounded-lg bg-black text-white hover:opacity-90 disabled:opacity-50" {...props}>{children}</button>;
 }
+
+function LogoutButton({ onClick }) {
+  return (
+    <button className="logout-btn" onClick={onClick}>
+      <div className="logout-sign">
+        <svg viewBox="0 0 512 512">
+          <path d="M377.9 105.9L500.7 228.7c7.2 7.2 11.3 17.1 11.3 27.3s-4.1 20.1-11.3 27.3L377.9 406.1c-6.4 6.4-15 9.9-24 9.9c-18.7 0-33.9-15.2-33.9-33.9l0-62.1-128 0c-17.7 0-32-14.3-32-32l0-64c0-17.7 14.3-32 32-32l128 0 0-62.1c0-18.7 15.2-33.9 33.9-33.9c9 0 17.6 3.6 24 9.9zM160 96L96 96c-17.7 0-32 14.3-32 32l0 256c0 17.7 14.3 32 32 32l64 0c17.7 0 32 14.3 32 32s-14.3 32-32 32l-64 0c-53 0-96-43-96-96L0 128C0 75 43 32 96 32l64 0c17.7 0 32 14.3 32 32s-14.3 32-32 32z"></path>
+        </svg>
+      </div>
+      <div className="logout-text">Logout</div>
+    </button>
+  );
+}
 function TextInput(props) {
   return <input {...props} className={"border rounded-lg px-3 py-2 w-full "+(props.className||'')} />;
 }
@@ -108,6 +121,16 @@ export default function App(){
 
   function saveUser(u){ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }
   function saveClub(c){ setClub(c); localStorage.setItem('club', JSON.stringify(c)); }
+
+  // Logout handler
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null);
+    } catch {}
+    localStorage.removeItem('user');
+    setUser(null);
+    setView('book');
+  };
 
   // Single canonical handler for successful auth (used by Auth component)
   async function handleAuthed(u) {
@@ -363,7 +386,7 @@ export default function App(){
         isManager={isManager}
         user={user}
         onOpenLooking={() => { setShowLooking(true); loadLooking(); }}
-  lookingCount={lookingList.length}
+        lookingCount={lookingList.length}
         onLogout={async () => {
           try {
             // attempt to notify server (if route exists); don't block UI on failure
@@ -453,7 +476,7 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); setUser(null); setView('book'); }}>Logout</Button>
+                <LogoutButton onClick={handleLogout} />
               </div>
             </header>
             <ManagerDashboard user={user} club={club} />
@@ -467,7 +490,7 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); setUser(null); setView('book'); }}>Logout</Button>
+                <LogoutButton onClick={handleLogout} />
               </div>
             </header>
             {/* ⬇️ Use the component we added earlier */}
@@ -482,7 +505,7 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); setUser(null); setView('book'); }}>Logout</Button>
+                <LogoutButton onClick={handleLogout} />
               </div>
             </header>
             <RankingsView API={API} club={club} user={user} isManager={isManager} />
@@ -496,7 +519,7 @@ export default function App(){
                 <span className="mx-2">•</span>
                 <span>{club.name} </span>
                 <CodeWithCopy code={club.code} />
-                <Button onClick={async ()=>{ await (async ()=>{ try{ await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null); }catch{} })(); localStorage.removeItem('user'); setUser(null); setView('book'); }}>Logout</Button>
+                <LogoutButton onClick={handleLogout} />
               </div>
             </header>
             <UserBooking user={user} club={club} />
@@ -524,43 +547,43 @@ function AnnouncementPanel({ user, club, isManager, announcements = [], onClose,
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
-      <div className="w-[720px] max-w-[95%] bg-white rounded-xl shadow announcements-modal">
-        <div className="announcements-content p-4">
-          <div className="announcements-header flex items-start justify-between">
-            <h3 className="text-lg font-medium">Announcements</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-4xl lg:max-w-5xl bg-white rounded-xl shadow-lg max-h-[90vh] flex flex-col">
+        <div className="announcements-content p-6 flex-1 overflow-hidden">
+          <div className="announcements-header flex items-center justify-between mb-4 pb-4 border-b">
+            <h3 className="text-xl font-semibold text-gray-900">Announcements</h3>
             <div className="flex items-center gap-2">
-              <button className="px-3 py-1 rounded bg-gray-200" onClick={async ()=>{ await onRefresh(); }}>Refresh</button>
-              <button className="px-3 py-1 rounded bg-gray-100" onClick={onClose}>Close</button>
+              <button className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium" onClick={async ()=>{ await onRefresh(); }}>Refresh</button>
+              <button className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium" onClick={onClose}>Close</button>
             </div>
           </div>
 
-          <div className="announcements-grid mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
+          <div className="announcements-grid grid grid-cols-1 lg:grid-cols-2 gap-6 h-full overflow-hidden">
+          <div className="flex flex-col">
             {isManager && (
-              <div className="border rounded p-3 mb-3">
-                <div className="text-sm font-medium mb-2">Create announcement</div>
-                <input className="border rounded px-2 py-1 w-full mb-2" placeholder="Title" value={title} onChange={e=>setTitle(e.target.value)} />
-                <textarea className="border rounded px-2 py-1 w-full mb-2" rows={5} placeholder="Message" value={body} onChange={e=>setBody(e.target.value)} />
-                <div className="flex justify-end gap-2">
-                  <button className="px-3 py-1 rounded bg-gray-200" onClick={()=>{ setTitle(''); setBody(''); }}>Reset</button>
-                  <button className="px-3 py-1 rounded bg-black text-white" onClick={submit} disabled={busy}>Send</button>
+              <div className="border border-gray-200 rounded-lg p-4 mb-4">
+                <div className="text-sm font-semibold mb-3 text-gray-900">Create announcement</div>
+                <input className="border border-gray-300 rounded-lg px-3 py-2 w-full mb-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Title" value={title} onChange={e=>setTitle(e.target.value)} />
+                <textarea className="border border-gray-300 rounded-lg px-3 py-2 w-full mb-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" rows={5} placeholder="Message" value={body} onChange={e=>setBody(e.target.value)} />
+                <div className="flex justify-end gap-3">
+                  <button className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium" onClick={()=>{ setTitle(''); setBody(''); }}>Reset</button>
+                  <button className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors text-sm font-medium" onClick={submit} disabled={busy}>Send</button>
                 </div>
               </div>
             )}
 
-            <div className="space-y-2 max-h-[60vh] overflow-auto">
-              {announcements.length === 0 && <div className="text-sm text-gray-500">No announcements.</div>}
+            <div className="space-y-3 flex-1 overflow-auto">
+              {announcements.length === 0 && <div className="text-sm text-gray-500 p-4 text-center">No announcements.</div>}
               {announcements.map(a => (
-                <div key={a.id} className={`border rounded p-3 ${a.read ? '' : 'bg-yellow-50'}`}>
-                  <div className="flex items-baseline justify-between">
-                    <div className="font-medium">{a.title}</div>
+                <div key={a.id} className={`border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow ${a.read ? 'bg-white' : 'bg-yellow-50 border-yellow-200'}`}>
+                  <div className="flex items-baseline justify-between mb-2">
+                    <div className="font-semibold text-gray-900">{a.title}</div>
                     <div className="text-xs text-gray-500">{new Date(a.created_at || a.created || a.ts || Date.now()).toLocaleString()}</div>
                   </div>
-                  <div className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{a.body}</div>
-                  <div className="mt-2 flex items-center gap-2">
-                    {!a.read && <button className="px-2 py-1 rounded bg-black text-white text-xs" onClick={()=> onMarkRead(a.id)}>Mark read</button>}
-                    {a.read && <span className="text-xs text-gray-500">Read</span>}
+                  <div className="text-sm text-gray-700 mb-3 whitespace-pre-wrap">{a.body}</div>
+                  <div className="flex items-center gap-2">
+                    {!a.read && <button className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors" onClick={()=> onMarkRead(a.id)}>Mark read</button>}
+                    {a.read && <span className="text-xs text-gray-500 italic">Read</span>}
                   </div>
                 </div>
               ))}
@@ -1883,11 +1906,11 @@ function TournamentsView({ API, club, user, isManager }) {
           <option value="completed">Completed</option>
           <option value="all">All</option>
         </select>
-        <button onClick={loadList} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Refresh</button>
+        <button onClick={loadList} className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 shadow-sm hover:shadow-md transition-all duration-200 font-medium text-gray-700">Refresh</button>
 
         {isManager && (
           <button
-            className="ml-auto px-3 py-1 rounded bg-red-100 hover:bg-red-200"
+            className="delete-all-button ml-auto"
             onClick={deleteAllInSection}
             title={`Delete all tournaments in "${statusFilter}"`}
           >
@@ -1903,28 +1926,30 @@ function TournamentsView({ API, club, user, isManager }) {
           {list.map(t => (
             <div key={t.id} className="border rounded-lg p-4 bg-white shadow-sm">
               <div className="text-sm font-semibold mb-3">{t.name} · {t.sport} {t.end_date ? '· Completed' : '· Active'}</div>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                <button className="px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 min-h-[44px]" onClick={()=> openDetail(t.id)}>
-                  View
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mt-4">
+                <button className="slice" onClick={()=> openDetail(t.id)}>
+                  <span className="text">View</span>
                 </button>
 
                 {!isManager && !t.end_date && (
                   joined[t.id] ? (
-                    <button className="px-4 py-2 rounded bg-red-100 hover:bg-red-200 min-h-[44px]"
+                    <button className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 shadow-md hover:shadow-lg transition-all duration-200 font-medium min-h-[44px]"
                             onClick={()=> withdraw(t.id, t.name)}>Withdraw</button>
                   ) : (
-                    <button className="px-4 py-2 rounded bg-black text-white min-h-[44px]"
+                    <button className="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-black shadow-lg hover:shadow-xl transition-all duration-200 font-medium min-h-[44px]"
                             onClick={()=> signIn(t.id, t.name)}>Sign in</button>
                   )
                 )}
 
                 {isManager && (
                   <button
-                    className="sm:ml-auto px-4 py-2 rounded bg-red-100 hover:bg-red-200 min-h-[44px]"
+                    className="delete-button sm:ml-auto"
                     onClick={()=> deleteTournament(t.id, t.name)}
                     title="Delete this tournament"
                   >
-                    Delete
+                    <svg className="svgIcon" viewBox="0 0 448 512">
+                      <path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z"></path>
+                    </svg>
                   </button>
                 )}
               </div>

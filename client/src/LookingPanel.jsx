@@ -475,13 +475,13 @@ export default function LookingPanel({ show, onClose, user, club }){
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
-      <div className="w-[520px] max-w-[95%] bg-white rounded-xl shadow p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-medium">Looking for partner</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md sm:max-w-lg bg-white rounded-xl shadow-lg p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6 pb-4 border-b">
+          <h3 className="text-xl font-semibold text-gray-900">Looking for partner</h3>
           <div className="flex items-center gap-2">
             <button
-              className="px-3 py-1 rounded bg-gray-200"
+              className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium"
               onClick={async ()=>{
                 if (!club) return;
                 const hasServer = Boolean(API_BASE);
@@ -501,40 +501,40 @@ export default function LookingPanel({ show, onClose, user, club }){
             >
               Refresh
             </button>
-            <button className="px-3 py-1 rounded bg-gray-100" onClick={onClose}>Close</button>
+            <button className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium" onClick={onClose}>Close</button>
             {user && (
               <>
-                <button className="px-3 py-1 rounded bg-red-50 text-red-700" onClick={()=>setShowClearConfirm(true)}>Clear my requests</button>
+                <button className="px-4 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 transition-colors text-sm font-medium" onClick={()=>setShowClearConfirm(true)}>Clear my requests</button>
                 {showClearConfirm && (
-                  <div className="fixed inset-0 z-60 grid place-items-center bg-black/40">
-                    <div className="w-[360px] bg-white rounded-xl shadow p-4">
-                      <div className="text-lg font-medium mb-2">Clear all requests?</div>
-                      <div className="text-sm text-gray-600 mb-4">Are you sure you want to clear all your requests?</div>
-                      <div className="flex justify-end gap-2">
-                        <button className="px-3 py-1 rounded bg-gray-100" onClick={()=>setShowClearConfirm(false)}>Cancel</button>
-                        <button className="px-3 py-1 rounded bg-red-600 text-white" onClick={()=>{ setShowClearConfirm(false); clearMyRequests(); }}>Clear</button>
+                  <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4">
+                    <div className="w-full max-w-sm bg-white rounded-xl shadow-lg p-6">
+                      <div className="text-lg font-semibold mb-3">Clear all requests?</div>
+                      <div className="text-sm text-gray-600 mb-6">Are you sure you want to clear all your requests?</div>
+                      <div className="flex justify-end gap-3">
+                        <button className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium" onClick={()=>setShowClearConfirm(false)}>Cancel</button>
+                        <button className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors text-sm font-medium" onClick={()=>{ setShowClearConfirm(false); clearMyRequests(); }}>Clear</button>
                       </div>
                     </div>
                   </div>
                 )}
                 {showTimeModal && (
-                  <div className="fixed inset-0 z-60 grid place-items-center bg-black/40">
-                    <div className="w-[420px] bg-white rounded-xl shadow p-4">
-                      <div className="text-lg font-medium mb-2">When are you looking?</div>
-                      <div className="text-sm text-gray-600 mb-3">Optional — pick a time window you'd like to play (local time).</div>
-                      <div className="grid grid-cols-2 gap-2 mb-4">
+                  <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4">
+                    <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-6">
+                      <div className="text-lg font-semibold mb-3">When are you looking?</div>
+                      <div className="text-sm text-gray-600 mb-4">Optional — pick a time window you'd like to play (local time).</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
                         <div>
-                          <label className="text-xs text-gray-600">From</label>
-                          <input type="datetime-local" value={requestedFrom} onChange={(e)=>setRequestedFrom(e.target.value)} className="w-full border rounded px-2 py-1" />
+                          <label className="block text-sm font-medium text-gray-700 mb-1">From</label>
+                          <input type="datetime-local" value={requestedFrom} onChange={(e)=>setRequestedFrom(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                         </div>
                         <div>
-                          <label className="text-xs text-gray-600">To</label>
-                          <input type="datetime-local" value={requestedTo} onChange={(e)=>setRequestedTo(e.target.value)} className="w-full border rounded px-2 py-1" />
+                          <label className="block text-sm font-medium text-gray-700 mb-1">To</label>
+                          <input type="datetime-local" value={requestedTo} onChange={(e)=>setRequestedTo(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                         </div>
                       </div>
-                      <div className="flex justify-end gap-2">
-                        <button className="px-3 py-1 rounded bg-gray-100" onClick={()=>{ setShowTimeModal(false); setRequestedFrom(''); setRequestedTo(''); }}>Cancel</button>
-                        <button className="px-3 py-1 rounded bg-green-600 text-white" onClick={()=>{
+                      <div className="flex justify-end gap-3">
+                        <button className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium" onClick={()=>{ setShowTimeModal(false); setRequestedFrom(''); setRequestedTo(''); }}>Cancel</button>
+                        <button className="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors text-sm font-medium" onClick={()=>{
                           // Confirm: enable looking with optional requested_from/to
                           setShowTimeModal(false);
                           try {
@@ -566,27 +566,27 @@ export default function LookingPanel({ show, onClose, user, club }){
           </div>
         </div>
 
-        <div className="mb-3">
-            <div className="flex items-center gap-3 justify-between">
+        <div className="mb-4">
+            <div className="flex items-center justify-between mb-4">
             <span className="text-sm text-gray-600">Open the list and request to hit other players.</span>
             <div>
                 {/* server usage is automatic when VITE_API_BASE is set; no manual toggle */}
-                <button onClick={onClickLookingButton} className={`px-3 py-1 rounded ${isMeLooking ? 'bg-red-100 text-red-700' : 'bg-green-500 text-white'}`}>
+                <button onClick={onClickLookingButton} className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium ${isMeLooking ? 'bg-red-100 hover:bg-red-200 text-red-700' : 'bg-green-500 hover:bg-green-600 text-white'}`}>
                   {isMeLooking ? 'Stop looking' : 'I am looking'}
                 </button>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <div className="text-sm text-gray-700 mb-2">Players currently looking</div>
-            <div className="space-y-2 max-h-[50vh] overflow-auto">
-              {list.length === 0 && <div className="text-sm text-gray-500">No players currently looking.</div>}
+            <div className="text-sm font-medium text-gray-700 mb-3">Players currently looking</div>
+            <div className="space-y-3 max-h-[50vh] overflow-auto">
+              {list.length === 0 && <div className="text-sm text-gray-500 p-4 text-center">No players currently looking.</div>}
               {list.map(p => (
-                <div key={p.player_id} className="flex items-center justify-between border rounded p-2">
+                <div key={p.player_id} className="flex items-center justify-between border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors">
                     <div className="flex items-center gap-3">
-                    <div className="text-sm">{p.display_name || `User ${p.user_id || p.player_id}`}</div>
+                    <div className="text-sm font-medium">{p.display_name || `User ${p.user_id || p.player_id}`}</div>
                     <div className="flex flex-col text-xs text-gray-500">
                       {(() => {
                         const formatted = getPlayerRange(p);
@@ -615,7 +615,7 @@ export default function LookingPanel({ show, onClose, user, club }){
                           <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 rounded">Declined</span>
                         ) : (
                           <>
-                            <button onClick={()=>sendRequest(p)} className="px-3 py-1 text-sm rounded bg-black text-white hover:opacity-90">Request to Hit</button>
+                            <button onClick={()=>sendRequest(p)} className="px-3 py-1 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors font-medium">Request to Hit</button>
                           </>
                         )}
                       </div>
@@ -627,27 +627,27 @@ export default function LookingPanel({ show, onClose, user, club }){
           </div>
 
           <div>
-              <div className="text-sm text-gray-700 mb-2">Requests</div>
-              <div className="space-y-2 max-h-[50vh] overflow-auto">
-                {requests.length === 0 && <div className="text-sm text-gray-500">No requests yet.</div>}
+              <div className="text-sm font-medium text-gray-700 mb-3">Requests</div>
+              <div className="space-y-3 max-h-[50vh] overflow-auto">
+                {requests.length === 0 && <div className="text-sm text-gray-500 p-4 text-center">No requests yet.</div>}
                 {requests.map(r => (
-                  <div key={r.reqId} className="flex items-center justify-between border rounded p-2">
+                  <div key={r.reqId} className="flex items-center justify-between border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors">
                     <div className="flex flex-col">
-                      <div className="text-sm font-medium">{r.fromUserId === (user && user.id) ? `You -> ${r.toName || `User ${r.toUserId}`}` : `${r.fromName || `User ${r.fromUserId}`} -> ${r.toName || (r.toUserId ? `User ${r.toUserId}` : 'Unknown')}`}</div>
+                      <div className="text-sm font-medium">{r.fromUserId === (user && user.id) ? `You → ${r.toName || `User ${r.toUserId}`}` : `${r.fromName || `User ${r.fromUserId}`} → ${r.toName || (r.toUserId ? `User ${r.toUserId}` : 'Unknown')}`}</div>
                       <div className="text-xs text-gray-500">Player: {r.player?.display_name || `Player ${r.player?.player_id}`}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       {r.status === 'pending' && Number(r.toUserId) === Number(user?.id) ? (
                         <>
-                          <button onClick={()=>acceptRequest(r)} className="px-3 py-1 rounded bg-green-500 text-white">Accept</button>
-                          <button onClick={()=>declineRequest(r)} className="px-3 py-1 rounded bg-red-100 text-red-700">Decline</button>
+                          <button onClick={()=>acceptRequest(r)} className="px-3 py-1 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors">Accept</button>
+                          <button onClick={()=>declineRequest(r)} className="px-3 py-1 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium transition-colors">Decline</button>
                         </>
                       ) : r.status === 'pending' && Number(r.fromUserId) === Number(user?.id) ? (
-                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">Pending…</span>
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">Pending…</span>
                       ) : r.status === 'accepted' ? (
-                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded">{Number(r.fromUserId) === Number(user?.id) ? `${r.toName || `User ${r.toUserId}`} accepted` : `${r.fromName} accepted`}</span>
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded-full">{Number(r.fromUserId) === Number(user?.id) ? `${r.toName || `User ${r.toUserId}`} accepted` : `${r.fromName} accepted`}</span>
                       ) : r.status === 'declined' ? (
-                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 rounded">{Number(r.fromUserId) === Number(user?.id) ? `${r.toName || `User ${r.toUserId}`} declined` : `${r.fromName} declined`}</span>
+                        <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">{Number(r.fromUserId) === Number(user?.id) ? `${r.toName || `User ${r.toUserId}`} declined` : `${r.fromName} declined`}</span>
                       ) : null}
                     </div>
                   </div>
