@@ -243,6 +243,24 @@ export default function App(){
     })();
   }, [user?.id, club?.id]);
 
+  // Load user's club memberships when user loads
+  useEffect(() => {
+    (async () => {
+      if (!user || !user.id) return;
+      try {
+        const r = await fetch(`${API}/users/${user.id}/clubs`, { credentials: 'include' });
+        if (r.ok) {
+          const clubs = await r.json().catch(() => []);
+          setUserClubs(clubs);
+        } else {
+          setUserClubs([]);
+        }
+      } catch (e) {
+        setUserClubs([]);
+      }
+    })();
+  }, [user?.id]);
+
   // Announcements (in-app messages) - moved above early returns so hooks stay stable
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
@@ -434,7 +452,7 @@ export default function App(){
       <ClubGate
         user={user}
         onJoin={(c) => {saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]);}}
-        onCreate={(c) => saveClub(c)}
+        onCreate={(c) => {saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]);}}
       />
     );
   }
@@ -570,6 +588,8 @@ export default function App(){
             user={user}
             club={club}
             onSetActive={(c) => { saveClub(c); setView('book'); }}
+            onJoin={(c) => {setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]);}}
+            onCreate={(c) => {setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]);}}
           />
         ) : effectivePage === 'home' ? (
           // Manager Dashboard - requires club membership
@@ -1532,7 +1552,7 @@ function UserBooking({ user, club }){
 }
 
 /* -------------------- Clubs Page -------------------- */
-function ClubsPage({ user, club, onSetActive }) {
+function ClubsPage({ user, club, onSetActive, onJoin, onCreate }) {
   const [clubs, setClubs] = useState([]);
   const [joinCode, setJoinCode] = useState('');
   const [newName, setNewName] = useState('');
@@ -1588,6 +1608,8 @@ function ClubsPage({ user, club, onSetActive }) {
       setJoinCode('');
       await load();
       onSetActive(data.club);
+      // Update parent's userClubs state
+      if (onJoin) onJoin(data.club);
     } catch (e) {
       alert(e.message);
     }
@@ -1604,6 +1626,8 @@ function ClubsPage({ user, club, onSetActive }) {
       setNewName('');
       await load();
       onSetActive(data);
+      // Update parent's userClubs state
+      if (onCreate) onCreate(data);
     } catch (e) {
       alert(e.message);
     }
