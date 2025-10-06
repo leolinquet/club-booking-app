@@ -1,7 +1,19 @@
 // client/src/ClubGate.jsx
 import React, { useState } from 'react';
 
-const API = import.meta.env.VITE_API_BASE || 'http://localhost:5051';
+// Resolve a safe API base like App.jsx does so values like ":5051" become
+// "http://localhost:5051" and protocol-relative or host-only strings are
+// normalized. This prevents fetches to paths like ":5051/whatever" which
+// the browser treats as a relative URL and leads to confusing errors.
+const RAW_API = (typeof window !== 'undefined' && window.API_BASE) ? String(window.API_BASE) : (import.meta.env.VITE_API_BASE || '');
+function normalizeApi(u) {
+  if (!u) return 'http://localhost:5051';
+  if (/^:\d+$/.test(u)) return 'http://localhost' + u; // ":5051" -> http://localhost:5051
+  if (/^\/\//.test(u)) return (typeof window !== 'undefined' ? window.location.protocol : 'http:') + u; // //host -> https?//host
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(u)) return (typeof window !== 'undefined' ? window.location.protocol : 'http:') + '//' + u; // host:port -> http://host:port
+  return String(u).replace(/\/+$/, '');
+}
+const API = normalizeApi(RAW_API);
 
 export default function ClubGate({ user, onJoin, onCreate }) {
   const [code, setCode] = useState('');

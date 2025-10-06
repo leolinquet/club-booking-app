@@ -1,0 +1,12 @@
+
+> club-booking-client@0.1.0 dev
+> vite
+
+Port 5173 is in use, trying another one...
+
+  VITE v5.4.19  ready in 138 ms
+
+  ➜  Local:   http://localhost:5174/
+  ➜  Network: use --host to expose
+10:55:47 PM [vite] page reload src/App.jsx
+10:59:26 PM [vite] page reload src/App.jsx

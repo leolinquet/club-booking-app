@@ -980,7 +980,13 @@ app.post('/tournaments/:id/generate', async (req, res) => {
 
     const N = Number(drawSize);
     if (![4,8,16,32,64,128].includes(N)) {
-      return res.status(400).json({ error: 'drawSize must be 4,8,16,32,64,128' });
+      return res.status(422).json({ error: 'drawSize must be 4,8,16,32,64,128' });
+    }
+    
+    // Check if tournament already has matches (prevent regeneration)
+    const existingMatches = await db.prepare('SELECT COUNT(*) as count FROM matches WHERE tournament_id=?').get(tId);
+    if (existingMatches && existingMatches.count > 0) {
+      return res.status(409).json({ error: 'tournament bracket already generated' });
     }
 
     // Entrants with points for ranking (0 if none)
@@ -1013,8 +1019,8 @@ app.post('/tournaments/:id/generate', async (req, res) => {
     }
 
     const M = entrants.length;
-    if (M === 0) return res.status(400).json({ error: 'need at least 1 player' });
-    if (M > N)   return res.status(400).json({ error: `too many players (${M}); increase draw size or remove players` });
+    if (M === 0) return res.status(422).json({ error: 'need at least 1 player' });
+    if (M > N)   return res.status(422).json({ error: `too many players (${M}); increase draw size or remove players` });
 
     // Rank entrants
     const ranked = [...entrants].sort((a,b) =>
@@ -1241,15 +1247,35 @@ app.put('/matches/:id/result', async (req, res) => {
   try {
     const mId = Number(req.params.id);
     const { managerId, p1_score, p2_score } = req.body || {};
-    if (!managerId) return res.status(400).json({ error: 'managerId required' });
+    
+    // Validate required fields
+    if (!managerId) return res.status(422).json({ error: 'managerId required' });
 
     const m = await db.prepare('SELECT * FROM matches WHERE id=?').get(mId);
     if (!m) return res.status(404).json({ error: 'match not found' });
 
+    // Check if match is already completed
+    if (m.winner_id) {
+      return res.status(409).json({ error: 'match already completed' });
+    }
+
+    // Check if this is a BYE match (should not allow score entry)
+    if (!m.p1_id || !m.p2_id) {
+      return res.status(409).json({ error: 'cannot enter scores for BYE matches' });
+    }
+
+    // Validate scores
     const s1 = Number(p1_score);
     const s2 = Number(p2_score);
-    if (!Number.isFinite(s1) || !Number.isFinite(s2)) return res.status(400).json({ error: 'invalid scores' });
-    if (s1 === s2) return res.status(400).json({ error: 'scores must not tie' });
+    if (!Number.isFinite(s1) || !Number.isFinite(s2)) {
+      return res.status(422).json({ error: 'invalid scores - must be numbers' });
+    }
+    if (s1 === s2) {
+      return res.status(422).json({ error: 'scores must not tie' });
+    }
+    if (s1 < 0 || s2 < 0) {
+      return res.status(422).json({ error: 'scores must be non-negative' });
+    }
 
     const winnerId = s1 > s2 ? m.p1_id : m.p2_id;
 
@@ -1804,38 +1830,69 @@ app.delete('/tournaments/:id/signin', async (req, res) => {
 
 // after you've built `slots` with some empty holes (0 or null = BYE):
 async function autoAdvanceByes(tId) {
+  console.log(`[autoAdvanceByes] Processing tournament ${tId} - ONE HOP ONLY`);
+  
   const hasStatus = new Set((await tableInfo('matches')).map(c => c.name)).has('status');
   const updSQL = hasStatus
     ? `UPDATE matches SET winner_id=?, status='completed' WHERE id=?`
     : `UPDATE matches SET winner_id=? WHERE id=?`;
 
-  const ms = await db.prepare(`SELECT id, round, slot, p1_id, p2_id FROM matches WHERE tournament_id=? ORDER BY round DESC, slot ASC`).all(tId);
+  // Get all matches for this tournament, starting from the highest round (first round)
+  const ms = await db.prepare(`SELECT id, round, slot, p1_id, p2_id, winner_id FROM matches WHERE tournament_id=? ORDER BY round DESC, slot ASC`).all(tId);
+  
+  console.log(`[autoAdvanceByes] Found ${ms.length} matches`);
+  
+  // Process matches in current round only - NO cascading across rounds
+  const processedThisPass = new Set();
+  
   for (const m of ms) {
-    const byeP1 = !m.p1_id, byeP2 = !m.p2_id;
-    if ((byeP1 ^ byeP2)) { // exactly one is bye
+    // Skip if already processed or already has a winner
+    if (processedThisPass.has(m.id) || m.winner_id) continue;
+    
+    const byeP1 = !m.p1_id;
+    const byeP2 = !m.p2_id;
+    
+    // Exactly one is bye - advance the other player ONE HOP only
+    if (byeP1 ^ byeP2) {
       const winner = m.p1_id || m.p2_id;
+      console.log(`[autoAdvanceByes] Advancing player ${winner} from R${m.round}S${m.slot} (true bye)`);
+      
+      // Mark this match as completed
       await db.prepare(updSQL).run(winner, m.id);
-      // feed forward deterministically
+      processedThisPass.add(m.id);
+      
+      // Advance to next round - ONE HOP ONLY
       const nextRound = m.round - 1;
       if (nextRound >= 1) {
-        const nextSlot = Math.floor(m.slot/2);
-        let next = db.prepare(`SELECT id,p1_id,p2_id FROM matches WHERE tournament_id=? AND round=? AND slot=?`)
+        const nextSlot = Math.floor(m.slot / 2);
+        
+        // Find or create the next round match
+        let next = await db.prepare(`SELECT id, p1_id, p2_id FROM matches WHERE tournament_id=? AND round=? AND slot=?`)
           .get(tId, nextRound, nextSlot);
+          
         if (!next) {
+          // Create the next round match
           const ins = hasStatus
             ? `INSERT INTO matches (tournament_id,round,slot,p1_id,p2_id,p1_score,p2_score,winner_id,status)
                VALUES (?,?,?,?,?,NULL,NULL,NULL,'scheduled')`
             : `INSERT INTO matches (tournament_id,round,slot,p1_id,p2_id,p1_score,p2_score,winner_id)
                VALUES (?,?,?,?,?,NULL,NULL,NULL)`;
           await db.prepare(ins).run(tId, nextRound, nextSlot, null, null);
-          next = db.prepare(`SELECT id,p1_id,p2_id FROM matches WHERE tournament_id=? AND round=? AND slot=?`)
+          next = await db.prepare(`SELECT id, p1_id, p2_id FROM matches WHERE tournament_id=? AND round=? AND slot=?`)
             .get(tId, nextRound, nextSlot);
         }
+        
+        // Place winner in correct position - but DO NOT auto-complete the next match
         const field = (m.slot % 2 === 0) ? 'p1_id' : 'p2_id';
-        if (next[field] == null) await db.prepare(`UPDATE matches SET ${field}=? WHERE id=?`).run(winner, next.id);
+        if (next && next[field] == null) {
+          await db.prepare(`UPDATE matches SET ${field}=? WHERE id=?`).run(winner, next.id);
+          console.log(`[autoAdvanceByes] Placed player ${winner} in R${nextRound}S${nextSlot} ${field}`);
+        }
       }
     }
   }
+  
+  console.log(`[autoAdvanceByes] Completed - processed ${processedThisPass.size} bye matches`);
 }
 
 
