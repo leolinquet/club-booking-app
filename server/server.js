@@ -3073,17 +3073,61 @@ app.post('/book', async (req, res) => {
   }
 });
 
-// Simple in-memory "looking" presence store for development.
+// Create looking table if it doesn't exist
+try {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS looking (
+      id BIGSERIAL PRIMARY KEY,
+      club_id BIGINT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      player_id BIGINT REFERENCES players(id) ON DELETE CASCADE,
+      display_name TEXT NOT NULL,
+      looking_since TIMESTAMP DEFAULT NOW(),
+      looking_from TEXT,
+      looking_to TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      UNIQUE(club_id, user_id)
+    );
+  `);
+} catch (e) {
+  console.warn('Could not ensure looking table:', e && e.message ? e.message : e);
+}
+
+// Simple in-memory "looking" presence store for development fallback.
 // Keys: clubId -> array of { player_id, user_id, display_name, looking_since, lookingFrom?, lookingTo? }
 const _devLookingStore = new Map();
 
-// GET /clubs/:clubId/looking -> list of lookers (dev-only). Returns 404 in prod.
+// GET /clubs/:clubId/looking -> list of lookers
 app.get('/clubs/:clubId/looking', async (req, res) => {
-  if (process.env.NODE_ENV === 'production') return res.status(404).json({ error: 'not available' });
   try {
     const clubId = Number(req.params.clubId);
-    const rows = _devLookingStore.get(clubId) || [];
-    return res.json(rows);
+    
+    // Try database first, fallback to in-memory store
+    try {
+      const rows = await pool.query(`
+        SELECT l.user_id, l.display_name, l.looking_since, l.looking_from, l.looking_to,
+               COALESCE(l.player_id, p.id) as player_id
+        FROM looking l
+        LEFT JOIN players p ON p.club_id = l.club_id AND p.user_id = l.user_id
+        WHERE l.club_id = $1
+        ORDER BY l.looking_since ASC
+      `, [clubId]);
+      
+      const formatted = rows.rows.map(row => ({
+        player_id: row.player_id || `local-${row.user_id}`,
+        user_id: Number(row.user_id),
+        display_name: row.display_name,
+        looking_since: new Date(row.looking_since).getTime(),
+        lookingFrom: row.looking_from,
+        lookingTo: row.looking_to
+      }));
+      
+      return res.json(formatted);
+    } catch (dbErr) {
+      console.warn('Database looking query failed, using in-memory store:', dbErr.message);
+      const rows = _devLookingStore.get(clubId) || [];
+      return res.json(rows);
+    }
   } catch (e) {
     console.error('/clubs/:clubId/looking GET error', e && e.stack ? e.stack : e);
     return res.status(500).json({ error: 'unexpected error' });
@@ -3092,22 +3136,62 @@ app.get('/clubs/:clubId/looking', async (req, res) => {
 
 // POST /clubs/:clubId/looking { userId, looking, lookingFrom?, lookingTo? }
 app.post('/clubs/:clubId/looking', express.json(), async (req, res) => {
-  if (process.env.NODE_ENV === 'production') return res.status(404).json({ error: 'not available' });
   try {
     const clubId = Number(req.params.clubId);
     const { userId, looking, lookingFrom, lookingTo } = req.body || {};
     if (!clubId || !userId || typeof looking === 'undefined') return res.status(400).json({ error: 'clubId, userId and looking required' });
-    const list = _devLookingStore.get(clubId) || [];
-    // remove any existing entry for this user
-    const filtered = list.filter(r => Number(r.user_id) !== Number(userId));
-    if (looking) {
-      const entry = { player_id: `local-${userId}`, user_id: Number(userId), display_name: `user${userId}`, looking_since: Date.now(), lookingFrom: lookingFrom || null, lookingTo: lookingTo || null };
-      filtered.unshift(entry);
-      _devLookingStore.set(clubId, filtered);
-      return res.json({ ok: true, looking: true });
-    } else {
-      _devLookingStore.set(clubId, filtered);
-      return res.json({ ok: true, looking: false });
+    
+    // Try database first, fallback to in-memory store
+    try {
+      if (looking) {
+        // Get user info for display name
+        const user = await pool.query('SELECT display_name FROM users WHERE id = $1', [Number(userId)]);
+        const displayName = user.rows[0]?.display_name || `user${userId}`;
+        
+        // Get or create player
+        let player = await pool.query('SELECT id FROM players WHERE club_id = $1 AND user_id = $2', [clubId, Number(userId)]);
+        let playerId = player.rows[0]?.id;
+        
+        if (!playerId) {
+          const newPlayer = await pool.query(
+            'INSERT INTO players (club_id, user_id, display_name) VALUES ($1, $2, $3) RETURNING id',
+            [clubId, Number(userId), displayName]
+          );
+          playerId = newPlayer.rows[0].id;
+        }
+        
+        // Upsert looking entry
+        await pool.query(`
+          INSERT INTO looking (club_id, user_id, player_id, display_name, looking_from, looking_to)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (club_id, user_id)
+          DO UPDATE SET 
+            display_name = EXCLUDED.display_name,
+            looking_since = NOW(),
+            looking_from = EXCLUDED.looking_from,
+            looking_to = EXCLUDED.looking_to
+        `, [clubId, Number(userId), playerId, displayName, lookingFrom || null, lookingTo || null]);
+        
+        return res.json({ ok: true, looking: true });
+      } else {
+        // Remove looking entry
+        await pool.query('DELETE FROM looking WHERE club_id = $1 AND user_id = $2', [clubId, Number(userId)]);
+        return res.json({ ok: true, looking: false });
+      }
+    } catch (dbErr) {
+      console.warn('Database looking operation failed, using in-memory store:', dbErr.message);
+      // Fallback to in-memory store
+      const list = _devLookingStore.get(clubId) || [];
+      const filtered = list.filter(r => Number(r.user_id) !== Number(userId));
+      if (looking) {
+        const entry = { player_id: `local-${userId}`, user_id: Number(userId), display_name: `user${userId}`, looking_since: Date.now(), lookingFrom: lookingFrom || null, lookingTo: lookingTo || null };
+        filtered.unshift(entry);
+        _devLookingStore.set(clubId, filtered);
+        return res.json({ ok: true, looking: true });
+      } else {
+        _devLookingStore.set(clubId, filtered);
+        return res.json({ ok: true, looking: false });
+      }
     }
   } catch (e) {
     console.error('/clubs/:clubId/looking POST error', e && e.stack ? e.stack : e);
