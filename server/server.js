@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -138,6 +139,24 @@ const corsOptionsWithMethods = {
 
 app.use(cors(corsOptionsWithMethods));
 app.options('*', cors(corsOptionsWithMethods)); // preflight
+
+// JWT Authentication Middleware
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+  
+  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+    req.user = user;
+    next();
+  });
+}
 
 // Body parser
 app.use(express.json());
@@ -563,8 +582,22 @@ app.post('/auth/login', async (req, res) => {
       }
     }
 
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        email: user.email, 
+        display_name: user.display_name,
+        role: user.role,
+        is_manager: !!user.is_manager
+      },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '24h' }
+    );
+
     res.json({
       ok: true,
+      token,
       user: {
         id: user.id,
         username: user.display_name ?? null,   // alias for older UI
@@ -1749,12 +1782,11 @@ app.get('/tournaments/:id/joined', async (req, res) => {
   }
 });
 
-// POST /tournaments/:id/signin  { userId }
-app.post('/tournaments/:id/signin', async (req, res) => {
+// POST /tournaments/:id/register - Self-register (authenticated user)
+app.post('/tournaments/:id/register', authenticateToken, async (req, res) => {
   try {
     const tId = Number(req.params.id);
-    const { userId } = req.body || {};
-    if (!userId) return res.status(400).json({ error: 'userId required' });
+    const userId = req.user.id; // Get from JWT token, not request body
 
     const t = await db.prepare(`SELECT id, club_id, end_date FROM tournaments WHERE id=?`).get(tId);
     if (!t) return res.status(404).json({ error: 'tournament not found' });
@@ -1764,7 +1796,6 @@ app.post('/tournaments/:id/signin', async (req, res) => {
     if (t.end_date) return res.status(400).json({ error: 'tournament is completed' });
 
     // find or create player profile in this club
-    // IMPORTANT: await the DB call so `player` is the row (not a Promise)
     let player = await db.prepare(`SELECT id FROM players WHERE club_id=? AND user_id=?`)
       .get(t.club_id, Number(userId));
     if (!player) {
@@ -1780,33 +1811,31 @@ app.post('/tournaments/:id/signin', async (req, res) => {
       player = { id: Number(result.id) };
     }
 
-      await db.prepare(`
-        INSERT INTO tournament_players (tournament_id, player_id)
-        VALUES (?, ?)
-        ON CONFLICT (tournament_id, player_id) DO NOTHING
-      `).run(tId, player.id);
+    await db.prepare(`
+      INSERT INTO tournament_players (tournament_id, player_id)
+      VALUES (?, ?)
+      ON CONFLICT (tournament_id, player_id) DO NOTHING
+    `).run(tId, player.id);
 
-
-    // add to tournament
-      await db.prepare(`
-        INSERT INTO standings (club_id, player_id, tournaments_played, points)
-        VALUES (?, ?, 0, 0)
-        ON CONFLICT (club_id, player_id) DO NOTHING
-      `).run(t.club_id, player.id);
+    // add to standings
+    await db.prepare(`
+      INSERT INTO standings (club_id, player_id, tournaments_played, points)
+      VALUES (?, ?, 0, 0)
+      ON CONFLICT (club_id, player_id) DO NOTHING
+    `).run(t.club_id, player.id);
 
     res.json({ ok: true });
   } catch (e) {
-    console.error('signin error', e);
+    console.error('register error', e);
     res.status(500).json({ error: 'unexpected error' });
   }
 });
 
-// DELETE /tournaments/:id/signin  { userId }
-app.delete('/tournaments/:id/signin', async (req, res) => {
+// DELETE /tournaments/:id/register - Self-withdraw (authenticated user)
+app.delete('/tournaments/:id/register', authenticateToken, async (req, res) => {
   try {
     const tId = Number(req.params.id);
-    const { userId } = req.body || {};
-    if (!userId) return res.status(400).json({ error: 'userId required' });
+    const userId = req.user.id; // Get from JWT token, not request body
 
     const t = await db.prepare(`SELECT id, club_id FROM tournaments WHERE id=?`).get(tId);
     if (!t) return res.status(404).json({ error: 'tournament not found' });

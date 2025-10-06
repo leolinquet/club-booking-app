@@ -10,6 +10,24 @@ const safeParse = (s) => {
   try { return JSON.parse(s); } catch { return null; }
 };
 
+// Utility function for authenticated API calls
+const makeAuthenticatedRequest = async (url, options = {}) => {
+  const token = localStorage.getItem('authToken');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+  
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+};
+
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5051';
 
 const API = (() => {
@@ -157,6 +175,7 @@ function Select(props) {
 export default function App(){
   const [user, setUser] = useState(() => safeParse(localStorage.getItem('user')));
   const [club, setClub] = useState(() => safeParse(localStorage.getItem('club')));
+  const [userClubs, setUserClubs] = useState([]); // List of clubs user belongs to
   const [view, setView] = useState('book'); // 'book' | 'clubs' | 'home' | 'tournaments' | 'rankings'
 
   function saveUser(u){ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }
@@ -168,7 +187,9 @@ export default function App(){
       await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null);
     } catch {}
     localStorage.removeItem('user');
+    localStorage.removeItem('authToken'); // Clear JWT token
     setUser(null);
+    setUserClubs([]); // Clear club memberships
     setView('book');
   };
 
@@ -183,6 +204,7 @@ export default function App(){
       const r = await fetch(`${API}/users/${u.id}/clubs`, { credentials: 'include' });
       if (r.ok) {
         const clubs = await r.json().catch(()=>[]);
+        setUserClubs(clubs); // Store user's club memberships
         // Only set the active club from server if the user does not already
         // have a club selected locally. This preserves an explicit user
         // selection across logout/login cycles.
@@ -190,9 +212,12 @@ export default function App(){
           saveClub(clubs[0]);
           setView('book');
         }
+      } else {
+        setUserClubs([]); // No clubs found or error
       }
     } catch (e) {
       // ignore failures; UI will keep working with persisted user
+      setUserClubs([]); // Reset clubs on error
     }
   }
   // Ensure we fetch the authoritative active club (backfill code if missing).
@@ -393,7 +418,7 @@ export default function App(){
     return <Auth onLogin={handleAuthed} onRegister={handleAuthed} />;
   }
 
-  if (!club) return <ClubGate user={user} onJoin={(c)=>{saveClub(c); setView('book');}} onCreate={(c)=>{saveClub(c); setView('home');}} />;
+  if (!club) return <ClubGate user={user} onJoin={(c)=>{saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]); setView('book');}} onCreate={(c)=>{saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]); setView('home');}} />;
 
   // Manager flag + page guard
   const isManager = user.role === 'manager';
@@ -408,7 +433,7 @@ export default function App(){
     return (
       <ClubGate
         user={user}
-        onJoin={(c) => saveClub(c)}
+        onJoin={(c) => {saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]);}}
         onCreate={(c) => saveClub(c)}
       />
     );
@@ -425,7 +450,12 @@ export default function App(){
         onRankings={() => setView('rankings')}
         isManager={isManager}
         user={user}
-        onOpenLooking={() => { setShowLooking(true); loadLooking(); }}
+        onOpenLooking={() => {
+          setShowLooking(true);
+          if (userClubs.length > 0) {
+            loadLooking();
+          }
+        }}
         lookingCount={lookingList.length}
         onLogout={async () => {
           try {
@@ -436,26 +466,60 @@ export default function App(){
           // Preserve the active club in localStorage so it remains "sticky"
           // across logouts until the user explicitly changes it.
           localStorage.removeItem('user');
+          localStorage.removeItem('authToken'); // Clear JWT token
           setUser(null);
+          setUserClubs([]); // Clear club memberships
           setView('book');
         }}
         
         unreadCount={unreadCount}
       />
       {showAnnouncements && (
-        <AnnouncementPanel
-          user={user}
-          club={club}
-          isManager={isManager}
-          announcements={announcements}
-          onClose={() => setShowAnnouncements(false)}
-          onRefresh={loadAnnouncements}
-          onCreate={createAnnouncement}
-          onMarkRead={markAnnouncementRead}
-        />
+        userClubs.length === 0 ? (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Announcements</h2>
+                <button onClick={() => setShowAnnouncements(false)} className="text-gray-400 hover:text-gray-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <NoClubView viewName="announcements" onJoinClub={() => {setShowAnnouncements(false); setView('clubs');}} />
+            </div>
+          </div>
+        ) : (
+          <AnnouncementPanel
+            user={user}
+            club={club}
+            isManager={isManager}
+            announcements={announcements}
+            onClose={() => setShowAnnouncements(false)}
+            onRefresh={loadAnnouncements}
+            onCreate={createAnnouncement}
+            onMarkRead={markAnnouncementRead}
+          />
+        )
       )}
       {showLooking && (
-        <LookingPanel show={showLooking} onClose={() => setShowLooking(false)} user={user} club={club} />
+        userClubs.length === 0 ? (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Looking for Games</h2>
+                <button onClick={() => setShowLooking(false)} className="text-gray-400 hover:text-gray-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <NoClubView viewName="looking for games" onJoinClub={() => {setShowLooking(false); setView('clubs');}} />
+            </div>
+          </div>
+        ) : (
+          <LookingPanel show={showLooking} onClose={() => setShowLooking(false)} user={user} club={club} />
+        )
       )}
       {/* Mocked recipient confirmation panel (non-blocking) */}
       {showSimRecipient && simRecipient && (
@@ -508,63 +572,115 @@ export default function App(){
             onSetActive={(c) => { saveClub(c); setView('book'); }}
           />
         ) : effectivePage === 'home' ? (
-          <>
-            <header className="flex items-center justify-between">
-              <h1 className="text-2xl font-semibold">Manager Home</h1>
-              <div className="text-sm text-gray-600 flex items-center gap-2">
-                <span>{user.name} ({user.role})</span>
-                <span className="mx-2">•</span>
-                <span>{club.name} </span>
-                <CodeWithCopy code={club.code} />
-                <LogoutButton onClick={handleLogout} />
-              </div>
-            </header>
-            <ManagerDashboard user={user} club={club} />
-          </>
+          // Manager Dashboard - requires club membership
+          userClubs.length === 0 ? (
+            <NoClubView viewName="manager dashboard" onJoinClub={() => setView('clubs')} />
+          ) : (
+            <>
+              <header className="flex items-center justify-between">
+                <h1 className="text-2xl font-semibold">Manager Home</h1>
+                <div className="text-sm text-gray-600 flex items-center gap-2">
+                  <span>{user.name} ({user.role})</span>
+                  <span className="mx-2">•</span>
+                  <span>{club.name} </span>
+                  <CodeWithCopy code={club.code} />
+                  <LogoutButton onClick={handleLogout} />
+                </div>
+              </header>
+              <ManagerDashboard user={user} club={club} />
+            </>
+          )
         ) : effectivePage === 'tournaments' ? (
-          <>
-            <header className="flex items-center justify-between">
-              <h1 className="text-2xl font-semibold">Tournaments</h1>
-              <div className="text-sm text-gray-600 flex items-center gap-2">
-                <span>{user.name} ({user.role})</span>
-                <span className="mx-2">•</span>
-                <span>{club.name} </span>
-                <CodeWithCopy code={club.code} />
-                <LogoutButton onClick={handleLogout} />
-              </div>
-            </header>
-            {/* ⬇️ Use the component we added earlier */}
-            <TournamentsView API={API} club={club} user={user} isManager={isManager} />
-          </>
+          // Tournaments - requires club membership
+          userClubs.length === 0 ? (
+            <NoClubView viewName="tournaments" onJoinClub={() => setView('clubs')} />
+          ) : (
+            <>
+              <header className="flex items-center justify-between">
+                <h1 className="text-2xl font-semibold">Tournaments</h1>
+                <div className="text-sm text-gray-600 flex items-center gap-2">
+                  <span>{user.name} ({user.role})</span>
+                  <span className="mx-2">•</span>
+                  <span>{club.name} </span>
+                  <CodeWithCopy code={club.code} />
+                  <LogoutButton onClick={handleLogout} />
+                </div>
+              </header>
+              {/* ⬇️ Use the component we added earlier */}
+              <TournamentsView API={API} club={club} user={user} isManager={isManager} />
+            </>
+          )
         ) : effectivePage === 'rankings' ? (
-          <>
-            <header className="flex items-center justify-between">
-              <h1 className="text-2xl font-semibold">Rankings</h1>
-              <div className="text-sm text-gray-600 flex items-center gap-2">
-                <span>{user.name} ({user.role})</span>
-                <span className="mx-2">•</span>
-                <span>{club.name} </span>
-                <CodeWithCopy code={club.code} />
-                <LogoutButton onClick={handleLogout} />
-              </div>
-            </header>
-            <RankingsView API={API} club={club} user={user} isManager={isManager} />
-          </>
+          // Rankings - requires club membership
+          userClubs.length === 0 ? (
+            <NoClubView viewName="rankings" onJoinClub={() => setView('clubs')} />
+          ) : (
+            <>
+              <header className="flex items-center justify-between">
+                <h1 className="text-2xl font-semibold">Rankings</h1>
+                <div className="text-sm text-gray-600 flex items-center gap-2">
+                  <span>{user.name} ({user.role})</span>
+                  <span className="mx-2">•</span>
+                  <span>{club.name} </span>
+                  <CodeWithCopy code={club.code} />
+                  <LogoutButton onClick={handleLogout} />
+                </div>
+              </header>
+              <RankingsView API={API} club={club} user={user} isManager={isManager} />
+            </>
+          )
         ) : (
-          <>
-            <header className="flex items-center justify-between">
-              <h1 className="text-2xl font-semibold">Book</h1>
-              <div className="text-sm text-gray-600 flex items-center gap-2">
-                <span>{user.name} ({user.role})</span>
-                <span className="mx-2">•</span>
-                <span>{club.name} </span>
-                <CodeWithCopy code={club.code} />
-                <LogoutButton onClick={handleLogout} />
-              </div>
-            </header>
-            <UserBooking user={user} club={club} />
-          </>
+          // Book view (default) - requires club membership
+          userClubs.length === 0 ? (
+            <NoClubView viewName="court booking" onJoinClub={() => setView('clubs')} />
+          ) : (
+            <>
+              <header className="flex items-center justify-between">
+                <h1 className="text-2xl font-semibold">Book</h1>
+                <div className="text-sm text-gray-600 flex items-center gap-2">
+                  <span>{user.name} ({user.role})</span>
+                  <span className="mx-2">•</span>
+                  <span>{club.name} </span>
+                  <CodeWithCopy code={club.code} />
+                  <LogoutButton onClick={handleLogout} />
+                </div>
+              </header>
+              <UserBooking user={user} club={club} />
+            </>
+          )
         )}
+      </div>
+    </div>
+  );
+}
+
+/* -------------------- No Club View -------------------- */
+
+function NoClubView({ viewName, onJoinClub }) {
+  return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="text-center max-w-md mx-auto p-8">
+        <div className="mb-6">
+          <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Join a Club Required</h2>
+          <p className="text-gray-600 mb-6">
+            You need to join a club to see {viewName}. Join an existing club or create your own to get started.
+          </p>
+        </div>
+        
+        <button
+          onClick={onJoinClub}
+          className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200"
+        >
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+          Join Club
+        </button>
       </div>
     </div>
   );
@@ -669,7 +785,12 @@ export function Auth({ onLogin, onRegister }) {
         return alert((data && data.error) || "Login failed");
       }
 
-      // backend returns { ok:true, user_id }
+      // Store JWT token in localStorage
+      if (data.token) {
+        localStorage.setItem('authToken', data.token);
+      }
+
+      // backend returns { ok:true, user, token }
       onLogin?.(data.user || { id: data.user_id });
     } catch (e) {
       console.error('doLogin error', e);
@@ -1670,9 +1791,8 @@ function TournamentsView({ API, club, user, isManager }) {
     if (!user) return alert('Please sign in first');
     const ok = window.confirm(`Do you want to sign in for "${tname}"?`);
     if (!ok) return;
-    const r = await fetch(`${API}/tournaments/${tid}/signin`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.id })
+    const r = await makeAuthenticatedRequest(`${API}/tournaments/${tid}/register`, {
+      method: 'POST'
     });
     const data = await r.json();
     if (!r.ok) return alert(data.error || 'Sign in failed');
@@ -1683,9 +1803,8 @@ function TournamentsView({ API, club, user, isManager }) {
   const withdraw = async (tid, tname) => {
     const ok = window.confirm(`Withdraw from "${tname}"?`);
     if (!ok) return;
-    const r = await fetch(`${API}/tournaments/${tid}/signin`, {
-      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.id })
+    const r = await makeAuthenticatedRequest(`${API}/tournaments/${tid}/register`, {
+      method: 'DELETE'
     });
     const data = await r.json().catch(()=>null);
     if (!r.ok) return alert((data && data.error) || 'Withdraw failed');
