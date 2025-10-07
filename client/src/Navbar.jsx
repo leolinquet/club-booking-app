@@ -130,62 +130,48 @@ export default function Navbar({
         )}
       </div>
 
-      {/* Backdrop */}
-      <div
-        className={`sm:hidden fixed inset-0 bg-black/40 transition-opacity duration-200 ${
-          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
-      />
+      {/* Backdrop - only mount when open */}
+      {open && (
+        <div className="sm:hidden fixed inset-0 bg-black/40 transition-opacity duration-200 opacity-100 pointer-events-auto z-40" />
+      )}
 
-      {/* Mobile dropdown */}
-      <div
-        id="mobile-menu"
-        ref={menuRef}
-        role="dialog"
-        aria-modal="true"
-        className="sm:hidden fixed left-0 right-0 top-14 z-50 px-3"
-      >
+      {/* Mobile dropdown - only mount when open */}
+      {open && (
         <div
-          className={`rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden
-                      origin-top transition duration-200 will-change-transform
-                      ${open ? "scale-y-100 opacity-100" : "scale-y-95 opacity-0 pointer-events-none"}`}
-          style={{ transformOrigin: "top center" }}
+          id="mobile-menu"
+          ref={menuRef}
+          role="dialog"
+          aria-modal="true"
+          className="sm:hidden fixed left-0 right-0 z-50 px-3"
+          style={{ top: '56px' }} // Fixed positioning for mobile
         >
-            <div className="p-1 flex flex-col">
-            <button onClick={handle(onOpenAnnouncements)} className={menuItem}>Announcements</button>
-            <button onClick={handle(onOpenLooking)} className={menuItem}>
-              <div className="flex items-center justify-between">
-                <span>Looking</span>
-                {lookingCount > 0 && (
-                  <span className="inline-flex items-center justify-center w-6 h-6 text-xs bg-red-600 text-white rounded-full">{lookingCount > 9 ? '9+' : lookingCount}</span>
-                )}
-              </div>
-            </button>
-            <button onClick={handle(onBook)} className={menuItem}>Book</button>
-            {isManager && <button onClick={handle(onHome)} className={menuItem}>Home</button>}
-            <button onClick={handle(onClubs)} className={menuItem}>Clubs</button>
-            <button onClick={handle(onTournaments)} className={menuItem}>Tournaments</button>
-            <button onClick={handle(onRankings)} className={menuItem}>Rankings</button>
-            
-            {user && (
-              <>
-                <div className="border-t border-gray-200 my-1"></div>
-                <div className="px-3 py-2 text-sm text-gray-600">
-                  Hi, {user.display_name ?? user.name ?? "you"}
+          <div
+            className="rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden
+                        origin-top transition duration-200 will-change-transform
+                        scale-y-100 opacity-100"
+            style={{ transformOrigin: "top center" }}
+          >
+              <div className="p-1 flex flex-col">
+              <button onClick={handle(onOpenAnnouncements)} className={menuItem}>Announcements</button>
+              <button onClick={handle(onOpenLooking)} className={menuItem}>
+                <div className="flex items-center justify-between">
+                  <span>Looking</span>
+                  {lookingCount > 0 && (
+                    <span className="inline-flex items-center justify-center w-6 h-6 text-xs bg-red-600 text-white rounded-full">{lookingCount > 9 ? '9+' : lookingCount}</span>
+                  )}
                 </div>
-                <button onClick={handle(onLogout)} className={`${menuItem} text-red-600 hover:bg-red-50`}>
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4" viewBox="0 0 512 512" fill="currentColor">
-                      <path d="M377.9 105.9L500.7 228.7c7.2 7.2 11.3 17.1 11.3 27.3s-4.1 20.1-11.3 27.3L377.9 406.1c-6.4 6.4-15 9.9-24 9.9c-18.7 0-33.9-15.2-33.9-33.9l0-62.1-128 0c-17.7 0-32-14.3-32-32l0-64c0-17.7 14.3-32 32-32l128 0 0-62.1c0-18.7 15.2-33.9 33.9-33.9c9 0 17.6 3.6 24 9.9zM160 96L96 96c-17.7 0-32 14.3-32 32l0 256c0 17.7 14.3 32 32 32l64 0c17.7 0 32 14.3 32 32s-14.3 32-32 32l-64 0c-53 0-96-43-96-96L0 128C0 75 43 32 96 32l64 0c17.7 0 32 14.3 32 32s-14.3 32-32 32z"></path>
-                    </svg>
-                    Logout
-                  </div>
-                </button>
-              </>
-            )}
+              </button>
+              <button onClick={handle(onBook)} className={menuItem}>Book</button>
+              {isManager && <button onClick={handle(onHome)} className={menuItem}>Home</button>}
+              <button onClick={handle(onClubs)} className={menuItem}>Clubs</button>
+              <button onClick={handle(onTournaments)} className={menuItem}>Tournaments</button>
+              <button onClick={handle(onRankings)} className={menuItem}>Rankings</button>
+
+              {user ? null : null}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </header>
   );
 }
