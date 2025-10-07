@@ -101,15 +101,14 @@ export default function Navbar({
           ) : null}
         </nav>
 
-        {/* Mobile hamburger - Hidden for now */}
-        {false && (
-          <button
-            aria-label="Toggle menu"
-            aria-expanded={open}
-            aria-controls="mobile-menu"
-            onClick={() => setOpen((v) => !v)}
-            className="sm:hidden relative h-9 w-9 grid place-items-center"
-          >
+        {/* Mobile hamburger */}
+        <button
+          aria-label="Toggle menu"
+          aria-expanded={open}
+          aria-controls="mobile-menu"
+          onClick={() => setOpen((v) => !v)}
+          className="sm:hidden relative h-9 w-9 grid place-items-center"
+        >
             {/* three bars that animate into an X */}
             <span
               className={`pointer-events-none absolute block h-[2px] w-5 bg-black transition-all duration-200 ease-in-out ${
@@ -126,11 +125,8 @@ export default function Navbar({
                 open ? "-rotate-45" : "translate-y-[6px]"
               }`}
             />
-          </button>
-        )}
-      </div>
-
-      {/* Backdrop - only mount when open */}
+        </button>
+      </div>      {/* Backdrop - only mount when open */}
       {open && (
         <div className="sm:hidden fixed inset-0 bg-black/40 transition-opacity duration-200 opacity-100 pointer-events-auto z-40" />
       )}
