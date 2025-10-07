@@ -1,7 +1,17 @@
 /* Global iOS PWA Safe Area Support */
+:root{
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
 html, body {
   height: 100%;
   margin: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip; /* prevent sideways scroll globally (use clip for iOS 17+) */
 }
 
 body {
@@ -21,7 +31,7 @@ body {
 
 /* Fixed navbar with safe area offset */
 .navbar-fixed {
-  top: env(safe-area-inset-top);
+  top: var(--safe-top);
   position: fixed;
   left: 0;
   right: 0;
@@ -30,111 +40,117 @@ body {
   border-bottom: 1px solid #e5e7eb;
 }
 
+/* Optional helpers for proper navbar alignment (title grows, menu to the right) */
+.navbar-inner {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .75rem max(16px, var(--safe-right)) .75rem max(16px, var(--safe-left));
+}
+.navbar-title { flex: 1 1 auto; min-width: 0; }
+.menu-toggle, .navbar-right { margin-left: auto; }
+
 /* Mobile-specific responsive styles */
 @media (max-width: 640px) {
-  /* Prevent horizontal scroll */
-  * {
-    max-width: 100vw;
-    box-sizing: border-box;
+  /* Removed: global * { max-width: 100vw } which caused overflow on iOS */
+
+  html, body {
+    overflow-x: clip;
+    width: 100%;
+    max-width: 100%;
   }
-  
-  body {
-    overflow-x: hidden;
-    width: 100vw;
+
+  /* Make media elements and embeds behave */
+  img, svg, canvas, video, iframe { max-width: 100%; height: auto; display: block; }
+
+  /* Common containers shouldn't overflow horizontally */
+  .content, .container, .card, .sheet, .panel, .page, .main-content {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
   }
-  
+
   /* Fixed navbar */
   .navbar-fixed {
     position: fixed;
-    top: 0;
+    top: var(--safe-top);
     left: 0;
     right: 0;
     z-index: 50;
     background: white;
     border-bottom: 1px solid #e5e7eb;
   }
-  
-  /* Content spacing for fixed navbar */
+
+  /* Content spacing for fixed navbar (kept your 60px height assumption) */
   .main-content {
-    margin-top: calc(60px + env(safe-area-inset-top));
-    padding: 16px;
+    margin-top: calc(60px + var(--safe-top));
+    padding: 16px max(16px, var(--safe-right)) 16px max(16px, var(--safe-left));
   }
-  
-  /* iOS Safe Area: Navbar positioning */
+
+  /* iOS Safe Area: Navbar positioning (kept your selector) */
   header.sticky {
-    top: env(safe-area-inset-top);
+    top: var(--safe-top);
   }
-  
+
   /* iOS Safe Area: Mobile menu positioning */
   #mobile-menu {
-    top: calc(56px + env(safe-area-inset-top)) !important;
+    top: calc(56px + var(--safe-top)) !important;
+    inset-inline: max(8px, var(--safe-left)) max(8px, var(--safe-right));
+    max-width: calc(100% - var(--safe-left) - var(--safe-right) - 16px);
   }
-  
-  /* iOS Safe Area: Backdrop positioning */
+
+  /* iOS Safe Area: Backdrop positioning (expanded to all edges) */
   .fixed.inset-0 {
-    top: env(safe-area-inset-top);
+    top: var(--safe-top);
+    left: var(--safe-left);
+    right: var(--safe-right);
+    bottom: var(--safe-bottom);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
-  
+
   /* Keep only essential modal backdrop controls - be more specific */
   .backdrop-blur-sm.opacity-0 {
     pointer-events: none;
   }
-  
+
   /* Only apply to overlay/backdrop elements, not form controls */
   .fixed.inset-0.opacity-0 {
     pointer-events: none;
   }
-  
+
   /* Table responsiveness */
-  .table-container {
+  .table-container,
+  .overflow-auto {
+    max-width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
-  
+
   table {
     min-width: 100%;
     white-space: nowrap;
   }
-  
+
   /* Card spacing */
   .space-y-6 > * + * {
     margin-top: 1.5rem;
   }
-  
+
   /* Button improvements */
   button {
     min-height: 44px;
     padding: 8px 16px;
   }
-  
+
   /* Fix input widths */
   input, select, textarea {
     max-width: 100%;
     box-sizing: border-box;
   }
-  
-  /* Prevent tables from causing horizontal scroll */
-  .overflow-auto {
-    max-width: 100vw;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  
-  .table-container {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    max-width: 100vw;
-  }
-  
-  table {
-    min-width: 600px;
-  }
-  
-  /* Ensure modal containers don't overflow */
-  .fixed.inset-0 {
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+
+  /* Ensure modal containers don't overflow (kept; combined with .fixed.inset-0 above) */
+  /* already handled by .fixed.inset-0 */
 }
 
 /* PWA Display Mode Support */
@@ -143,14 +159,14 @@ body {
   body {
     /* Ensure full coverage of safe areas */
     min-height: 100vh;
-    min-height: calc(100vh - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+    min-height: calc(100vh - var(--safe-top) - var(--safe-bottom));
   }
-  
+
   /* Enhanced safe area support for standalone mode */
   .min-h-screen {
-    min-height: calc(100vh - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+    min-height: calc(100vh - var(--safe-top) - var(--safe-bottom));
   }
-  
+
   /* Navbar adjustments for standalone mode */
   header.sticky {
     background: rgba(255, 255, 255, 0.95);
@@ -165,13 +181,13 @@ body {
     margin-top: 60px;
     padding: 16px;
   }
-  
+
   header.sticky {
     top: 0;
     padding-left: 0;
     padding-right: 0;
   }
-  
+
   #mobile-menu {
     top: 56px !important;
     left: 0;
@@ -185,6 +201,23 @@ select, input[type="date"], input[type="time"] {
   position: relative;
   z-index: 10;
   pointer-events: auto !important;
+}
+
+/* Mobile-specific SetActiveButton sizing */
+@media (max-width: 640px) {
+  .set-active-container {
+    transform: scale(0.8);
+    transform-origin: top right;
+  }
+  
+  .set-active-name {
+    font-size: 0.75rem !important;
+  }
+  
+  .set-active-icon {
+    width: 16px !important;
+    height: 16px !important;
+  }
 }
 
 /* Ensure form containers participate in z-index */
@@ -238,6 +271,7 @@ button {
   outline: none;
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
 }
+
 .burger-line {
   pointer-events: none;
   position: absolute;
@@ -246,3 +280,10 @@ button {
   background: #000;
   transition: all .2s ease-in-out;
 }
+
+/* Extra guards against horizontal bleed from utility rows/cols and long chips */
+[class*="row"], [class*="col"] { margin-left: 0; margin-right: 0; }
+.badge, .chip, .club-code { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Avoid horizontal overscroll bounce */
+:root { overscroll-behavior-x: none; }

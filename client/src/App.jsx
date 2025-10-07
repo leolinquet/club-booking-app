@@ -1410,7 +1410,7 @@ function UserBooking({ user, club }){
   return (
     <div className="space-y-4">
       <Card>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end">
           <div>
             <div className="text-sm text-gray-600">Sport</div>
             <Select value={sport} onChange={e=>setSport(e.target.value)}>
@@ -1421,10 +1421,19 @@ function UserBooking({ user, club }){
             <div className="text-sm text-gray-600">Date</div>
             <TextInput type="date" value={date} onChange={e=>setDate(e.target.value)} />
           </div>
-          <div className="flex items-center gap-3">
-            <span className="inline-block w-[6px] h-[24px] rounded bg-green-500" /> <span className="text-sm">Available</span>
-            <span className="inline-block w-[6px] h-[24px] rounded bg-orange-500" /> <span className="text-sm">Yours</span>
-            <span className="inline-block w-[6px] h-[24px] rounded bg-red-500" /> <span className="text-sm">Unavailable</span>
+          <div className="flex items-center gap-3 md:justify-start">
+            <div className="flex items-center gap-1">
+              <div className="w-[6px] h-[24px] rounded bg-green-500" style={{backgroundColor: '#10b981', minWidth: '6px', minHeight: '24px'}}></div> 
+              <span className="text-sm">Available</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-[6px] h-[24px] rounded bg-orange-500" style={{backgroundColor: '#f97316', minWidth: '6px', minHeight: '24px'}}></div> 
+              <span className="text-sm">Yours</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-[6px] h-[24px] rounded bg-red-500" style={{backgroundColor: '#ef4444', minWidth: '6px', minHeight: '24px'}}></div> 
+              <span className="text-sm">Unavailable</span>
+            </div>
           </div>
         </div>
       </Card>
@@ -1643,17 +1652,25 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate }) {
         <h3 className="text-lg font-medium mb-2">Your clubs</h3>
         <div className="grid gap-2">
           {clubs.map(c => (
-            <div key={c.id} className="flex items-center justify-between border rounded-lg p-3">
+            <div key={c.id} className="border rounded-lg p-3">
+              <div className="flex items-start justify-between mb-2 sm:mb-0 sm:items-center">
                 <div className="text-sm">
-                <div className="font-medium">{c.name}</div>
-                <div className="text-gray-600 text-xs"><CodeWithCopy code={c.code} /></div>
+                  <div className="font-medium">{c.name}</div>
+                  <div className="text-gray-600 text-xs"><CodeWithCopy code={c.code} /></div>
+                </div>
+                <div className="ml-2 sm:hidden">
+                  <SetActiveButton 
+                    isActive={club && club.id === c.id}
+                    onClick={() => onSetActive(c)}
+                  />
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
                 {/* Timezone selector only visible to the club's manager (creator) */}
                 {Number(c.manager_id) === Number(user.id) && (
-                  <div className="w-64">
+                  <div className="w-full sm:w-64">
                     <select
-                      className="border rounded-lg px-3 py-2 w-full"
+                      className="border rounded-lg px-3 py-2 w-full text-sm"
                       value={c.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
                       onChange={async (e) => {
                         const tz = e.target.value;
@@ -1678,10 +1695,12 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate }) {
                     </select>
                   </div>
                 )}
-                <SetActiveButton 
-                  isActive={club && club.id === c.id}
-                  onClick={() => onSetActive(c)}
-                />
+                <div className="hidden sm:block">
+                  <SetActiveButton 
+                    isActive={club && club.id === c.id}
+                    onClick={() => onSetActive(c)}
+                  />
+                </div>
               </div>
             </div>
           ))}
