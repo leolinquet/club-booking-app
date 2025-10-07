@@ -1,3 +1,35 @@
+/* Global iOS PWA Safe Area Support */
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+/* Tailwind utility for safe area padding */
+.safe-padded {
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+/* Fixed navbar with safe area offset */
+.navbar-fixed {
+  top: env(safe-area-inset-top);
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+}
+
 /* Mobile-specific responsive styles */
 @media (max-width: 640px) {
   /* Prevent horizontal scroll */
@@ -24,8 +56,23 @@
   
   /* Content spacing for fixed navbar */
   .main-content {
-    margin-top: 60px;
+    margin-top: calc(60px + env(safe-area-inset-top));
     padding: 16px;
+  }
+  
+  /* iOS Safe Area: Navbar positioning */
+  header.sticky {
+    top: env(safe-area-inset-top);
+  }
+  
+  /* iOS Safe Area: Mobile menu positioning */
+  #mobile-menu {
+    top: calc(56px + env(safe-area-inset-top)) !important;
+  }
+  
+  /* iOS Safe Area: Backdrop positioning */
+  .fixed.inset-0 {
+    top: env(safe-area-inset-top);
   }
   
   /* Keep only essential modal backdrop controls - be more specific */
@@ -87,6 +134,48 @@
   .fixed.inset-0 {
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* PWA Display Mode Support */
+@media (display-mode: standalone) {
+  /* When app is launched from home screen */
+  body {
+    /* Ensure full coverage of safe areas */
+    min-height: 100vh;
+    min-height: calc(100vh - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+  }
+  
+  /* Enhanced safe area support for standalone mode */
+  .min-h-screen {
+    min-height: calc(100vh - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+  }
+  
+  /* Navbar adjustments for standalone mode */
+  header.sticky {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+}
+
+/* Fallback for devices without safe-area-inset support */
+@supports not (padding: max(0px)) {
+  .main-content {
+    margin-top: 60px;
+    padding: 16px;
+  }
+  
+  header.sticky {
+    top: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  
+  #mobile-menu {
+    top: 56px !important;
+    left: 0;
+    right: 0;
   }
 }
 

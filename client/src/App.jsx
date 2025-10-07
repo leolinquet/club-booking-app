@@ -458,7 +458,7 @@ export default function App(){
   }
 
   return (
-    <div className="min-h-screen flex flex-col mobile-safe">
+    <div className="safe-padded min-h-screen flex flex-col mobile-safe">
       <Navbar
         onBook={() => setView('book')}
         onHome={() => setView('home')}
