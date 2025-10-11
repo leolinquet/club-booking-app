@@ -11,6 +11,8 @@ import FeedbackModal from './FeedbackModal.jsx';
 import FeedbackAdmin from './FeedbackAdmin.jsx';
 import FloatingHelpButton from './FloatingHelpButton.jsx';
 import { PageLoaderOverlay } from './components/ui/PageLoaderOverlay';
+import { Skeleton, SkeletonCard, SkeletonText } from './components/ui/Skeleton';
+import { useFetch } from './hooks/useFetch';
 
 const safeParse = (s) => {
   try { return JSON.parse(s); } catch { return null; }
@@ -1034,6 +1036,7 @@ export function Auth({ onLogin, onRegister }) {
 function ManagerDashboard({ user, club }){
   const [sports, setSports] = useState([]);
   const [editingId, setEditingId] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   // form state
   const [form, setForm] = useState({
@@ -1055,12 +1058,20 @@ function ManagerDashboard({ user, club }){
     : Number(form.slotChoice);
 
   const load = async ()=> {
-  const r = await fetch(`${API}/clubs/${club.id}/sports`, { credentials: 'include' });
-    const data = await r.json().catch(() => null);
-    if (!r.ok || !Array.isArray(data)) {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/clubs/${club.id}/sports`, { credentials: 'include' });
+      const data = await r.json().catch(() => null);
+      if (!r.ok || !Array.isArray(data)) {
+        setSports([]);
+      } else {
+        setSports(data);
+      }
+    } catch (e) {
+      console.error('Error loading sports:', e);
       setSports([]);
-    } else {
-      setSports(data);
+    } finally {
+      setLoading(false);
     }
   };
   useEffect(()=>{ load(); }, []);
@@ -1279,7 +1290,12 @@ function ManagerDashboard({ user, club }){
       <Card>
         <h3 className="text-lg font-medium mb-2">Configured sports</h3>
         <div className="grid gap-2">
-          {sports.map(s => (
+          {loading ? (
+            <div className="space-y-3">
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          ) : sports.map(s => (
             <div key={s.id} className="flex items-center justify-between border rounded-lg p-3">
               <div className="text-sm">
                 <div className="font-medium capitalize">{s.sport}</div>
@@ -1316,7 +1332,7 @@ function ManagerDashboard({ user, club }){
               </div>
             </div>
           ))}
-          {sports.length===0 && (
+          {!loading && sports.length===0 && (
             <div className="text-gray-500 text-sm">No sports yet. Add one above.</div>
           )}
         </div>
@@ -1333,46 +1349,69 @@ function UserBooking({ user, club }){
   const [sport, setSport] = useState('');
   const [date, setDate] = useState(()=> new Date().toISOString().slice(0,10));
   const [grid, setGrid] = useState(null);
+  const [sportsLoading, setSportsLoading] = useState(true);
+  const [gridLoading, setGridLoading] = useState(false);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(null); // { courtIndex, time }
   const [bookFor, setBookFor] = useState('');   // manager-only: username to assign booking
 
+  const { get } = useFetch();
+
 
   useEffect(()=>{
     (async ()=>{
-      const r = await fetch(`${API}/clubs/${club.id}/sports`);
-      const all = await r.json().catch(()=>null);
-      if (!r.ok || !Array.isArray(all)) {
+      setSportsLoading(true);
+      try {
+        const r = await get(`${API}/clubs/${club.id}/sports`, { showProgress: false });
+        const all = await r.json().catch(()=>null);
+        if (!r.ok || !Array.isArray(all)) {
+          setSports([]);
+        } else {
+          setSports(all);
+          if (all.length) setSport(all[0].sport);
+        }
+      } catch (e) {
+        console.error('Error loading sports:', e);
         setSports([]);
-      } else {
-        setSports(all);
-        if (all.length) setSport(all[0].sport);
+      } finally {
+        setSportsLoading(false);
       }
     })();
-  }, [club.id]);
+  }, [club.id, get]);
 
   useEffect(()=>{
     if (!sport || !date) return;
     (async ()=>{
-    const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`, { credentials: 'include' });
-      const d = await r.json();
-      if (r.ok) {
-        // If server provided serverNowUtc and slotStartUtc values, use them; otherwise fall back to server-side isPast.
-        if (d && d.serverNowUtc && Array.isArray(d.slots)) {
-          const serverNowMs = Date.parse(d.serverNowUtc);
-          const slots = d.slots.map(row => ({
-            ...row,
-            // row.slotStartUtc exists per-slot (UTC string)
-            isPast: row.slotStartUtc ? (Date.parse(row.slotStartUtc) < serverNowMs) : !!row.isPast,
-          }));
-          setGrid({ ...d, slots });
-        } else {
-          setGrid(d);
+      setGridLoading(true);
+      try {
+        const r = await get(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`, { showProgress: false });
+        const d = await r.json();
+        if (r.ok) {
+          // If server provided serverNowUtc and slotStartUtc values, use them; otherwise fall back to server-side isPast.
+          if (d && d.serverNowUtc && Array.isArray(d.slots)) {
+            const serverNowMs = Date.parse(d.serverNowUtc);
+            const slots = d.slots.map(row => ({
+              ...row,
+              // row.slotStartUtc exists per-slot (UTC string)
+              isPast: row.slotStartUtc ? (Date.parse(row.slotStartUtc) < serverNowMs) : !!row.isPast,
+            }));
+            setGrid({ ...d, slots });
+          } else {
+            setGrid(d);
+          }
+        } else { 
+          setGrid(null); 
+          alert(d.error || 'error'); 
         }
-      } else { setGrid(null); alert(d.error || 'error'); }
+      } catch (e) {
+        console.error('Error loading availability:', e);
+        setGrid(null);
+      } finally {
+        setGridLoading(false);
+      }
     })();
-  }, [sport, date, club.id, user.id]);
+  }, [sport, date, club.id, user.id, get]);
 
   // Recompute 'isPast' locally every 30s and optionally refetch availability every 60s
   useEffect(() => {
@@ -1505,9 +1544,13 @@ function UserBooking({ user, club }){
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end">
           <div>
             <div className="text-sm text-gray-600">Sport</div>
-            <Select value={sport} onChange={e=>setSport(e.target.value)}>
-              {sports.map(s => <option key={s.id} value={s.sport}>{s.sport}</option>)}
-            </Select>
+            {sportsLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : (
+              <Select value={sport} onChange={e=>setSport(e.target.value)}>
+                {sports.map(s => <option key={s.id} value={s.sport}>{s.sport}</option>)}
+              </Select>
+            )}
           </div>
           <div>
             <div className="text-sm text-gray-600">Date</div>
@@ -1530,7 +1573,26 @@ function UserBooking({ user, club }){
         </div>
       </Card>
 
-      {grid && (
+      {gridLoading ? (
+        <Card>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Skeleton className="h-8 w-16" />
+              {Array.from({length: 4}).map((_, i) => (
+                <Skeleton key={i} className="h-8 w-20" />
+              ))}
+            </div>
+            {Array.from({length: 6}).map((_, i) => (
+              <div key={i} className="flex gap-2">
+                <Skeleton className="h-12 w-16" />
+                {Array.from({length: 4}).map((_, j) => (
+                  <Skeleton key={j} className="h-12 w-20" />
+                ))}
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : grid ? (
         <Card>
           <div className="courts-scroll-container">
             <div className="table-responsive">
@@ -1618,7 +1680,11 @@ function UserBooking({ user, club }){
         </Card>
       )}
 
-      {!grid && <Card><div className="text-sm text-gray-600">Select a sport and date to see slots.</div></Card>}
+      {!grid && !gridLoading && sport && date && (
+        <Card>
+          <div className="text-sm text-gray-600">Select a sport and date to see slots.</div>
+        </Card>
+      )}
 
       {confirmOpen && pending && (
         <div className="fixed inset-0 bg-black/40 grid place-items-center z-50">
@@ -1664,6 +1730,7 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate, onOpenManageModa
   const [invitations, setInvitations] = useState([]);
   const [requests, setRequests] = useState([]);
   const [loadingInvitations, setLoadingInvitations] = useState(false);
+  const [loadingClubs, setLoadingClubs] = useState(true);
   const [busy, setBusy] = useState(false);
   // curated list for club creation/editing (UTC first, then host tz if different, then common US timezones)
   const HOST_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
@@ -1754,6 +1821,7 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate, onOpenManageModa
 
   const load = async () => {
     setError('');
+    setLoadingClubs(true);
     try {
     const r = await fetch(`${API}/users/${user.id}/clubs`, { credentials: 'include' });
       if (!r.ok) {
@@ -1765,6 +1833,8 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate, onOpenManageModa
     } catch (e) {
       console.error(e);
       setError(String(e.message || e));
+    } finally {
+      setLoadingClubs(false);
     }
   };
 
@@ -1833,7 +1903,12 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate, onOpenManageModa
       <Card>
         <h3 className="text-lg font-medium mb-2">Your clubs</h3>
         <div className="grid gap-2">
-          {clubs.map(c => (
+          {loadingClubs ? (
+            <div className="space-y-3">
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          ) : clubs.map(c => (
             <div key={c.id} className="border rounded-lg p-3">
               <div className="flex items-start justify-between mb-2 sm:mb-0 sm:items-center">
                 <div className="text-sm">
@@ -1913,7 +1988,7 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate, onOpenManageModa
               </div>
             </div>
           ))}
-          {clubs.length === 0 && !error && (
+          {clubs.length === 0 && !loadingClubs && !error && (
             <div className="text-gray-500 text-sm">You’re not in any clubs yet.</div>
           )}
         </div>
@@ -1923,7 +1998,9 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate, onOpenManageModa
       <Card>
         <h3 className="text-lg font-medium mb-3">Club Invitations</h3>
         {loadingInvitations ? (
-          <div className="text-gray-500 text-sm">Loading...</div>
+          <div className="space-y-3">
+            <SkeletonCard />
+          </div>
         ) : invitations.length === 0 ? (
           <div className="text-gray-500 text-sm">No pending invitations</div>
         ) : (
