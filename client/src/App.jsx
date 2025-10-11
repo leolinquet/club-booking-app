@@ -7,6 +7,9 @@ import ClubGate from './ClubGate.jsx';
 import LookingPanel from './LookingPanel.jsx';
 import RequestsPeopleModal from './RequestsPeopleModal.jsx';
 import ConversationsModal from './ConversationsModal.jsx';
+import FeedbackModal from './FeedbackModal.jsx';
+import FeedbackAdmin from './FeedbackAdmin.jsx';
+import FloatingHelpButton from './FloatingHelpButton.jsx';
 
 const safeParse = (s) => {
   try { return JSON.parse(s); } catch { return null; }
@@ -178,7 +181,7 @@ export default function App(){
   const [user, setUser] = useState(() => safeParse(localStorage.getItem('user')));
   const [club, setClub] = useState(() => safeParse(localStorage.getItem('club')));
   const [userClubs, setUserClubs] = useState([]); // List of clubs user belongs to
-  const [view, setView] = useState('book'); // 'book' | 'clubs' | 'home' | 'tournaments' | 'rankings' | 'clubgate'
+  const [view, setView] = useState('book'); // 'book' | 'clubs' | 'home' | 'tournaments' | 'rankings' | 'clubgate' | 'feedback-admin'
   const [requestsModalOpen, setRequestsModalOpen] = useState(false);
   const [selectedClubForModal, setSelectedClubForModal] = useState(null);
 
@@ -274,6 +277,9 @@ export default function App(){
   const [showConversations, setShowConversations] = useState(false);
   const [conversations, setConversations] = useState([]);
   const conversationsModalRef = useRef();
+  
+  // Feedback functionality
+  const [showFeedback, setShowFeedback] = useState(false);
   
   // Looking-for-partner feature
   const [showLooking, setShowLooking] = useState(false);
@@ -478,6 +484,8 @@ export default function App(){
         onHome={() => setView('home')}
         onOpenConversations={() => setShowConversations(true)}
         onOpenAnnouncements={() => setShowAnnouncements(true)}
+        onOpenFeedback={() => setShowFeedback(true)}
+        onFeedbackAdmin={() => setView('feedback-admin')}
         onClubs={() => setView('clubs')}
         onTournaments={() => setView('tournaments')}
         onRankings={() => setView('rankings')}
@@ -668,6 +676,9 @@ export default function App(){
               <RankingsView API={API} club={club} user={user} isManager={isManager} />
             </>
           )
+        ) : effectivePage === 'feedback-admin' ? (
+          // Feedback Admin - requires manager permissions
+          <FeedbackAdmin user={user} API={API} />
         ) : (
           // Book view (default) - requires club membership
           userClubs.length === 0 ? (
@@ -712,6 +723,19 @@ export default function App(){
         user={user}
         API={API}
       />
+
+      {/* Feedback Modal */}
+      <FeedbackModal
+        isOpen={showFeedback}
+        onClose={() => setShowFeedback(false)}
+        user={user}
+        userClubs={userClubs}
+        currentClub={club}
+        API={API}
+      />
+
+      {/* Floating Help Button (mobile only) */}
+      <FloatingHelpButton onClick={() => setShowFeedback(true)} />
     </div>
   );
 }

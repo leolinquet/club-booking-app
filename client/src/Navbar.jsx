@@ -4,6 +4,8 @@ export default function Navbar({
   onBook = () => {},
   onOpenConversations = () => {},
   onOpenAnnouncements = () => {},
+  onOpenFeedback = () => {},
+  onFeedbackAdmin = () => {},
   onHome = () => {},
   onClubs = () => {},
   onTournaments = () => {},
@@ -83,6 +85,8 @@ export default function Navbar({
           <button onClick={onClubs} className={navBtn}>Clubs</button>
           <button onClick={onTournaments} className={navBtn}>Tournaments</button>
           <button onClick={onRankings} className={navBtn}>Rankings</button>
+          <button onClick={onOpenFeedback} className={navBtn}>Feedback</button>
+          {isManager && <button onClick={onFeedbackAdmin} className={navBtn}>Feedback Admin</button>}
 
           {user ? (
             <>
@@ -165,6 +169,8 @@ export default function Navbar({
               <button onClick={handle(onClubs)} className={menuItem}>Clubs</button>
               <button onClick={handle(onTournaments)} className={menuItem}>Tournaments</button>
               <button onClick={handle(onRankings)} className={menuItem}>Rankings</button>
+              <button onClick={handle(onOpenFeedback)} className={menuItem}>📝 Give Feedback</button>
+              {isManager && <button onClick={handle(onFeedbackAdmin)} className={menuItem}>🛠️ Feedback Admin</button>}
 
               {/* Mobile logout button - only show if user is logged in */}
               {user && (

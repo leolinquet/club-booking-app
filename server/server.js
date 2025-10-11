@@ -134,7 +134,7 @@ const corsOptions = {
 const corsOptionsWithMethods = {
   ...corsOptions,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-app-version'],
 };
 
 app.use(cors(corsOptionsWithMethods));
@@ -158,8 +158,12 @@ function authenticateToken(req, res, next) {
   });
 }
 
-// Body parser
-app.use(express.json());
+// Body parser - increased limit for image uploads in feedback
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Serve uploaded files statically
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Serve client static build when deployed in production and the build exists.
 if (isProd) {
@@ -3957,6 +3961,307 @@ app.post('/api/chat/messages', authenticateToken, async (req, res) => {
     res.status(201).json(messageWithSender.rows[0]);
   } catch (error) {
     console.error('Error sending message:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// -------------------- FEEDBACK ENDPOINTS --------------------
+
+// Rate limiting for feedback submissions
+const feedbackRateLimit = new Map();
+
+const checkFeedbackRateLimit = (req, res, next) => {
+  const clientKey = req.user?.id ? `user_${req.user.id}` : `ip_${req.ip}`;
+  const now = Date.now();
+  const windowMs = 10 * 60 * 1000; // 10 minutes
+  const maxRequests = 3;
+
+  if (!feedbackRateLimit.has(clientKey)) {
+    feedbackRateLimit.set(clientKey, []);
+  }
+
+  const requests = feedbackRateLimit.get(clientKey);
+  // Remove old requests outside the window
+  const validRequests = requests.filter(time => now - time < windowMs);
+  
+  if (validRequests.length >= maxRequests) {
+    return res.status(429).json({ error: 'too many feedback submissions, please try again later' });
+  }
+
+  validRequests.push(now);
+  feedbackRateLimit.set(clientKey, validRequests);
+  next();
+};
+
+// POST /api/feedback - Submit feedback (auth optional)
+app.post('/api/feedback', checkFeedbackRateLimit, async (req, res) => {
+  try {
+    const {
+      rating,
+      category,
+      message,
+      allow_contact = true,
+      email,
+      club_id,
+      attachment_data // base64 string
+    } = req.body;
+
+    // Validation
+    if (!category || !['bug', 'ux', 'feature', 'other'].includes(category)) {
+      return res.status(400).json({ error: 'invalid category' });
+    }
+
+    if (!message || typeof message !== 'string' || message.trim().length < 10 || message.trim().length > 2000) {
+      return res.status(400).json({ error: 'message must be between 10 and 2000 characters' });
+    }
+
+    if (rating !== undefined && (typeof rating !== 'number' || rating < 1 || rating > 5)) {
+      return res.status(400).json({ error: 'rating must be between 1 and 5' });
+    }
+
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'invalid email format' });
+    }
+
+    if (club_id && (typeof club_id !== 'number' || club_id < 1)) {
+      return res.status(400).json({ error: 'invalid club_id' });
+    }
+
+    const user_id = req.user?.id || null;
+    const user_agent = req.headers['user-agent'] || '';
+    const app_version = req.headers['x-app-version'] || '';
+    
+    let attachment_url = null;
+
+    // Handle attachment upload (basic base64 implementation)
+    if (attachment_data && typeof attachment_data === 'string') {
+      try {
+        // Basic validation for image data
+        if (attachment_data.startsWith('data:image/')) {
+          const matches = attachment_data.match(/^data:image\/(\w+);base64,(.+)$/);
+          if (matches && ['jpeg', 'jpg', 'png', 'gif', 'webp'].includes(matches[1])) {
+            const base64Data = matches[2];
+            const buffer = Buffer.from(base64Data, 'base64');
+            
+            // Check file size (2MB limit)
+            if (buffer.length > 2 * 1024 * 1024) {
+              return res.status(400).json({ error: 'image too large, max 2MB' });
+            }
+
+            // Generate filename and save file
+            const timestamp = Date.now();
+            const extension = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+            const filename = `feedback_${timestamp}.${extension}`;
+            const filepath = path.join(__dirname, 'uploads', 'feedback', filename);
+            
+            // Save file to disk
+            try {
+              fs.writeFileSync(filepath, buffer);
+              console.log(`[FEEDBACK] Saved attachment: ${filename} (${buffer.length} bytes)`);
+              
+              // Generate URL that points to the server (not client)
+              const serverPort = process.env.PORT || 5051;
+              attachment_url = `http://localhost:${serverPort}/uploads/feedback/${filename}`;
+            } catch (writeError) {
+              console.error('Error saving file:', writeError);
+              return res.status(500).json({ error: 'failed to save attachment' });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error processing attachment:', error);
+        return res.status(400).json({ error: 'invalid attachment data' });
+      }
+    }
+
+    // Insert feedback
+    const result = await pool.query(`
+      INSERT INTO feedback (
+        user_id, club_id, rating, category, message, 
+        allow_contact, email, attachment_url, app_version, user_agent
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id, created_at
+    `, [
+      user_id, club_id, rating, category, message.trim(),
+      allow_contact, email, attachment_url, app_version, user_agent
+    ]);
+
+    const feedback = result.rows[0];
+
+    // Fire-and-forget notifications
+    setImmediate(async () => {
+      try {
+        // Email notification
+        if (process.env.EMAIL_FROM && process.env.RESEND_API_KEY) {
+          await sendEmail({
+            to: process.env.EMAIL_FROM,
+            subject: `New feedback: ${category} ${rating ? '★'.repeat(rating) : ''}`,
+            html: `
+              <h3>New Feedback Received</h3>
+              <p><strong>Category:</strong> ${category}</p>
+              ${rating ? `<p><strong>Rating:</strong> ${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</p>` : ''}
+              <p><strong>Message:</strong></p>
+              <p>${message.replace(/\n/g, '<br>')}</p>
+              ${user_id ? `<p><strong>User ID:</strong> ${user_id}</p>` : '<p><strong>Anonymous feedback</strong></p>'}
+              ${club_id ? `<p><strong>Club ID:</strong> ${club_id}</p>` : ''}
+              ${email ? `<p><strong>Contact:</strong> ${email}</p>` : ''}
+              ${attachment_url ? `<p><strong>Attachment:</strong> ${attachment_url}</p>` : ''}
+              <p><strong>Submitted:</strong> ${feedback.created_at}</p>
+              ${process.env.APP_ORIGIN ? `<p><a href="${process.env.APP_ORIGIN}/admin/feedback?id=${feedback.id}">View in Admin</a></p>` : ''}
+            `
+          });
+        }
+
+        // Webhook notification
+        if (process.env.FEEDBACK_WEBHOOK_URL) {
+          await fetch(process.env.FEEDBACK_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: feedback.id,
+              category,
+              rating,
+              message: message.substring(0, 200) + (message.length > 200 ? '...' : ''),
+              user_id,
+              club_id,
+              created_at: feedback.created_at,
+              admin_url: process.env.APP_ORIGIN ? `${process.env.APP_ORIGIN}/admin/feedback?id=${feedback.id}` : null
+            })
+          });
+        }
+      } catch (error) {
+        console.error('Error sending feedback notifications:', error);
+      }
+    });
+
+    res.json({ ok: true, id: feedback.id });
+  } catch (error) {
+    console.error('Error submitting feedback:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// GET /api/feedback - List feedback (managers/admins only)
+app.get('/api/feedback', authenticateToken, async (req, res) => {
+  try {
+    // Check if user is a manager (simplified check)
+    const userClubs = await pool.query('SELECT id FROM clubs WHERE manager_id = $1', [req.user.id]);
+    if (userClubs.rows.length === 0) {
+      return res.status(403).json({ error: 'access denied' });
+    }
+
+    const {
+      page = 1,
+      limit = 50,
+      status,
+      category,
+      club_id,
+      min_rating
+    } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    let whereConditions = [];
+    let params = [];
+    let paramIndex = 1;
+
+    if (status) {
+      whereConditions.push(`f.status = $${paramIndex++}`);
+      params.push(status);
+    }
+
+    if (category) {
+      whereConditions.push(`f.category = $${paramIndex++}`);
+      params.push(category);
+    }
+
+    if (club_id) {
+      whereConditions.push(`f.club_id = $${paramIndex++}`);
+      params.push(parseInt(club_id));
+    }
+
+    if (min_rating) {
+      whereConditions.push(`f.rating >= $${paramIndex++}`);
+      params.push(parseInt(min_rating));
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+    const query = `
+      SELECT 
+        f.id, f.user_id, f.club_id, f.rating, f.category, f.message, 
+        f.allow_contact, f.email, f.attachment_url, f.app_version, 
+        f.created_at, f.handled_at, f.status,
+        u.display_name as user_name,
+        c.name as club_name
+      FROM feedback f
+      LEFT JOIN users u ON f.user_id = u.id
+      LEFT JOIN clubs c ON f.club_id = c.id
+      ${whereClause}
+      ORDER BY f.created_at DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+    `;
+
+    params.push(parseInt(limit), offset);
+
+    const result = await pool.query(query, params);
+    
+    // Get total count for pagination
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM feedback f
+      ${whereClause}
+    `;
+    
+    const countResult = await pool.query(countQuery, params.slice(0, -2));
+    const total = parseInt(countResult.rows[0].total);
+
+    res.json({
+      feedback: result.rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching feedback:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// PATCH /api/feedback/:id - Update feedback status (managers/admins only)
+app.patch('/api/feedback/:id', authenticateToken, async (req, res) => {
+  try {
+    // Check if user is a manager
+    const userClubs = await pool.query('SELECT id FROM clubs WHERE manager_id = $1', [req.user.id]);
+    if (userClubs.rows.length === 0) {
+      return res.status(403).json({ error: 'access denied' });
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status || !['new', 'in_progress', 'resolved', 'dismissed'].includes(status)) {
+      return res.status(400).json({ error: 'invalid status' });
+    }
+
+    const handled_at = ['resolved', 'dismissed'].includes(status) ? 'now()' : null;
+
+    const result = await pool.query(`
+      UPDATE feedback 
+      SET status = $1, handled_at = ${handled_at ? 'now()' : 'handled_at'}
+      WHERE id = $2
+      RETURNING id, status, handled_at
+    `, [status, parseInt(id)]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'feedback not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating feedback:', error);
     res.status(500).json({ error: 'internal server error' });
   }
 });
