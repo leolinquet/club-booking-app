@@ -3747,6 +3747,220 @@ if (process.env.AUTO_RUN_MIGRATIONS === '1' && process.env.ALLOW_DESTRUCTIVE_MIG
   process.exit(2);
 }
 
+// ================== CHAT API ENDPOINTS ==================
+
+// Helper function to ensure user_a < user_b for consistent conversation ordering
+function orderUserIds(userId1, userId2) {
+  return userId1 < userId2 ? [userId1, userId2] : [userId2, userId1];
+}
+
+// GET /api/chat/conversations
+// Get all conversations for the current user
+app.get('/api/chat/conversations', authenticateToken, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id;
+
+    if (!currentUserId) return res.status(401).json({ error: 'unauthorized' });
+
+    // Get all conversations the user is part of, with latest message info
+    const conversations = await pool.query(`
+      SELECT 
+        c.*,
+        club.name as club_name,
+        CASE 
+          WHEN c.user_a = $1 THEN user_b_user.display_name 
+          ELSE user_a_user.display_name 
+        END as other_user_name,
+        CASE 
+          WHEN c.user_a = $1 THEN c.user_b 
+          ELSE c.user_a 
+        END as other_user_id,
+        latest_msg.body as latest_message,
+        latest_msg.created_at as latest_message_time,
+        latest_msg.sender_id as latest_message_sender_id,
+        CASE 
+          WHEN latest_msg.sender_id = $1 THEN true 
+          ELSE false 
+        END as latest_message_is_mine
+      FROM conversations c
+      JOIN clubs club ON c.club_id = club.id
+      LEFT JOIN users user_a_user ON c.user_a = user_a_user.id
+      LEFT JOIN users user_b_user ON c.user_b = user_b_user.id
+      LEFT JOIN LATERAL (
+        SELECT body, created_at, sender_id
+        FROM messages m 
+        WHERE m.conversation_id = c.id 
+        ORDER BY m.created_at DESC 
+        LIMIT 1
+      ) latest_msg ON true
+      WHERE c.user_a = $1 OR c.user_b = $1
+      ORDER BY 
+        CASE WHEN latest_msg.created_at IS NULL THEN c.updated_at ELSE latest_msg.created_at END DESC
+    `, [currentUserId]);
+
+    res.json(conversations.rows);
+  } catch (error) {
+    console.error('Error fetching conversations:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// POST /api/chat/conversations/get-or-create
+// Get existing conversation or create new one between two users in a club
+app.post('/api/chat/conversations/get-or-create', authenticateToken, async (req, res) => {
+  try {
+    const { club_id, other_user_id } = req.body;
+    const currentUserId = req.user?.id;
+
+    if (!currentUserId) return res.status(401).json({ error: 'unauthorized' });
+    if (!club_id || !other_user_id) {
+      return res.status(400).json({ error: 'club_id and other_user_id are required' });
+    }
+
+    // Verify both users are members of the club
+    const membershipCheck = await pool.query(`
+      SELECT COUNT(*) as count FROM (
+        SELECT user_id FROM user_clubs WHERE club_id = $1 AND user_id IN ($2, $3)
+        UNION
+        SELECT manager_id as user_id FROM clubs WHERE id = $1 AND manager_id IN ($2, $3)
+      ) AS members
+    `, [club_id, currentUserId, other_user_id]);
+
+    if (membershipCheck.rows[0].count < 2) {
+      return res.status(403).json({ error: 'both users must be members of this club' });
+    }
+
+    // Order user IDs consistently
+    const [user_a, user_b] = orderUserIds(currentUserId, other_user_id);
+
+    // Try to get existing conversation
+    let conversation = await pool.query(`
+      SELECT * FROM conversations 
+      WHERE club_id = $1 AND user_a = $2 AND user_b = $3
+    `, [club_id, user_a, user_b]);
+
+    // Create conversation if it doesn't exist
+    if (conversation.rows.length === 0) {
+      conversation = await pool.query(`
+        INSERT INTO conversations (club_id, user_a, user_b)
+        VALUES ($1, $2, $3)
+        RETURNING *
+      `, [club_id, user_a, user_b]);
+    }
+
+    const conversationData = conversation.rows[0];
+
+    // Get recent messages (last 50)
+    const messages = await pool.query(`
+      SELECT m.*, u.display_name as sender_name
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE m.conversation_id = $1
+      ORDER BY m.created_at DESC
+      LIMIT 50
+    `, [conversationData.id]);
+
+    res.json({
+      conversation: conversationData,
+      messages: messages.rows.reverse() // Show oldest first
+    });
+  } catch (error) {
+    console.error('Error in get-or-create conversation:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// GET /api/chat/conversations/:id/messages
+// Load full message history for a conversation
+app.get('/api/chat/conversations/:id/messages', authenticateToken, async (req, res) => {
+  try {
+    const conversationId = Number(req.params.id);
+    const currentUserId = req.user?.id;
+
+    if (!currentUserId) return res.status(401).json({ error: 'unauthorized' });
+
+    // Verify user is part of this conversation
+    const conversationCheck = await pool.query(`
+      SELECT * FROM conversations 
+      WHERE id = $1 AND (user_a = $2 OR user_b = $2)
+    `, [conversationId, currentUserId]);
+
+    if (conversationCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'access denied to this conversation' });
+    }
+
+    // Get all messages with pagination support
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 100;
+    const offset = (page - 1) * limit;
+
+    const messages = await pool.query(`
+      SELECT m.*, u.display_name as sender_name
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE m.conversation_id = $1
+      ORDER BY m.created_at ASC
+      LIMIT $2 OFFSET $3
+    `, [conversationId, limit, offset]);
+
+    res.json({
+      messages: messages.rows,
+      pagination: {
+        page,
+        limit,
+        hasMore: messages.rows.length === limit
+      }
+    });
+  } catch (error) {
+    console.error('Error loading messages:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// POST /api/chat/messages
+// Send a new message
+app.post('/api/chat/messages', authenticateToken, async (req, res) => {
+  try {
+    const { conversation_id, body } = req.body;
+    const senderId = req.user?.id;
+
+    if (!senderId) return res.status(401).json({ error: 'unauthorized' });
+    if (!conversation_id || !body || body.trim().length === 0) {
+      return res.status(400).json({ error: 'conversation_id and non-empty body are required' });
+    }
+
+    // Verify user is part of this conversation
+    const conversationCheck = await pool.query(`
+      SELECT * FROM conversations 
+      WHERE id = $1 AND (user_a = $2 OR user_b = $2)
+    `, [conversation_id, senderId]);
+
+    if (conversationCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'access denied to this conversation' });
+    }
+
+    // Insert the message
+    const message = await pool.query(`
+      INSERT INTO messages (conversation_id, sender_id, body)
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `, [conversation_id, senderId, body.trim()]);
+
+    // Get sender info for the response
+    const messageWithSender = await pool.query(`
+      SELECT m.*, u.display_name as sender_name
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE m.id = $1
+    `, [message.rows[0].id]);
+
+    res.status(201).json(messageWithSender.rows[0]);
+  } catch (error) {
+    console.error('Error sending message:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
 app.listen(PORT, () => console.log(`server listening on :${PORT}`));
 
 

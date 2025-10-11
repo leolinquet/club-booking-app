@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 export default function Navbar({
   onBook = () => {},
+  onOpenConversations = () => {},
   onOpenAnnouncements = () => {},
   onHome = () => {},
   onClubs = () => {},
@@ -68,6 +69,7 @@ export default function Navbar({
 
         {/* Desktop nav */}
         <nav className="hidden sm:flex items-center gap-2">
+          <button onClick={onOpenConversations} className={navBtn}>💬</button>
           <button onClick={onOpenAnnouncements} className={navBtn}>Announcements</button>
           {/* Desktop Looking (visible on sm and up). For mobile, Looking stays inside the hamburger menu. */}
           <div className="hidden sm:block relative">
@@ -148,6 +150,7 @@ export default function Navbar({
             style={{ transformOrigin: "top center" }}
           >
               <div className="p-1 flex flex-col">
+              <button onClick={handle(onOpenConversations)} className={menuItem}>💬 Conversations</button>
               <button onClick={handle(onOpenAnnouncements)} className={menuItem}>Announcements</button>
               <button onClick={handle(onOpenLooking)} className={menuItem}>
                 <div className="flex items-center justify-between">

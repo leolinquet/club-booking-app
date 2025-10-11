@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Navbar from "./Navbar";
 import './styles/theme.css';
 import './styles/ui.css';
@@ -6,6 +6,7 @@ import './styles/ui.css';
 import ClubGate from './ClubGate.jsx';
 import LookingPanel from './LookingPanel.jsx';
 import RequestsPeopleModal from './RequestsPeopleModal.jsx';
+import ConversationsModal from './ConversationsModal.jsx';
 
 const safeParse = (s) => {
   try { return JSON.parse(s); } catch { return null; }
@@ -268,6 +269,12 @@ export default function App(){
   const [showAnnouncements, setShowAnnouncements] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  
+  // Chat functionality
+  const [showConversations, setShowConversations] = useState(false);
+  const [conversations, setConversations] = useState([]);
+  const conversationsModalRef = useRef();
+  
   // Looking-for-partner feature
   const [showLooking, setShowLooking] = useState(false);
   const [lookingList, setLookingList] = useState([]);
@@ -308,6 +315,13 @@ export default function App(){
     const id = setInterval(() => { loadAnnouncements(); }, 20000);
     return () => clearInterval(id);
   }, [user?.id]);
+
+  // Function to refresh conversations list
+  const refreshConversations = () => {
+    if (conversationsModalRef.current) {
+      conversationsModalRef.current.refreshConversations();
+    }
+  };
 
   // Fetch list of players looking for partner in current club
   const loadLooking = async () => {
@@ -462,6 +476,7 @@ export default function App(){
       <Navbar
         onBook={() => setView('book')}
         onHome={() => setView('home')}
+        onOpenConversations={() => setShowConversations(true)}
         onOpenAnnouncements={() => setShowAnnouncements(true)}
         onClubs={() => setView('clubs')}
         onTournaments={() => setView('tournaments')}
@@ -684,6 +699,16 @@ export default function App(){
           setSelectedClubForModal(null);
         }}
         isManager={selectedClubForModal && Number(selectedClubForModal.manager_id) === Number(user?.id)}
+        user={user}
+        API={API}
+        onConversationUpdate={refreshConversations}
+      />
+
+      {/* Conversations Modal */}
+      <ConversationsModal
+        ref={conversationsModalRef}
+        isOpen={showConversations}
+        onClose={() => setShowConversations(false)}
         user={user}
         API={API}
       />

@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
+import ChatDrawer from './ChatDrawer.jsx';
 
-const RequestsPeopleModal = ({ club, isOpen, onClose, isManager, user, API }) => {
+const RequestsPeopleModal = ({ club, isOpen, onClose, isManager, user, API, onConversationUpdate }) => {
   const [activeTab, setActiveTab] = useState('requests');
   const [requests, setRequests] = useState({ pending: [], accepted: [], declined: [] });
   const [members, setMembers] = useState([]);
   const [inviteUsername, setInviteUsername] = useState('');
   const [autoApprove, setAutoApprove] = useState(club?.auto_approve_join || false);
   const [loading, setLoading] = useState(false);
+  
+  // Chat-related state
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatUser, setChatUser] = useState(null);
 
   // Utility function for authenticated API calls
   const makeAuthenticatedRequest = async (url, options = {}) => {
@@ -168,6 +173,18 @@ const RequestsPeopleModal = ({ club, isOpen, onClose, isManager, user, API }) =>
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle opening chat with a member
+  const handleMessageUser = (member) => {
+    setChatUser(member);
+    setChatOpen(true);
+  };
+
+  // Handle closing chat
+  const handleCloseChat = () => {
+    setChatOpen(false);
+    setChatUser(null);
   };
 
   if (!isOpen) {
@@ -335,6 +352,15 @@ const RequestsPeopleModal = ({ club, isOpen, onClose, isManager, user, API }) =>
                           {member.role}
                         </div>
                       </div>
+                      {/* Message button - don't show for current user */}
+                      {member.user_id !== user?.id && (
+                        <button
+                          onClick={() => handleMessageUser(member)}
+                          className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors"
+                        >
+                          Message
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -351,14 +377,25 @@ const RequestsPeopleModal = ({ club, isOpen, onClose, isManager, user, API }) =>
             <div className="space-y-2">
               {members.map(member => (
                 <div key={member.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                  <span className="font-medium">{member.name}</span>
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    member.role === 'manager' 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {member.role}
-                  </span>
+                  <div className="flex items-center space-x-3">
+                    <span className="font-medium">{member.name}</span>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      member.role === 'manager' 
+                        ? 'bg-blue-100 text-blue-700' 
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {member.role}
+                    </span>
+                  </div>
+                  {/* Message button - don't show for current user */}
+                  {member.id !== user?.id && (
+                    <button
+                      onClick={() => handleMessageUser(member)}
+                      className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors"
+                    >
+                      Message
+                    </button>
+                  )}
                 </div>
               ))}
               {members.length === 0 && (
@@ -368,6 +405,19 @@ const RequestsPeopleModal = ({ club, isOpen, onClose, isManager, user, API }) =>
           </div>
         )}
       </div>
+      
+      {/* Chat Drawer */}
+      {chatOpen && (
+        <ChatDrawer
+          isOpen={chatOpen}
+          onClose={handleCloseChat}
+          currentUser={user}
+          otherUser={chatUser}
+          clubId={club?.id}
+          API={API}
+          onConversationUpdate={onConversationUpdate}
+        />
+      )}
     </div>
   );
 };
