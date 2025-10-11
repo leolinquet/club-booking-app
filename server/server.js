@@ -4078,9 +4078,11 @@ app.post('/api/feedback', checkFeedbackRateLimit, async (req, res) => {
               fs.writeFileSync(filepath, buffer);
               console.log(`[FEEDBACK] Saved attachment: ${filename} (${buffer.length} bytes)`);
               
-              // Generate URL that points to the server (not client)
-              const serverPort = process.env.PORT || 5051;
-              attachment_url = `http://localhost:${serverPort}/uploads/feedback/${filename}`;
+              // Generate URL that points to the server 
+              // Use the host from the request or environment variable
+              const host = req.get('host') || req.headers.host;
+              const protocol = req.secure || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+              attachment_url = `${protocol}://${host}/uploads/feedback/${filename}`;
             } catch (writeError) {
               console.error('Error saving file:', writeError);
               return res.status(500).json({ error: 'failed to save attachment' });
