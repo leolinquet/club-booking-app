@@ -52,8 +52,8 @@ const FeedbackModal = ({ isOpen, onClose, user, userClubs, currentClub, API }) =
         return;
       }
       
-      if (file.size > 2 * 1024 * 1024) { // 2MB
-        setErrors(prev => ({ ...prev, attachment: 'Image must be smaller than 2MB' }));
+      if (file.size > 10 * 1024 * 1024) { // 10MB
+        setErrors(prev => ({ ...prev, attachment: 'Image must be smaller than 10MB' }));
         return;
       }
 

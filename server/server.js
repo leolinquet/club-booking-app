@@ -4067,9 +4067,9 @@ app.post('/api/feedback', checkFeedbackRateLimit, async (req, res) => {
             const base64Data = matches[2];
             const buffer = Buffer.from(base64Data, 'base64');
             
-            // Check file size (2MB limit)
-            if (buffer.length > 2 * 1024 * 1024) {
-              return res.status(400).json({ error: 'image too large, max 2MB' });
+            // Check file size (10MB limit)
+            if (buffer.length > 10 * 1024 * 1024) {
+              return res.status(400).json({ error: 'image too large, max 10MB' });
             }
 
             // Generate filename and save file
