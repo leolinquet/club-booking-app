@@ -5,6 +5,7 @@ import './styles/ui.css';
 // removed a2hs (add-to-home-screen) to hide the Install App button in the navbar
 import ClubGate from './ClubGate.jsx';
 import LookingPanel from './LookingPanel.jsx';
+import RequestsPeopleModal from './RequestsPeopleModal.jsx';
 
 const safeParse = (s) => {
   try { return JSON.parse(s); } catch { return null; }
@@ -176,7 +177,9 @@ export default function App(){
   const [user, setUser] = useState(() => safeParse(localStorage.getItem('user')));
   const [club, setClub] = useState(() => safeParse(localStorage.getItem('club')));
   const [userClubs, setUserClubs] = useState([]); // List of clubs user belongs to
-  const [view, setView] = useState('book'); // 'book' | 'clubs' | 'home' | 'tournaments' | 'rankings'
+  const [view, setView] = useState('book'); // 'book' | 'clubs' | 'home' | 'tournaments' | 'rankings' | 'clubgate'
+  const [requestsModalOpen, setRequestsModalOpen] = useState(false);
+  const [selectedClubForModal, setSelectedClubForModal] = useState(null);
 
   function saveUser(u){ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }
   function saveClub(c){ setClub(c); localStorage.setItem('club', JSON.stringify(c)); }
@@ -436,23 +439,20 @@ export default function App(){
     return <Auth onLogin={handleAuthed} onRegister={handleAuthed} />;
   }
 
-  if (!club) return <ClubGate user={user} onJoin={(c)=>{saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]); setView('book');}} onCreate={(c)=>{saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]); setView('home');}} />;
-
   // Manager flag + page guard
   const isManager = user.role === 'manager';
   const effectivePage = isManager ? view : (view === 'home' ? 'book' : view);
 
-  // (previously defined above) handleAuthed is used here
-
-  
-
+  // Debug logging
+  console.log('App render state:', { user: user?.display_name, club: club?.name, userClubs: userClubs.length });
 
   if (user && !club) {
+    console.log('Rendering ClubGate for user:', user.display_name);
     return (
       <ClubGate
         user={user}
-        onJoin={(c) => {saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]);}}
-        onCreate={(c) => {saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]);}}
+        onJoin={(c) => {saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]); setView('book');}}
+        onCreate={(c) => {saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]); setView('home');}}
       />
     );
   }
@@ -590,6 +590,10 @@ export default function App(){
             onSetActive={(c) => { saveClub(c); setView('book'); }}
             onJoin={(c) => {setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]);}}
             onCreate={(c) => {setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]);}}
+            onOpenManageModal={(c) => {
+              setSelectedClubForModal(c);
+              setRequestsModalOpen(true);
+            }}
           />
         ) : effectivePage === 'home' ? (
           // Manager Dashboard - requires club membership
@@ -670,6 +674,19 @@ export default function App(){
           )
         )}
       </div>
+
+      {/* Requests & People Modal */}
+      <RequestsPeopleModal
+        club={selectedClubForModal}
+        isOpen={requestsModalOpen}
+        onClose={() => {
+          setRequestsModalOpen(false);
+          setSelectedClubForModal(null);
+        }}
+        isManager={selectedClubForModal && Number(selectedClubForModal.manager_id) === Number(user?.id)}
+        user={user}
+        API={API}
+      />
     </div>
   );
 }
@@ -725,8 +742,8 @@ function AnnouncementPanel({ user, club, isManager, announcements = [], onClose,
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-4xl lg:max-w-5xl bg-white rounded-xl shadow-lg max-h-[90vh] flex flex-col">
-        <div className="announcements-content p-6 flex-1 overflow-hidden">
-          <div className="announcements-header flex items-center justify-between mb-4 pb-4 border-b">
+        <div className="announcements-content p-6 flex-1 min-h-0 flex flex-col">
+          <div className="announcements-header flex items-center justify-between mb-4 pb-4 border-b flex-shrink-0">
             <h3 className="text-xl font-semibold text-gray-900">Announcements</h3>
             <div className="flex items-center gap-2">
               <button className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium" onClick={async ()=>{ await onRefresh(); }}>Refresh</button>
@@ -734,10 +751,10 @@ function AnnouncementPanel({ user, club, isManager, announcements = [], onClose,
             </div>
           </div>
 
-          <div className="announcements-grid grid grid-cols-1 lg:grid-cols-2 gap-6 h-full overflow-hidden">
-          <div className="flex flex-col">
+          <div className="announcements-grid grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
+          <div className="flex flex-col min-h-0">
             {isManager && (
-              <div className="border border-gray-200 rounded-lg p-4 mb-4">
+              <div className="border border-gray-200 rounded-lg p-4 mb-4 flex-shrink-0">
                 <div className="text-sm font-semibold mb-3 text-gray-900">Create announcement</div>
                 <input className="border border-gray-300 rounded-lg px-3 py-2 w-full mb-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Title" value={title} onChange={e=>setTitle(e.target.value)} />
                 <textarea className="border border-gray-300 rounded-lg px-3 py-2 w-full mb-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" rows={5} placeholder="Message" value={body} onChange={e=>setBody(e.target.value)} />
@@ -748,7 +765,7 @@ function AnnouncementPanel({ user, club, isManager, announcements = [], onClose,
               </div>
             )}
 
-            <div className="space-y-3 flex-1 overflow-auto">
+            <div className="space-y-3 flex-1 min-h-0 overflow-y-auto">
               {announcements.length === 0 && <div className="text-sm text-gray-500 p-4 text-center">No announcements.</div>}
               {announcements.map(a => (
                 <div key={a.id} className={`border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow ${a.read ? 'bg-white' : 'bg-yellow-50 border-yellow-200'}`}>
@@ -1561,13 +1578,18 @@ function UserBooking({ user, club }){
 }
 
 /* -------------------- Clubs Page -------------------- */
-function ClubsPage({ user, club, onSetActive, onJoin, onCreate }) {
+function ClubsPage({ user, club, onSetActive, onJoin, onCreate, onOpenManageModal }) {
   const [clubs, setClubs] = useState([]);
   const [joinCode, setJoinCode] = useState('');
   const [newName, setNewName] = useState('');
   const [newTimezone, setNewTimezone] = useState(() => {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; }
   });
+  // Club invitations and requests state
+  const [invitations, setInvitations] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [loadingInvitations, setLoadingInvitations] = useState(false);
+  const [busy, setBusy] = useState(false);
   // curated list for club creation/editing (UTC first, then host tz if different, then common US timezones)
   const HOST_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return 'UTC'; } })();
   const US_TIMEZONES = [
@@ -1588,6 +1610,73 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate }) {
   const [error, setError] = useState('');
   const isManager = user.role === 'manager';
 
+  // Utility function for authenticated API calls (same as App.jsx)
+  const makeAuthenticatedRequest = async (url, options = {}) => {
+    const token = localStorage.getItem('authToken');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
+    
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    
+    return fetch(url, {
+      ...options,
+      headers,
+    });
+  };
+
+  // Load user invitations and requests
+  const loadInvitationsAndRequests = async () => {
+    setLoadingInvitations(true);
+    try {
+      // Load user's invitations
+      const invitesRes = await makeAuthenticatedRequest(`${API}/me/invitations`);
+      if (invitesRes.ok) {
+        const invitesData = await invitesRes.json();
+        setInvitations(invitesData.filter(inv => inv.status === 'pending'));
+      }
+
+      // Load user's pending requests
+      const requestsRes = await makeAuthenticatedRequest(`${API}/me/club-requests`);
+      if (requestsRes.ok) {
+        const requestsData = await requestsRes.json();
+        setRequests(requestsData.filter(req => req.status === 'pending'));
+      }
+    } catch (e) {
+      console.error('Error loading invitations and requests:', e);
+    } finally {
+      setLoadingInvitations(false);
+    }
+  };
+
+  // Handle invitation response
+  const handleInvitation = async (inviteId, action) => {
+    setBusy(true);
+    try {
+      const res = await makeAuthenticatedRequest(`${API}/me/invitations/${inviteId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return alert(data.error || `Failed to ${action} invitation`);
+      }
+      
+      if (action === 'accept') {
+        // Refresh clubs and invitations
+        await load();
+        await loadInvitationsAndRequests();
+        alert('Invitation accepted! You have joined the club.');
+      } else {
+        // Just refresh the invitations list
+        await loadInvitationsAndRequests();
+      }
+    } finally { setBusy(false); }
+  };
+
   const load = async () => {
     setError('');
     try {
@@ -1604,7 +1693,10 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate }) {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { 
+    load(); 
+    loadInvitationsAndRequests();
+  }, []);
 
   const join = async () => {
     try {
@@ -1613,12 +1705,27 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate }) {
         body: JSON.stringify({ code: joinCode.trim(), userId: user.id })
       });
       const data = await res.json().catch(()=>null);
-      if (!res.ok) throw new Error((data && data.error) || 'Join failed');
+      if (!res.ok) {
+        if (data.error === 'request already pending') {
+          alert('Your request to join this club is already pending approval.');
+          await loadInvitationsAndRequests(); // Refresh to show the new request
+        } else {
+          alert(data.error || 'Join failed');
+        }
+        return;
+      }
+      
       setJoinCode('');
       await load();
-      onSetActive(data.club);
-      // Update parent's userClubs state
-      if (onJoin) onJoin(data.club);
+      await loadInvitationsAndRequests(); // Refresh invitations and requests
+      
+      if (data.status === 'approved') {
+        onSetActive(data.club);
+        // Update parent's userClubs state
+        if (onJoin) onJoin(data.club);
+      } else if (data.status === 'pending') {
+        alert('Your request has been sent to the club manager for approval.');
+      }
     } catch (e) {
       alert(e.message);
     }
@@ -1668,33 +1775,60 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate }) {
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
                 {/* Timezone selector only visible to the club's manager (creator) */}
                 {Number(c.manager_id) === Number(user.id) && (
-                  <div className="w-full sm:w-64">
-                    <select
-                      className="border rounded-lg px-3 py-2 w-full text-sm"
-                      value={c.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
-                      onChange={async (e) => {
-                        const tz = e.target.value;
-                        try {
-                          const r = await fetch(`${API}/clubs/${c.id}/timezone`, {
-                            method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-                            body: JSON.stringify({ managerId: user.id, timezone: tz })
-                          });
-                          const d = await r.json().catch(()=>null);
-                          if (!r.ok) return alert(d?.error || 'Failed to update timezone');
-                          // Refresh clubs list to pick up updated timezone
-                          await (async () => { const rr = await fetch(`${API}/users/${user.id}/clubs`, { credentials: 'include' }); const dat = await rr.json().catch(()=>null); setClubs(Array.isArray(dat)?dat:[]); })();
-                        } catch (err) {
-                          console.error('update tz error', err);
-                          alert('Failed to update timezone');
-                        }
-                      }}
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <div className="flex-1 sm:w-64">
+                      <select
+                        className="border rounded-lg px-3 py-2 w-full text-sm"
+                        value={c.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
+                        onChange={async (e) => {
+                          const tz = e.target.value;
+                          try {
+                            const r = await fetch(`${API}/clubs/${c.id}/timezone`, {
+                              method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                              body: JSON.stringify({ managerId: user.id, timezone: tz })
+                            });
+                            const d = await r.json().catch(()=>null);
+                            if (!r.ok) return alert(d?.error || 'Failed to update timezone');
+                            // Refresh clubs list to pick up updated timezone
+                            await (async () => { const rr = await fetch(`${API}/users/${user.id}/clubs`, { credentials: 'include' }); const dat = await rr.json().catch(()=>null); setClubs(Array.isArray(dat)?dat:[]); })();
+                          } catch (err) {
+                            console.error('update tz error', err);
+                            alert('Failed to update timezone');
+                          }
+                        }}
                     >
                       {CLUB_TIMEZONE_OPTIONS.map(tz => (
                         <option key={tz} value={tz}>{tz}</option>
                       ))}
                     </select>
+                    </div>
+                    <button
+                      onClick={() => {
+                        onOpenManageModal(c);
+                      }}
+                      className="bg-blue-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-blue-600 whitespace-nowrap"
+                      title="Manage club requests and members"
+                    >
+                      Manage
+                    </button>
                   </div>
                 )}
+
+                {/* People button for non-managers */}
+                {Number(c.manager_id) !== Number(user.id) && (
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <button
+                      onClick={() => {
+                        onOpenManageModal(c);
+                      }}
+                      className="bg-gray-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-gray-600 whitespace-nowrap"
+                      title="View club members"
+                    >
+                      People
+                    </button>
+                  </div>
+                )}
+
                 <div className="hidden sm:block">
                   <SetActiveButton 
                     isActive={club && club.id === c.id}
@@ -1708,6 +1842,71 @@ function ClubsPage({ user, club, onSetActive, onJoin, onCreate }) {
             <div className="text-gray-500 text-sm">You’re not in any clubs yet.</div>
           )}
         </div>
+      </Card>
+
+      {/* Club Invitations Section */}
+      <Card>
+        <h3 className="text-lg font-medium mb-3">Club Invitations</h3>
+        {loadingInvitations ? (
+          <div className="text-gray-500 text-sm">Loading...</div>
+        ) : invitations.length === 0 ? (
+          <div className="text-gray-500 text-sm">No pending invitations</div>
+        ) : (
+          <div className="space-y-3">
+            {invitations.map(invitation => (
+              <div key={invitation.id} className="border rounded-lg p-3">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="font-medium">{invitation.club_name}</div>
+                    <div className="text-sm text-gray-500">
+                      Invited {new Date(invitation.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="px-3 py-1 text-sm rounded bg-green-500 text-white hover:bg-green-600 disabled:opacity-60"
+                      onClick={() => handleInvitation(invitation.id, 'accept')}
+                      disabled={busy}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      className="px-3 py-1 text-sm rounded bg-red-500 text-white hover:bg-red-600 disabled:opacity-60"
+                      onClick={() => handleInvitation(invitation.id, 'decline')}
+                      disabled={busy}
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Pending Join Requests Section */}
+      <Card>
+        <h3 className="text-lg font-medium mb-3">Pending Join Requests</h3>
+        {loadingInvitations ? (
+          <div className="text-gray-500 text-sm">Loading...</div>
+        ) : requests.length === 0 ? (
+          <div className="text-gray-500 text-sm">No pending requests</div>
+        ) : (
+          <div className="space-y-3">
+            {requests.map(request => (
+              <div key={request.id} className="border rounded-lg p-3">
+                <div className="font-medium">{request.club_name}</div>
+                <div className="text-sm text-gray-500">
+                  Requested {new Date(request.created_at).toLocaleDateString()}
+                </div>
+                <div className="text-sm text-orange-600 mt-1">
+                  Waiting for manager approval
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       <div className="grid md:grid-cols-2 gap-4">

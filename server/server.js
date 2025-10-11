@@ -1284,7 +1284,8 @@ app.put('/matches/:id/result', async (req, res) => {
     // Validate required fields
     if (!managerId) return res.status(422).json({ error: 'managerId required' });
 
-    const m = await db.prepare('SELECT * FROM matches WHERE id=?').get(mId);
+    const mResult = await pool.query('SELECT * FROM matches WHERE id=$1', [mId]);
+    const m = mResult.rows[0];
     if (!m) return res.status(404).json({ error: 'match not found' });
 
     // Check if match is already completed
@@ -1321,13 +1322,13 @@ app.put('/matches/:id/result', async (req, res) => {
 
     const setParts = [];
     const vals = [];
-    if (mCols.has('p1_score')) { setParts.push('p1_score=?'); vals.push(s1); }
-    if (mCols.has('p2_score')) { setParts.push('p2_score=?'); vals.push(s2); }
-    if (mCols.has('winner_id')) { setParts.push('winner_id=?'); vals.push(winnerId); }
+    if (mCols.has('p1_score')) { setParts.push('p1_score=$' + (vals.length + 1)); vals.push(s1); }
+    if (mCols.has('p2_score')) { setParts.push('p2_score=$' + (vals.length + 1)); vals.push(s2); }
+    if (mCols.has('winner_id')) { setParts.push('winner_id=$' + (vals.length + 1)); vals.push(winnerId); }
     if (mCols.has('status')) setParts.push("status='completed'");
     if (mCols.has('updated_at')) setParts.push('updated_at=CURRENT_TIMESTAMP');
     if (!setParts.length) return res.status(500).json({ error: 'matches table missing expected columns' });
-    await db.prepare(`UPDATE matches SET ${setParts.join(', ')} WHERE id=?`).run(...vals, mId);
+    await pool.query(`UPDATE matches SET ${setParts.join(', ')} WHERE id=$${vals.length + 1}`, [...vals, mId]);
 
     const nextRound = Number(m.round) - 1;
     if (Number.isFinite(nextRound) && nextRound >= 1) {
@@ -1342,28 +1343,29 @@ app.put('/matches/:id/result', async (req, res) => {
       const otherField = myField === 'p1_id' ? 'p2_id' : 'p1_id';
 
       // Try to find an existing next match
-      let next = await db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?')
-        .get(m.tournament_id, nextRound, nextSlot);
+      let nextResult = await pool.query('SELECT * FROM matches WHERE tournament_id=$1 AND round=$2 AND slot=$3', [m.tournament_id, nextRound, nextSlot]);
+      let next = nextResult.rows[0] || null;
       console.log('Existing next match?', !!next, next && { id: next.id, p1_id: next.p1_id, p2_id: next.p2_id });
 
       // helper to insert a new next match (uses status column if present)
       const insertNext = async (p1, p2) => {
         if (mCols.has('status')) {
-          await db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status)
-            VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'scheduled')`).run(m.tournament_id, nextRound, nextSlot, p1, p2);
+          await pool.query(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status)
+            VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, 'scheduled')`, [m.tournament_id, nextRound, nextSlot, p1, p2]);
         } else {
-          await db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id)
-            VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`).run(m.tournament_id, nextRound, nextSlot, p1, p2);
+          await pool.query(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id)
+            VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL)`, [m.tournament_id, nextRound, nextSlot, p1, p2]);
         }
-        next = await db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?').get(m.tournament_id, nextRound, nextSlot);
+        const nextResult = await pool.query('SELECT * FROM matches WHERE tournament_id=$1 AND round=$2 AND slot=$3', [m.tournament_id, nextRound, nextSlot]);
+        next = nextResult.rows[0] || null;
         return next;
       };
 
       if (!next) {
         // No next match yet: check sibling in current round for its winner
         const siblingSlot = (Number(m.slot) % 2 === 0) ? Number(m.slot) + 1 : Number(m.slot) - 1;
-        const sibling = await db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?')
-          .get(m.tournament_id, m.round, siblingSlot);
+        const siblingResult = await pool.query('SELECT * FROM matches WHERE tournament_id=$1 AND round=$2 AND slot=$3', [m.tournament_id, m.round, siblingSlot]);
+        const sibling = siblingResult.rows[0] || null;
         const siblingWinner = sibling && Number(sibling.winner_id) ? Number(sibling.winner_id) : null;
         console.log('Sibling slot', siblingSlot, 'found?', !!sibling, 'siblingWinner', siblingWinner);
 
@@ -1402,7 +1404,7 @@ app.put('/matches/:id/result', async (req, res) => {
         const field = myField;
         if (next[field] == null) {
           try {
-            await db.prepare(`UPDATE matches SET ${field}=? WHERE id=?`).run(winnerId, next.id);
+            await pool.query(`UPDATE matches SET ${field}=$1 WHERE id=$2`, [winnerId, next.id]);
             console.log('Updated next match field', field, 'with', winnerId, 'nextId', next.id);
           } catch (ie) {
             console.error('Failed to update next match field:', ie && ie.message ? ie.message : ie);
@@ -1413,9 +1415,9 @@ app.put('/matches/:id/result', async (req, res) => {
       const tCols = new Set((await tableInfo('tournaments')).map(c => c.name));
       const tParts = [];
       const tVals = [];
-      if (tCols.has('status')) tParts.push("status=?"), tVals.push('completed');
+      if (tCols.has('status')) tParts.push("status=$" + (tVals.length + 1)), tVals.push('completed');
       if (tCols.has('end_date')) tParts.push("end_date=COALESCE(end_date, now())");
-      if (tParts.length) await db.prepare(`UPDATE tournaments SET ${tParts.join(', ')} WHERE id=?`).run(...tVals, m.tournament_id);
+      if (tParts.length) await pool.query(`UPDATE tournaments SET ${tParts.join(', ')} WHERE id=$${tVals.length + 1}`, [...tVals, m.tournament_id]);
       try {
         // ensure we await the points-awarding so errors bubble up and are logged
         await awardTournamentPoints(m.tournament_id);
@@ -2161,7 +2163,7 @@ app.post('/clubs/join', async (req, res) => {
     if (!code || !userId) return res.status(400).json({ error: 'code and userId required' });
 
     const c = await pool.query(
-      `SELECT id, name, sport, manager_id, code
+      `SELECT id, name, sport, manager_id, code, auto_approve_join
          FROM clubs
         WHERE code=$1`,
       [code.trim().toUpperCase()]
@@ -2169,13 +2171,42 @@ app.post('/clubs/join', async (req, res) => {
     if (!c.rows.length) return res.status(404).json({ error: 'invalid code' });
 
     const club = c.rows[0];
-    await pool.query(
-      `INSERT INTO user_clubs (user_id, club_id, role)
-       VALUES ($1,$2,'player')
-       ON CONFLICT DO NOTHING`,
+    
+    // Check if user is already a member
+    const existingMember = await pool.query(
+      `SELECT 1 FROM user_clubs WHERE user_id = $1 AND club_id = $2`,
       [userId, club.id]
     );
-    res.json({ club });
+    if (existingMember.rows.length > 0) {
+      return res.status(400).json({ error: 'already a member of this club' });
+    }
+
+    // Check if user already has a pending request
+    const existingRequest = await pool.query(
+      `SELECT 1 FROM club_join_requests WHERE user_id = $1 AND club_id = $2 AND status = 'pending'`,
+      [userId, club.id]
+    );
+    if (existingRequest.rows.length > 0) {
+      return res.status(400).json({ error: 'request already pending' });
+    }
+
+    if (club.auto_approve_join) {
+      // Auto-approve: directly add to user_clubs
+      await pool.query(
+        `INSERT INTO user_clubs (user_id, club_id, role)
+         VALUES ($1, $2, 'player')`,
+        [userId, club.id]
+      );
+      res.json({ club, status: 'approved' });
+    } else {
+      // Create a join request for manager approval
+      await pool.query(
+        `INSERT INTO club_join_requests (user_id, club_id, status, created_at)
+         VALUES ($1, $2, 'pending', NOW())`,
+        [userId, club.id]
+      );
+      res.json({ club, status: 'pending' });
+    }
   } catch (e) {
     console.error('POST /clubs/join', e);
     res.status(500).json({ error: 'unexpected error' });
@@ -2224,18 +2255,30 @@ app.get('/users/:id/club', async (req, res) => {
 app.get('/users/:id/clubs', async (req, res) => {
   try {
     const { id } = req.params;
+    console.log('GET /users/:id/clubs - user id:', id);
+    console.log('DATABASE_URL:', process.env.DATABASE_URL);
+    
+    // Let's test which database we're connected to
+    try {
+      const dbTest = await pool.query('SELECT current_database() as db, version() as version');
+      console.log('Database info:', dbTest.rows[0]);
+    } catch (e) {
+      console.log('Failed to get database info via pool:', e.message);
+    }
+    
     const { rows } = await pool.query(
-      `SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone
+      `SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone, c.auto_approve_join
          FROM clubs c
         WHERE c.manager_id = $1
         UNION
-       SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone
+       SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone, c.auto_approve_join
          FROM user_clubs uc
          JOIN clubs c ON c.id = uc.club_id
         WHERE uc.user_id = $1
         ORDER BY id`,
       [id]
     );
+    console.log('GET /users/:id/clubs - raw rows:', rows.length, rows);
 
     // Backfill any missing codes so the client always receives a code value
     for (const r of rows) {
@@ -2248,6 +2291,7 @@ app.get('/users/:id/clubs', async (req, res) => {
         }
       }
     }
+    console.log('GET /users/:id/clubs - final result:', rows);
 
     res.json(rows); // [] if none
   } catch (e) {
@@ -2594,6 +2638,338 @@ app.delete('/clubs/:clubId/sports/:id', async (req, res) => {
   }
 });
 
+// ===== CLUB MANAGEMENT: REQUESTS & INVITATIONS =====
+
+// Helper function to ensure user is manager of the club
+async function ensureManager(userId, clubId) {
+  const club = await db.prepare('SELECT manager_id FROM clubs WHERE id = ?').get(clubId);
+  if (!club) return false;
+  return Number(club.manager_id) === Number(userId);
+}
+
+// Helper function to add a member to a club
+async function addMember(clubId, userId) {
+  try {
+    // Upsert into user_clubs (using the existing table)
+    await pool.query(`
+      INSERT INTO user_clubs (club_id, user_id, role) 
+      VALUES ($1, $2, 'player')
+      ON CONFLICT (club_id, user_id) DO NOTHING
+    `, [clubId, userId]);
+    
+    // Delete any pending requests/invites
+    await pool.query('DELETE FROM club_join_requests WHERE club_id = $1 AND user_id = $2', [clubId, userId]);
+    await pool.query('DELETE FROM club_invitations WHERE club_id = $1 AND invited_user_id = $2', [clubId, userId]);
+    
+    return true;
+  } catch (e) {
+    console.error('addMember error:', e);
+    return false;
+  }
+}
+
+// MANAGER: Get join requests for a club
+app.get('/clubs/:clubId/requests', authenticateToken, async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const isManager = await ensureManager(userId, clubId);
+    if (!isManager) return res.status(403).json({ error: 'only club managers can view requests' });
+    
+    const requests = await pool.query(`
+      SELECT cjr.id, cjr.status, cjr.created_at, 
+             COALESCE(u.display_name, u.username, u.email) as username
+      FROM club_join_requests cjr
+      JOIN users u ON cjr.user_id = u.id
+      WHERE cjr.club_id = $1
+      ORDER BY cjr.created_at DESC
+    `, [clubId]);
+    
+    const grouped = {
+      pending: requests.rows.filter(r => r.status === 'pending'),
+      accepted: requests.rows.filter(r => r.status === 'accepted'),
+      declined: requests.rows.filter(r => r.status === 'declined')
+    };
+    
+    res.json(grouped);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// MANAGER: Accept/decline a join request
+app.patch('/clubs/:clubId/requests/:requestId', authenticateToken, express.json(), async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const requestId = Number(req.params.requestId);
+    const { action } = req.body;
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    if (!['accept', 'decline'].includes(action)) {
+      return res.status(400).json({ error: 'action must be accept or decline' });
+    }
+    
+    const isManager = await ensureManager(userId, clubId);
+    if (!isManager) return res.status(403).json({ error: 'only club managers can manage requests' });
+    
+    // Get the request
+    const request = await pool.query(`
+      SELECT user_id FROM club_join_requests 
+      WHERE id = $1 AND club_id = $2 AND status = 'pending'
+    `, [requestId, clubId]);
+    
+    if (!request.rows.length) return res.status(404).json({ error: 'request not found or already processed' });
+    
+    if (action === 'accept') {
+      await addMember(clubId, request.rows[0].user_id);
+      await pool.query(`
+        UPDATE club_join_requests 
+        SET status = 'accepted' 
+        WHERE id = $1
+      `, [requestId]);
+    } else {
+      await pool.query(`
+        UPDATE club_join_requests 
+        SET status = 'declined' 
+        WHERE id = $1
+      `, [requestId]);
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// MANAGER: Toggle auto-approve setting
+app.patch('/clubs/:clubId/auto-approve', authenticateToken, express.json(), async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const { enabled } = req.body;
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const isManager = await ensureManager(userId, clubId);
+    if (!isManager) return res.status(403).json({ error: 'only club managers can change settings' });
+    
+    await pool.query(`
+      UPDATE clubs 
+      SET auto_approve_join = $1 
+      WHERE id = $2
+    `, [enabled, clubId]);
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// MANAGER: Get club members
+app.get('/clubs/:clubId/members', authenticateToken, async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const isManager = await ensureManager(userId, clubId);
+    if (!isManager) return res.status(403).json({ error: 'only club managers can view members' });
+    
+    const members = await pool.query(`
+      SELECT uc.user_id, uc.role, 
+             COALESCE(u.display_name, u.username, u.email) as username
+      FROM user_clubs uc
+      JOIN users u ON uc.user_id = u.id
+      WHERE uc.club_id = $1
+      ORDER BY uc.role DESC, COALESCE(u.display_name, u.username, u.email) ASC
+    `, [clubId]);
+
+    res.json(members.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// Get club members (for any club member, read-only)
+app.get('/clubs/:clubId/people', authenticateToken, async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    // Check if user is a member of this club (either manager or regular member)
+    const membershipCheck = await pool.query(`
+      SELECT 1 FROM user_clubs WHERE club_id = $1 AND user_id = $2
+      UNION
+      SELECT 1 FROM clubs WHERE id = $1 AND manager_id = $2
+    `, [clubId, userId]);
+    
+    if (membershipCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'you must be a member of this club to view members' });
+    }
+    
+    // Get all club members including the manager
+    const members = await pool.query(`
+      SELECT u.id, COALESCE(u.display_name, u.username, u.email) as name,
+             'manager' as role, 0 as sort_order
+      FROM clubs c
+      JOIN users u ON c.manager_id = u.id
+      WHERE c.id = $1
+      UNION
+      SELECT u.id, COALESCE(u.display_name, u.username, u.email) as name,
+             'member' as role, 1 as sort_order
+      FROM user_clubs uc
+      JOIN users u ON uc.user_id = u.id
+      WHERE uc.club_id = $1
+      ORDER BY sort_order ASC, name ASC
+    `, [clubId]);
+
+    res.json(members.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// MANAGER: Create invitation
+app.post('/clubs/:clubId/invitations', authenticateToken, express.json(), async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const { username } = req.body;
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    if (!username) return res.status(400).json({ error: 'username required' });
+    
+    const isManager = await ensureManager(userId, clubId);
+    if (!isManager) return res.status(403).json({ error: 'only club managers can send invitations' });
+    
+    // Find user by username
+    const invitedUser = await pool.query(`
+      SELECT id FROM users 
+      WHERE LOWER(username) = LOWER($1) 
+         OR LOWER(display_name) = LOWER($1) 
+         OR LOWER(email) = LOWER($1)
+    `, [username]);
+    if (!invitedUser.rows.length) return res.status(404).json({ error: 'user not found' });
+    
+    // Check if already a member
+    const existingMember = await pool.query(`
+      SELECT 1 FROM user_clubs 
+      WHERE club_id = $1 AND user_id = $2
+    `, [clubId, invitedUser.rows[0].id]);
+    
+    if (existingMember.rows.length) return res.status(400).json({ error: 'user is already a member' });
+    
+    // Create invitation (or update existing)
+    await pool.query(`
+      INSERT INTO club_invitations (club_id, invited_user_id, invited_by, status, created_at)
+      VALUES ($1, $2, $3, 'pending', NOW())
+      ON CONFLICT (club_id, invited_user_id) 
+      DO UPDATE SET status = 'pending', created_at = NOW()
+    `, [clubId, invitedUser.rows[0].id, userId]);
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// USER: Get my join requests
+app.get('/me/club-requests', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const requests = await pool.query(`
+      SELECT cjr.id, cjr.status, cjr.created_at, c.name as club_name
+      FROM club_join_requests cjr
+      JOIN clubs c ON cjr.club_id = c.id
+      WHERE cjr.user_id = $1
+      ORDER BY cjr.created_at DESC
+    `, [userId]);
+    
+    res.json(requests.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// USER: Get my invitations
+app.get('/me/invitations', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const invitations = await pool.query(`
+      SELECT ci.id, ci.status, ci.created_at, c.name as club_name
+      FROM club_invitations ci
+      JOIN clubs c ON ci.club_id = c.id
+      WHERE ci.invited_user_id = $1
+      ORDER BY ci.created_at DESC
+    `, [userId]);
+    
+    res.json(invitations.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// USER: Accept/decline invitation
+app.patch('/me/invitations/:inviteId', authenticateToken, express.json(), async (req, res) => {
+  try {
+    const inviteId = Number(req.params.inviteId);
+    const { action } = req.body;
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    if (!['accept', 'decline'].includes(action)) {
+      return res.status(400).json({ error: 'action must be accept or decline' });
+    }
+    
+    // Get the invitation
+    const invitation = await pool.query(`
+      SELECT club_id FROM club_invitations 
+      WHERE id = $1 AND invited_user_id = $2 AND status = 'pending'
+    `, [inviteId, userId]);
+    
+    if (!invitation.rows.length) return res.status(404).json({ error: 'invitation not found or already processed' });
+    
+    if (action === 'accept') {
+      await addMember(invitation.rows[0].club_id, userId);
+      await pool.query(`
+        UPDATE club_invitations 
+        SET status = 'accepted' 
+        WHERE id = $1
+      `, [inviteId]);
+    } else {
+      await pool.query(`
+        UPDATE club_invitations 
+        SET status = 'declined' 
+        WHERE id = $1
+      `, [inviteId]);
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
 // -------------------------------
 // Availability grid
 // -------------------------------
@@ -2840,7 +3216,8 @@ app.post('/book', async (req, res) => {
     // Diagnostic: log incoming payload for debugging court mapping issues
     console.log('POST /book payload:', { clubId, sport, courtIndex, date, time, userId, asUsername });
 
-    const clubRow = await db.prepare('SELECT manager_id FROM clubs WHERE id = ?').get(Number(clubId));
+    const clubResult = await pool.query('SELECT manager_id FROM clubs WHERE id = $1', [Number(clubId)]);
+    const clubRow = clubResult.rows.length > 0 ? clubResult.rows[0] : null;
     const isOwnClubManager = clubRow && Number(clubRow.manager_id) === Number(userId);
 
     let targetUserId = Number(userId);
@@ -2857,13 +3234,17 @@ app.post('/book', async (req, res) => {
       const lookup = String(asUsername).trim();
       let u = null;
       if (uColsForLookup.has('username')) {
-        u = await db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)').get(lookup);
+        const result = await pool.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1)', [lookup]);
+        u = result.rows.length > 0 ? result.rows[0] : null;
       } else if (uColsForLookup.has('display_name')) {
-        u = await db.prepare('SELECT id FROM users WHERE LOWER(display_name) = LOWER(?)').get(lookup);
+        const result = await pool.query('SELECT id FROM users WHERE LOWER(display_name) = LOWER($1)', [lookup]);
+        u = result.rows.length > 0 ? result.rows[0] : null;
       } else if (uColsForLookup.has('email')) {
-        u = await db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(lookup);
+        const result = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [lookup]);
+        u = result.rows.length > 0 ? result.rows[0] : null;
       } else if (uColsForLookup.has('name')) {
-        u = await db.prepare('SELECT id FROM users WHERE LOWER(name) = LOWER(?)').get(lookup);
+        const result = await pool.query('SELECT id FROM users WHERE LOWER(name) = LOWER($1)', [lookup]);
+        u = result.rows.length > 0 ? result.rows[0] : null;
       } else {
         return res.status(500).json({ error: 'Cannot lookup user: users table has no username/display_name/email/name column' });
       }
@@ -2878,12 +3259,14 @@ app.post('/book', async (req, res) => {
 
     // Determine club timezone and slot length by querying club_sports so we compute
     // booking end-times using the configured slot_minutes instead of assuming 1 hour.
-    const clubRowForTzRoot = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(Number(clubId));
+    const clubTzResult = await pool.query('SELECT timezone FROM clubs WHERE id = $1', [Number(clubId)]);
+    const clubRowForTzRoot = clubTzResult.rows.length > 0 ? clubTzResult.rows[0] : null;
     const clubTzRoot = clubRowForTzRoot && clubRowForTzRoot.timezone ? String(clubRowForTzRoot.timezone) : (req.body && req.body.clubTimezone) || (process.env.DEFAULT_TIMEZONE || 'UTC');
     // Fetch configured slot length for this sport/club (fallback to 60 minutes)
     let slotMinutes = 60;
     try {
-      const cfgRow = await db.prepare('SELECT slot_minutes FROM club_sports WHERE club_id = ? AND sport = ?').get(Number(clubId), String(sport));
+      const cfgResult = await pool.query('SELECT slot_minutes FROM club_sports WHERE club_id = $1 AND sport = $2', [Number(clubId), String(sport)]);
+      const cfgRow = cfgResult.rows.length > 0 ? cfgResult.rows[0] : null;
       if (cfgRow && cfgRow.slot_minutes) slotMinutes = Number(cfgRow.slot_minutes) || 60;
     } catch (e) {
       // ignore and default to 60
@@ -2905,46 +3288,50 @@ app.post('/book', async (req, res) => {
       // Use the club's timezone when interpreting stored date+time strings so
       // comparisons against NOW() are correct regardless of DB timezone.
       if (hasStatusCol) {
-        hasActive = await db.prepare(`
+        hasActive = await pool.query(`
           SELECT 1 FROM bookings
-          WHERE user_id = ? AND club_id = ?
+          WHERE user_id = $1 AND club_id = $2
             AND (
-              (status IS NOT NULL AND status IN ('upcoming','active') AND ((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE ?) + ($3 * interval '1 minute')) > NOW())
+              (status IS NOT NULL AND status IN ('upcoming','active') AND ((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE $3) + ($4 * interval '1 minute')) > NOW())
               OR
-              (status IS NULL AND ((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE ?) + ($3 * interval '1 minute')) > NOW())
+              (status IS NULL AND ((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE $3) + ($4 * interval '1 minute')) > NOW())
             )
           LIMIT 1
-        `).get(Number(targetUserId), Number(clubId), String(clubTzRoot), Number(slotMinutes), String(clubTzRoot));
+        `, [Number(targetUserId), Number(clubId), String(clubTzRoot), Number(slotMinutes)]);
+        hasActive = hasActive.rows.length > 0 ? hasActive.rows[0] : null;
       } else {
-        hasActive = await db.prepare(`
+        hasActive = await pool.query(`
           SELECT 1 FROM bookings
-          WHERE user_id = ? AND club_id = ?
-            AND (((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE ?) + ($3 * interval '1 minute')) > NOW())
+          WHERE user_id = $1 AND club_id = $2
+            AND (((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE $3) + ($4 * interval '1 minute')) > NOW())
           LIMIT 1
-        `).get(Number(targetUserId), Number(clubId), String(clubTzRoot), Number(slotMinutes));
+        `, [Number(targetUserId), Number(clubId), String(clubTzRoot), Number(slotMinutes)]);
+        hasActive = hasActive.rows.length > 0 ? hasActive.rows[0] : null;
       }
 
   } else if (bCols.has('starts_at')) {
       // Legacy schema: bookings have starts_at/ends_at timestamps. Prefer ends_at when present.
       // Use slotMinutes for legacy starts_at when ends_at is null
       if (hasStatusCol) {
-        hasActive = await db.prepare(`
+        hasActive = await pool.query(`
           SELECT 1 FROM bookings
-          WHERE user_id = ?
+          WHERE user_id = $1
             AND (
               (status IS NOT NULL AND status IN ('upcoming','active') AND ((ends_at IS NOT NULL AND ends_at > NOW()) OR (ends_at IS NULL AND (starts_at + ($2 * interval '1 minute')) > NOW())))
               OR
               (status IS NULL AND ((ends_at IS NOT NULL AND ends_at > NOW()) OR (ends_at IS NULL AND (starts_at + ($2 * interval '1 minute')) > NOW())))
             )
           LIMIT 1
-        `).get(Number(targetUserId), Number(slotMinutes));
+        `, [Number(targetUserId), Number(slotMinutes)]);
+        hasActive = hasActive.rows.length > 0 ? hasActive.rows[0] : null;
       } else {
-        hasActive = await db.prepare(`
+        hasActive = await pool.query(`
           SELECT 1 FROM bookings
-          WHERE user_id = ?
+          WHERE user_id = $1
             AND ((ends_at IS NOT NULL AND ends_at > NOW()) OR (ends_at IS NULL AND (starts_at + ($2 * interval '1 minute')) > NOW()))
           LIMIT 1
-        `).get(Number(targetUserId), Number(slotMinutes));
+        `, [Number(targetUserId), Number(slotMinutes)]);
+        hasActive = hasActive.rows.length > 0 ? hasActive.rows[0] : null;
       }
 
     } else {
