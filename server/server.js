@@ -103,8 +103,11 @@ const allowed = new Set(
     process.env.CLIENT_URL,         // e.g. https://your-site.onrender.com
     process.env.ADMIN_URL,
     'capacitor://localhost',
-    // If you have a known static site domain, you can also hardcode it here:
+    // Render frontend URLs
     'https://club-booking-app-1.onrender.com',
+    'https://club-booking-app.onrender.com',
+    // Add common variations
+    'https://club-booking-app-client.onrender.com',
   ].filter(Boolean)
 );
 const allowOnrenderRegex = /^https:\/\/.+\.onrender\.com$/;
@@ -115,15 +118,31 @@ const devRegex =
 
 const corsOptions = {
   origin(origin, cb) {
+    // Debug logging for CORS issues
+    console.log(`[CORS] Checking origin: ${origin}`);
+    
     // Non-browser clients like curl/postman send no Origin
     if (!origin) return cb(null, true);
 
     // Dev: allow localhost + LAN IPs
-    if (!isProd && devRegex.test(origin)) return cb(null, true);
+    if (!isProd && devRegex.test(origin)) {
+      console.log(`[CORS] Allowing dev origin: ${origin}`);
+      return cb(null, true);
+    }
 
     // Prod: only explicit allowlist + *.onrender.com
-    if (allowed.has(origin) || allowOnrenderRegex.test(origin)) return cb(null, true);
+    if (allowed.has(origin)) {
+      console.log(`[CORS] Allowing from allowlist: ${origin}`);
+      return cb(null, true);
+    }
+    
+    if (allowOnrenderRegex.test(origin)) {
+      console.log(`[CORS] Allowing *.onrender.com: ${origin}`);
+      return cb(null, true);
+    }
 
+    console.error(`[CORS] BLOCKED origin: ${origin}`);
+    console.log(`[CORS] Allowed origins:`, Array.from(allowed));
     return cb(new Error(`CORS blocked for origin: ${origin}`));
   },
   credentials: true,
