@@ -4,6 +4,47 @@
 
 :root { color-scheme: light; }
 
+/* Custom nprogress styling - at the top for high specificity */
+#nprogress {
+  pointer-events: none;
+}
+
+#nprogress .bar {
+  background: #3b82f6; /* Blue-500 */
+  position: fixed;
+  z-index: 1031;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+}
+
+#nprogress .peg {
+  display: block;
+  position: absolute;
+  right: 0px;
+  width: 100px;
+  height: 100%;
+  box-shadow: 0 0 10px #3b82f6, 0 0 5px #3b82f6;
+  opacity: 1.0;
+  transform: rotate(3deg) translate(0px, -4px);
+}
+
+/* Remove default nprogress spinner since we use our own */
+#nprogress .spinner {
+  display: none;
+}
+
+/* Skeleton shimmer animation fix for Safari */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 /* Custom Tournament Button Styles */
 
 /* From Uiverse.io by nikk7007 - "slice" button for View */

@@ -1,5 +1,8 @@
 // client/src/ClubGate.jsx
 import React, { useState, useEffect } from 'react';
+import { useFetch } from './hooks/useFetch';
+import { Skeleton, SkeletonCard, SkeletonText } from './components/ui/Skeleton';
+import { Spinner } from './components/ui/PageLoaderOverlay';
 
 // Resolve a safe API base like App.jsx does so values like ":5051" become
 // "http://localhost:5051" and protocol-relative or host-only strings are
@@ -36,10 +39,12 @@ const makeAuthenticatedRequest = async (url, options = {}) => {
 export default function ClubGate({ user, onJoin, onCreate }) {
   const [code, setCode] = useState('');
   const [clubName, setClubName] = useState('');
-  const [busy, setBusy] = useState(false);
   const [invitations, setInvitations] = useState([]);
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(null); // Track specific actions
+  
+  const { get, post, isLoading: fetchLoading } = useFetch();
 
   useEffect(() => {
     loadUserData();
@@ -49,14 +54,14 @@ export default function ClubGate({ user, onJoin, onCreate }) {
     setLoading(true);
     try {
       // Load user's invitations
-      const invitesRes = await makeAuthenticatedRequest(`${API}/me/invitations`);
+      const invitesRes = await get(`${API}/me/invitations`, { showProgress: false });
       if (invitesRes.ok) {
         const invitesData = await invitesRes.json();
         setInvitations(invitesData.filter(inv => inv.status === 'pending'));
       }
 
       // Load user's pending requests
-      const requestsRes = await makeAuthenticatedRequest(`${API}/me/club-requests`);
+      const requestsRes = await get(`${API}/me/club-requests`, { showProgress: false });
       if (requestsRes.ok) {
         const requestsData = await requestsRes.json();
         setRequests(requestsData.filter(req => req.status === 'pending'));
@@ -70,13 +75,11 @@ export default function ClubGate({ user, onJoin, onCreate }) {
 
   async function join() {
     if (!code) return;
-    setBusy(true);
+    setActionLoading('join');
     try {
-      const res = await fetch(`${API}/clubs/join`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ code: code.trim(), userId: user.id }),
+      const res = await post(`${API}/clubs/join`, { 
+        code: code.trim(), 
+        userId: user.id 
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -96,30 +99,41 @@ export default function ClubGate({ user, onJoin, onCreate }) {
         loadUserData(); // Refresh to show the new request
         setCode(''); // Clear the code input
       }
-    } finally { setBusy(false); }
+    } catch (error) {
+      alert('Failed to join club. Please try again.');
+    } finally { 
+      setActionLoading(null); 
+    }
   }
 
   async function create() {
     if (!clubName) return;
-    setBusy(true);
+    setActionLoading('create');
     try {
-      const res = await fetch(`${API}/clubs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ name: clubName.trim(), managerId: user.id }),
+      const res = await post(`${API}/clubs`, { 
+        name: clubName.trim(), 
+        managerId: user.id 
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return alert(data.error || 'Create failed');
       onCreate(data);
-    } finally { setBusy(false); }
+    } catch (error) {
+      alert('Failed to create club. Please try again.');
+    } finally { 
+      setActionLoading(null); 
+    }
   }
 
   async function handleInvitation(inviteId, action) {
-    setBusy(true);
+    setActionLoading(`invitation-${inviteId}-${action}`);
     try {
-      const res = await makeAuthenticatedRequest(`${API}/me/invitations/${inviteId}`, {
+      const token = localStorage.getItem('authToken');
+      const res = await fetch(`${API}/me/invitations/${inviteId}`, {
         method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
         body: JSON.stringify({ action }),
       });
       if (!res.ok) {
@@ -134,7 +148,11 @@ export default function ClubGate({ user, onJoin, onCreate }) {
         // Just refresh the invitations list
         loadUserData();
       }
-    } finally { setBusy(false); }
+    } catch (error) {
+      alert(`Failed to ${action} invitation. Please try again.`);
+    } finally { 
+      setActionLoading(null); 
+    }
   }
 
   function goBack() {
@@ -161,10 +179,13 @@ export default function ClubGate({ user, onJoin, onCreate }) {
               onChange={(e)=>setCode(e.target.value)}
             />
             <button
-              className="px-3 py-2 rounded-lg bg-indigo-500 text-white disabled:opacity-60"
+              className="px-3 py-2 rounded-lg bg-indigo-500 text-white disabled:opacity-60 flex items-center gap-2"
               onClick={join}
-              disabled={!code || busy}
-            >Join</button>
+              disabled={!code || actionLoading === 'join'}
+            >
+              {actionLoading === 'join' && <Spinner size="sm" color="white" />}
+              Join
+            </button>
           </div>
         </div>
 
@@ -180,10 +201,13 @@ export default function ClubGate({ user, onJoin, onCreate }) {
                 onChange={(e)=>setClubName(e.target.value)}
               />
               <button
-                className="px-3 py-2 rounded-lg bg-indigo-500 text-white disabled:opacity-60"
+                className="px-3 py-2 rounded-lg bg-indigo-500 text-white disabled:opacity-60 flex items-center gap-2"
                 onClick={create}
-                disabled={!clubName || busy}
-              >Create</button>
+                disabled={!clubName || actionLoading === 'create'}
+              >
+                {actionLoading === 'create' && <Spinner size="sm" color="white" />}
+                Create
+              </button>
             </div>
           </div>
         )}
@@ -193,7 +217,10 @@ export default function ClubGate({ user, onJoin, onCreate }) {
           <div className="space-y-3">
             <h3 className="text-lg font-medium">Club Invitations</h3>
             {loading ? (
-              <div className="text-gray-500">Loading...</div>
+              <div className="space-y-3">
+                <SkeletonCard />
+                <SkeletonCard />
+              </div>
             ) : invitations.length === 0 ? (
               <div className="text-gray-500">No pending invitations</div>
             ) : (
@@ -209,17 +236,21 @@ export default function ClubGate({ user, onJoin, onCreate }) {
                       </div>
                       <div className="flex gap-2">
                         <button
-                          className="px-2 py-1 text-sm rounded bg-green-500 text-white hover:bg-green-600 disabled:opacity-60"
+                          className="px-2 py-1 text-sm rounded bg-green-500 text-white hover:bg-green-600 disabled:opacity-60 flex items-center gap-1"
                           onClick={() => handleInvitation(invitation.id, 'accept')}
-                          disabled={busy}
+                          disabled={actionLoading === `invitation-${invitation.id}-accept`}
                         >
+                          {actionLoading === `invitation-${invitation.id}-accept` && 
+                            <Spinner size="sm" color="white" />}
                           Accept
                         </button>
                         <button
-                          className="px-2 py-1 text-sm rounded bg-red-500 text-white hover:bg-red-600 disabled:opacity-60"
+                          className="px-2 py-1 text-sm rounded bg-red-500 text-white hover:bg-red-600 disabled:opacity-60 flex items-center gap-1"
                           onClick={() => handleInvitation(invitation.id, 'decline')}
-                          disabled={busy}
+                          disabled={actionLoading === `invitation-${invitation.id}-decline`}
                         >
+                          {actionLoading === `invitation-${invitation.id}-decline` && 
+                            <Spinner size="sm" color="white" />}
                           Decline
                         </button>
                       </div>
@@ -236,7 +267,9 @@ export default function ClubGate({ user, onJoin, onCreate }) {
           <div className="space-y-3">
             <h3 className="text-lg font-medium">Pending Requests</h3>
             {loading ? (
-              <div className="text-gray-500">Loading...</div>
+              <div className="space-y-3">
+                <SkeletonCard />
+              </div>
             ) : requests.length === 0 ? (
               <div className="text-gray-500">No pending requests</div>
             ) : (

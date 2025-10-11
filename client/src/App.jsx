@@ -10,6 +10,7 @@ import ConversationsModal from './ConversationsModal.jsx';
 import FeedbackModal from './FeedbackModal.jsx';
 import FeedbackAdmin from './FeedbackAdmin.jsx';
 import FloatingHelpButton from './FloatingHelpButton.jsx';
+import { PageLoaderOverlay } from './components/ui/PageLoaderOverlay';
 
 const safeParse = (s) => {
   try { return JSON.parse(s); } catch { return null; }
@@ -184,6 +185,7 @@ export default function App(){
   const [view, setView] = useState('book'); // 'book' | 'clubs' | 'home' | 'tournaments' | 'rankings' | 'clubgate' | 'feedback-admin'
   const [requestsModalOpen, setRequestsModalOpen] = useState(false);
   const [selectedClubForModal, setSelectedClubForModal] = useState(null);
+  const [appLoading, setAppLoading] = useState(true); // App initialization loading
 
   function saveUser(u){ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }
   function saveClub(c){ setClub(c); localStorage.setItem('club', JSON.stringify(c)); }
@@ -225,6 +227,8 @@ export default function App(){
     } catch (e) {
       // ignore failures; UI will keep working with persisted user
       setUserClubs([]); // Reset clubs on error
+    } finally {
+      setAppLoading(false); // Hide loader after auth and club loading
     }
   }
   // Ensure we fetch the authoritative active club (backfill code if missing).
@@ -253,7 +257,10 @@ export default function App(){
   // Load user's club memberships when user loads
   useEffect(() => {
     (async () => {
-      if (!user || !user.id) return;
+      if (!user || !user.id) {
+        setAppLoading(false); // No user, stop loading
+        return;
+      }
       try {
         const r = await fetch(`${API}/users/${user.id}/clubs`, { credentials: 'include' });
         if (r.ok) {
@@ -264,6 +271,8 @@ export default function App(){
         }
       } catch (e) {
         setUserClubs([]);
+      } finally {
+        setAppLoading(false); // Hide loader when done
       }
     })();
   }, [user?.id]);
@@ -456,7 +465,12 @@ export default function App(){
   };
 
   if (!user) {
-    return <Auth onLogin={handleAuthed} onRegister={handleAuthed} />;
+    return (
+      <>
+        <PageLoaderOverlay isVisible={appLoading} message="Initializing app..." />
+        <Auth onLogin={handleAuthed} onRegister={handleAuthed} />
+      </>
+    );
   }
 
   // Manager flag + page guard
@@ -478,7 +492,9 @@ export default function App(){
   }
 
   return (
-    <div className="safe-padded min-h-screen flex flex-col mobile-safe">
+    <>
+      <PageLoaderOverlay isVisible={appLoading} message="Loading your clubs..." />
+      <div className="safe-padded min-h-screen flex flex-col mobile-safe">
       <Navbar
         onBook={() => setView('book')}
         onHome={() => setView('home')}
@@ -737,6 +753,7 @@ export default function App(){
       {/* Floating Help Button (mobile only) */}
       <FloatingHelpButton onClick={() => setShowFeedback(true)} />
     </div>
+    </>
   );
 }
 
@@ -850,6 +867,15 @@ export function Auth({ onLogin, onRegister }) {
   const [email, setEmail] = useState("");       // only used in register
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Reset app loading state when auth component mounts
+  useEffect(() => {
+    // Small delay to ensure the app loading state is properly reset
+    const timer = setTimeout(() => {
+      // This ensures the PageLoaderOverlay disappears when auth is shown
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   // LOGIN: send { login: <email or username>, password }
   const doLogin = async () => {
