@@ -1,0 +1,343 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model announcements {
+  id                 BigInt               @id @default(autoincrement())
+  club_id            BigInt
+  manager_id         BigInt
+  title              String
+  body               String
+  send_push          Boolean?             @default(false)
+  created_at         DateTime?            @default(now()) @db.Timestamptz(6)
+  user_announcements user_announcements[]
+}
+
+model bookings {
+  id          Int      @id @default(autoincrement())
+  club_id     Int
+  court_id    Int
+  user_id     Int
+  starts_at   DateTime @db.Timestamptz(6)
+  ends_at     DateTime @db.Timestamptz(6)
+  court_index Int?
+  date        String?
+  time        String?
+  clubs       clubs    @relation(fields: [club_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  courts      courts   @relation(fields: [court_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([court_id, starts_at])
+  @@index([user_id, starts_at], map: "idx_bookings_user_starts")
+}
+
+model club_invitations {
+  id                                            BigInt   @id @default(autoincrement())
+  club_id                                       Int
+  invited_user_id                               Int
+  invited_by                                    Int
+  status                                        String   @default("pending")
+  created_at                                    DateTime @default(now()) @db.Timestamptz(6)
+  clubs                                         clubs    @relation(fields: [club_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_club_invitations_invited_byTousers      users    @relation("club_invitations_invited_byTousers", fields: [invited_by], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  users_club_invitations_invited_user_idTousers users    @relation("club_invitations_invited_user_idTousers", fields: [invited_user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([club_id, invited_user_id])
+  @@unique([club_id, invited_user_id], map: "uq_invite")
+  @@index([club_id, status], map: "idx_ci_club_status")
+}
+
+model club_join_requests {
+  id         BigInt   @id @default(autoincrement())
+  club_id    Int
+  user_id    Int
+  status     String   @default("pending")
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  clubs      clubs    @relation(fields: [club_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([club_id, user_id])
+  @@unique([club_id, user_id], map: "uq_join_req")
+  @@index([club_id, status], map: "idx_cjr_club_status")
+}
+
+model club_sports {
+  id           BigInt @id @default(autoincrement())
+  club_id      BigInt
+  sport        String @default("tennis")
+  courts       Int    @default(1)
+  slot_minutes Int    @default(60)
+  open_hour    Int    @default(9)
+  close_hour   Int    @default(21)
+
+  @@unique([club_id, sport])
+}
+
+model clubs {
+  id                 Int                  @id @default(autoincrement())
+  name               String
+  city               String?
+  state              String?
+  sport              String               @default("tennis")
+  manager_id         BigInt?
+  code               String?              @unique
+  timezone           String?
+  auto_approve_join  Boolean              @default(false)
+  bookings           bookings[]
+  club_invitations   club_invitations[]
+  club_join_requests club_join_requests[]
+  conversations      conversations[]
+  courts             courts[]
+  feedback           feedback[]
+  standings          standings[]
+  tournaments        tournaments[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model conversations {
+  id                                Int        @id @default(autoincrement())
+  club_id                           Int
+  user_a                            Int
+  user_b                            Int
+  created_at                        DateTime?  @default(now()) @db.Timestamptz(6)
+  updated_at                        DateTime?  @default(now()) @db.Timestamptz(6)
+  clubs                             clubs      @relation(fields: [club_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_conversations_user_aTousers users      @relation("conversations_user_aTousers", fields: [user_a], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_conversations_user_bTousers users      @relation("conversations_user_bTousers", fields: [user_b], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  messages                          messages[]
+
+  @@unique([club_id, user_a, user_b])
+  @@index([club_id, user_a, user_b], map: "idx_conversations_club_users")
+  @@index([updated_at(sort: Desc)], map: "idx_conversations_updated_at")
+}
+
+model courts {
+  id       Int        @id @default(autoincrement())
+  club_id  Int
+  label    String
+  sport    String?
+  bookings bookings[]
+  clubs    clubs      @relation(fields: [club_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model feedback {
+  id             BigInt    @id @default(autoincrement())
+  user_id        Int?
+  club_id        Int?
+  rating         Int?      @db.SmallInt
+  category       String
+  message        String
+  allow_contact  Boolean   @default(true)
+  email          String?
+  attachment_url String?
+  app_version    String?
+  user_agent     String?
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  handled_at     DateTime? @db.Timestamptz(6)
+  status         String    @default("new")
+  clubs          clubs?    @relation(fields: [club_id], references: [id], onUpdate: NoAction)
+  users          users?    @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([category])
+  @@index([club_id], map: "feedback_club_idx")
+  @@index([created_at(sort: Desc)], map: "feedback_created_idx")
+  @@index([status])
+  @@index([user_id], map: "feedback_user_idx")
+}
+
+model looking {
+  id            BigInt    @id @default(autoincrement())
+  club_id       Int
+  user_id       Int
+  player_id     Int?
+  display_name  String
+  looking_since DateTime? @default(now()) @db.Timestamp(6)
+  looking_from  String?
+  looking_to    String?
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  players       players?  @relation(fields: [player_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([club_id, user_id])
+}
+
+model matches {
+  id                                 Int         @id @default(autoincrement())
+  tournament_id                      Int
+  round                              Int
+  slot                               Int
+  p1_id                              Int?
+  p2_id                              Int?
+  winner_id                          Int?
+  score                              String?
+  p1_score                           Int?
+  p2_score                           Int?
+  status                             String?
+  players_matches_p1_idToplayers     players?    @relation("matches_p1_idToplayers", fields: [p1_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  players_matches_p2_idToplayers     players?    @relation("matches_p2_idToplayers", fields: [p2_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tournaments                        tournaments @relation(fields: [tournament_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  players_matches_winner_idToplayers players?    @relation("matches_winner_idToplayers", fields: [winner_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model messages {
+  id              Int           @id @default(autoincrement())
+  conversation_id Int
+  sender_id       Int
+  body            String
+  created_at      DateTime?     @default(now()) @db.Timestamptz(6)
+  conversations   conversations @relation(fields: [conversation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users           users         @relation(fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([conversation_id, created_at(sort: Desc)], map: "idx_messages_conversation")
+  @@index([sender_id], map: "idx_messages_sender")
+}
+
+model players {
+  id                                 Int                  @id @default(autoincrement())
+  club_id                            Int
+  user_id                            Int?
+  display_name                       String
+  looking_for_partner                Boolean?             @default(false)
+  looking_since                      DateTime?            @db.Timestamptz(6)
+  looking                            looking[]
+  matches_matches_p1_idToplayers     matches[]            @relation("matches_p1_idToplayers")
+  matches_matches_p2_idToplayers     matches[]            @relation("matches_p2_idToplayers")
+  matches_matches_winner_idToplayers matches[]            @relation("matches_winner_idToplayers")
+  standings                          standings[]
+  tournament_players                 tournament_players[]
+  tournament_points                  tournament_points[]
+
+  @@unique([club_id, user_id])
+}
+
+model push_subscriptions {
+  id         BigInt    @id @default(autoincrement())
+  user_id    BigInt?
+  endpoint   String    @unique
+  p256dh     String?
+  auth       String?
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model standings {
+  id                 Int      @id @default(autoincrement())
+  club_id            Int
+  player_id          Int
+  tournaments_played Int      @default(0)
+  matches_won        Int      @default(0)
+  matches_lost       Int      @default(0)
+  points             Int      @default(0)
+  updated_at         DateTime @default(now()) @db.Timestamptz(6)
+  clubs              clubs    @relation(fields: [club_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  players            players  @relation(fields: [player_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([club_id, player_id])
+  @@index([club_id, points(sort: Desc), player_id], map: "idx_standings_club_points")
+}
+
+model tournament_player_points {
+  tournament_id Int
+  player_id     Int
+  points        Int  @default(0)
+  placement     Int?
+
+  @@id([tournament_id, player_id])
+}
+
+model tournament_players {
+  id            Int         @id @default(autoincrement())
+  tournament_id Int
+  player_id     Int
+  seed          Int?
+  players       players     @relation(fields: [player_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  tournaments   tournaments @relation(fields: [tournament_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([tournament_id, player_id])
+  @@index([player_id], map: "idx_tp_player")
+  @@index([tournament_id], map: "idx_tp_tournament")
+}
+
+model tournament_points {
+  id            Int         @id @default(autoincrement())
+  tournament_id Int
+  player_id     Int
+  points        Int         @default(0)
+  placement     Int?
+  players       players     @relation(fields: [player_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  tournaments   tournaments @relation(fields: [tournament_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([tournament_id, player_id])
+  @@index([tournament_id, player_id], map: "idx_tpoints_tournament_player")
+}
+
+model tournament_registrations {
+  id            BigInt    @id @default(autoincrement())
+  tournament_id BigInt
+  user_id       BigInt
+  registered_at DateTime? @default(now()) @db.Timestamp(6)
+
+  @@unique([tournament_id, user_id])
+  @@unique([tournament_id, user_id], map: "uq_tournament_user")
+}
+
+model tournaments {
+  id                 Int                  @id @default(autoincrement())
+  club_id            Int
+  name               String
+  sport              String
+  end_date           DateTime?            @db.Date
+  seeds_count        Int?                 @default(0)
+  points_by_round    String?
+  draw_size          Int?
+  matches            matches[]
+  tournament_players tournament_players[]
+  tournament_points  tournament_points[]
+  clubs              clubs                @relation(fields: [club_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model user_announcements {
+  id              BigInt        @id @default(autoincrement())
+  announcement_id BigInt
+  user_id         BigInt
+  read            Boolean?      @default(false)
+  read_at         DateTime?     @db.Timestamptz(6)
+  created_at      DateTime?     @default(now()) @db.Timestamptz(6)
+  announcements   announcements @relation(fields: [announcement_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([announcement_id, user_id])
+}
+
+model user_clubs {
+  user_id BigInt
+  club_id BigInt
+  role    String @default("player")
+
+  @@unique([club_id, user_id], map: "uq_user_club")
+  @@unique([user_id, club_id])
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model users {
+  id                                                       Int                  @id @default(autoincrement())
+  display_name                                             String
+  email                                                    String               @unique
+  password_hash                                            String
+  email_verified_at                                        DateTime?            @db.Timestamptz(6)
+  username                                                 String?
+  role                                                     String?              @default("player")
+  is_manager                                               Boolean?             @default(false)
+  bookings                                                 bookings[]
+  club_invitations_club_invitations_invited_byTousers      club_invitations[]   @relation("club_invitations_invited_byTousers")
+  club_invitations_club_invitations_invited_user_idTousers club_invitations[]   @relation("club_invitations_invited_user_idTousers")
+  club_join_requests                                       club_join_requests[]
+  conversations_conversations_user_aTousers                conversations[]      @relation("conversations_user_aTousers")
+  conversations_conversations_user_bTousers                conversations[]      @relation("conversations_user_bTousers")
+  feedback                                                 feedback[]
+  messages                                                 messages[]
+}

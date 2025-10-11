@@ -15,7 +15,9 @@ import { tableInfo, addColumnsIfMissing } from './pg_compat.js';
 import { sendEmail } from './email/resend.js';
 import { DateTime } from 'luxon';
 
-
+// Prisma setup
+import { prisma, logDbConnection } from './prisma.js';
+import healthRoutes from './routes/health.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -200,6 +202,9 @@ if (isProd) {
     console.warn('Failed to enable static client serving:', e && e.message ? e.message : e);
   }
 }
+
+// Mount health check routes
+app.use('/health', healthRoutes);
 
 // env check
 app.get('/__envcheck', async (req, res) => {
@@ -4287,7 +4292,17 @@ app.patch('/api/feedback/:id', authenticateToken, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`server listening on :${PORT}`));
+app.listen(PORT, async () => {
+  console.log(`server listening on :${PORT}`);
+  
+  // Initialize Prisma connection and log database info
+  try {
+    await logDbConnection();
+  } catch (error) {
+    console.error('[startup] Prisma database connection failed:', error.message);
+    // Don't exit - allow fallback to existing db.js pool
+  }
+});
 
 
 export default db
