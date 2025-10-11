@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from "react";
 
 export default function Navbar({
   onBook = () => {},
+  onOpenConversations = () => {},
   onOpenAnnouncements = () => {},
+  onOpenFeedback = () => {},
+  onFeedbackAdmin = () => {},
   onHome = () => {},
   onClubs = () => {},
   onTournaments = () => {},
@@ -68,6 +71,7 @@ export default function Navbar({
 
         {/* Desktop nav */}
         <nav className="hidden sm:flex items-center gap-2">
+          <button onClick={onOpenConversations} className={navBtn}>💬</button>
           <button onClick={onOpenAnnouncements} className={navBtn}>Announcements</button>
           {/* Desktop Looking (visible on sm and up). For mobile, Looking stays inside the hamburger menu. */}
           <div className="hidden sm:block relative">
@@ -81,6 +85,8 @@ export default function Navbar({
           <button onClick={onClubs} className={navBtn}>Clubs</button>
           <button onClick={onTournaments} className={navBtn}>Tournaments</button>
           <button onClick={onRankings} className={navBtn}>Rankings</button>
+          <button onClick={onOpenFeedback} className={navBtn}>Feedback</button>
+          {isManager && <button onClick={onFeedbackAdmin} className={navBtn}>Feedback Admin</button>}
 
           {user ? (
             <>
@@ -148,6 +154,7 @@ export default function Navbar({
             style={{ transformOrigin: "top center" }}
           >
               <div className="p-1 flex flex-col">
+              <button onClick={handle(onOpenConversations)} className={menuItem}>💬 Conversations</button>
               <button onClick={handle(onOpenAnnouncements)} className={menuItem}>Announcements</button>
               <button onClick={handle(onOpenLooking)} className={menuItem}>
                 <div className="flex items-center justify-between">
@@ -162,6 +169,8 @@ export default function Navbar({
               <button onClick={handle(onClubs)} className={menuItem}>Clubs</button>
               <button onClick={handle(onTournaments)} className={menuItem}>Tournaments</button>
               <button onClick={handle(onRankings)} className={menuItem}>Rankings</button>
+              <button onClick={handle(onOpenFeedback)} className={menuItem}>📝 Give Feedback</button>
+              {isManager && <button onClick={handle(onFeedbackAdmin)} className={menuItem}>🛠️ Feedback Admin</button>}
 
               {/* Mobile logout button - only show if user is logged in */}
               {user && (

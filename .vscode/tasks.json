@@ -1,0 +1,11 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Update ClubGate Logic",
+			"type": "shell",
+			"command": "echo 'Planning to update App.jsx to show ClubGate for users with clubs'",
+			"group": "build"
+		}
+	]
+}

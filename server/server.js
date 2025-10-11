@@ -134,7 +134,7 @@ const corsOptions = {
 const corsOptionsWithMethods = {
   ...corsOptions,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-app-version'],
 };
 
 app.use(cors(corsOptionsWithMethods));
@@ -158,8 +158,12 @@ function authenticateToken(req, res, next) {
   });
 }
 
-// Body parser
-app.use(express.json());
+// Body parser - increased limit for image uploads in feedback
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Serve uploaded files statically
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Serve client static build when deployed in production and the build exists.
 if (isProd) {
@@ -1284,7 +1288,8 @@ app.put('/matches/:id/result', async (req, res) => {
     // Validate required fields
     if (!managerId) return res.status(422).json({ error: 'managerId required' });
 
-    const m = await db.prepare('SELECT * FROM matches WHERE id=?').get(mId);
+    const mResult = await pool.query('SELECT * FROM matches WHERE id=$1', [mId]);
+    const m = mResult.rows[0];
     if (!m) return res.status(404).json({ error: 'match not found' });
 
     // Check if match is already completed
@@ -1321,13 +1326,13 @@ app.put('/matches/:id/result', async (req, res) => {
 
     const setParts = [];
     const vals = [];
-    if (mCols.has('p1_score')) { setParts.push('p1_score=?'); vals.push(s1); }
-    if (mCols.has('p2_score')) { setParts.push('p2_score=?'); vals.push(s2); }
-    if (mCols.has('winner_id')) { setParts.push('winner_id=?'); vals.push(winnerId); }
+    if (mCols.has('p1_score')) { setParts.push('p1_score=$' + (vals.length + 1)); vals.push(s1); }
+    if (mCols.has('p2_score')) { setParts.push('p2_score=$' + (vals.length + 1)); vals.push(s2); }
+    if (mCols.has('winner_id')) { setParts.push('winner_id=$' + (vals.length + 1)); vals.push(winnerId); }
     if (mCols.has('status')) setParts.push("status='completed'");
     if (mCols.has('updated_at')) setParts.push('updated_at=CURRENT_TIMESTAMP');
     if (!setParts.length) return res.status(500).json({ error: 'matches table missing expected columns' });
-    await db.prepare(`UPDATE matches SET ${setParts.join(', ')} WHERE id=?`).run(...vals, mId);
+    await pool.query(`UPDATE matches SET ${setParts.join(', ')} WHERE id=$${vals.length + 1}`, [...vals, mId]);
 
     const nextRound = Number(m.round) - 1;
     if (Number.isFinite(nextRound) && nextRound >= 1) {
@@ -1342,28 +1347,29 @@ app.put('/matches/:id/result', async (req, res) => {
       const otherField = myField === 'p1_id' ? 'p2_id' : 'p1_id';
 
       // Try to find an existing next match
-      let next = await db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?')
-        .get(m.tournament_id, nextRound, nextSlot);
+      let nextResult = await pool.query('SELECT * FROM matches WHERE tournament_id=$1 AND round=$2 AND slot=$3', [m.tournament_id, nextRound, nextSlot]);
+      let next = nextResult.rows[0] || null;
       console.log('Existing next match?', !!next, next && { id: next.id, p1_id: next.p1_id, p2_id: next.p2_id });
 
       // helper to insert a new next match (uses status column if present)
       const insertNext = async (p1, p2) => {
         if (mCols.has('status')) {
-          await db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status)
-            VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, 'scheduled')`).run(m.tournament_id, nextRound, nextSlot, p1, p2);
+          await pool.query(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id, status)
+            VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, 'scheduled')`, [m.tournament_id, nextRound, nextSlot, p1, p2]);
         } else {
-          await db.prepare(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id)
-            VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL)`).run(m.tournament_id, nextRound, nextSlot, p1, p2);
+          await pool.query(`INSERT INTO matches (tournament_id, round, slot, p1_id, p2_id, p1_score, p2_score, winner_id)
+            VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL)`, [m.tournament_id, nextRound, nextSlot, p1, p2]);
         }
-        next = await db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?').get(m.tournament_id, nextRound, nextSlot);
+        const nextResult = await pool.query('SELECT * FROM matches WHERE tournament_id=$1 AND round=$2 AND slot=$3', [m.tournament_id, nextRound, nextSlot]);
+        next = nextResult.rows[0] || null;
         return next;
       };
 
       if (!next) {
         // No next match yet: check sibling in current round for its winner
         const siblingSlot = (Number(m.slot) % 2 === 0) ? Number(m.slot) + 1 : Number(m.slot) - 1;
-        const sibling = await db.prepare('SELECT * FROM matches WHERE tournament_id=? AND round=? AND slot=?')
-          .get(m.tournament_id, m.round, siblingSlot);
+        const siblingResult = await pool.query('SELECT * FROM matches WHERE tournament_id=$1 AND round=$2 AND slot=$3', [m.tournament_id, m.round, siblingSlot]);
+        const sibling = siblingResult.rows[0] || null;
         const siblingWinner = sibling && Number(sibling.winner_id) ? Number(sibling.winner_id) : null;
         console.log('Sibling slot', siblingSlot, 'found?', !!sibling, 'siblingWinner', siblingWinner);
 
@@ -1402,7 +1408,7 @@ app.put('/matches/:id/result', async (req, res) => {
         const field = myField;
         if (next[field] == null) {
           try {
-            await db.prepare(`UPDATE matches SET ${field}=? WHERE id=?`).run(winnerId, next.id);
+            await pool.query(`UPDATE matches SET ${field}=$1 WHERE id=$2`, [winnerId, next.id]);
             console.log('Updated next match field', field, 'with', winnerId, 'nextId', next.id);
           } catch (ie) {
             console.error('Failed to update next match field:', ie && ie.message ? ie.message : ie);
@@ -1413,9 +1419,9 @@ app.put('/matches/:id/result', async (req, res) => {
       const tCols = new Set((await tableInfo('tournaments')).map(c => c.name));
       const tParts = [];
       const tVals = [];
-      if (tCols.has('status')) tParts.push("status=?"), tVals.push('completed');
+      if (tCols.has('status')) tParts.push("status=$" + (tVals.length + 1)), tVals.push('completed');
       if (tCols.has('end_date')) tParts.push("end_date=COALESCE(end_date, now())");
-      if (tParts.length) await db.prepare(`UPDATE tournaments SET ${tParts.join(', ')} WHERE id=?`).run(...tVals, m.tournament_id);
+      if (tParts.length) await pool.query(`UPDATE tournaments SET ${tParts.join(', ')} WHERE id=$${tVals.length + 1}`, [...tVals, m.tournament_id]);
       try {
         // ensure we await the points-awarding so errors bubble up and are logged
         await awardTournamentPoints(m.tournament_id);
@@ -2161,7 +2167,7 @@ app.post('/clubs/join', async (req, res) => {
     if (!code || !userId) return res.status(400).json({ error: 'code and userId required' });
 
     const c = await pool.query(
-      `SELECT id, name, sport, manager_id, code
+      `SELECT id, name, sport, manager_id, code, auto_approve_join
          FROM clubs
         WHERE code=$1`,
       [code.trim().toUpperCase()]
@@ -2169,13 +2175,42 @@ app.post('/clubs/join', async (req, res) => {
     if (!c.rows.length) return res.status(404).json({ error: 'invalid code' });
 
     const club = c.rows[0];
-    await pool.query(
-      `INSERT INTO user_clubs (user_id, club_id, role)
-       VALUES ($1,$2,'player')
-       ON CONFLICT DO NOTHING`,
+    
+    // Check if user is already a member
+    const existingMember = await pool.query(
+      `SELECT 1 FROM user_clubs WHERE user_id = $1 AND club_id = $2`,
       [userId, club.id]
     );
-    res.json({ club });
+    if (existingMember.rows.length > 0) {
+      return res.status(400).json({ error: 'already a member of this club' });
+    }
+
+    // Check if user already has a pending request
+    const existingRequest = await pool.query(
+      `SELECT 1 FROM club_join_requests WHERE user_id = $1 AND club_id = $2 AND status = 'pending'`,
+      [userId, club.id]
+    );
+    if (existingRequest.rows.length > 0) {
+      return res.status(400).json({ error: 'request already pending' });
+    }
+
+    if (club.auto_approve_join) {
+      // Auto-approve: directly add to user_clubs
+      await pool.query(
+        `INSERT INTO user_clubs (user_id, club_id, role)
+         VALUES ($1, $2, 'player')`,
+        [userId, club.id]
+      );
+      res.json({ club, status: 'approved' });
+    } else {
+      // Create a join request for manager approval
+      await pool.query(
+        `INSERT INTO club_join_requests (user_id, club_id, status, created_at)
+         VALUES ($1, $2, 'pending', NOW())`,
+        [userId, club.id]
+      );
+      res.json({ club, status: 'pending' });
+    }
   } catch (e) {
     console.error('POST /clubs/join', e);
     res.status(500).json({ error: 'unexpected error' });
@@ -2224,18 +2259,30 @@ app.get('/users/:id/club', async (req, res) => {
 app.get('/users/:id/clubs', async (req, res) => {
   try {
     const { id } = req.params;
+    console.log('GET /users/:id/clubs - user id:', id);
+    console.log('DATABASE_URL:', process.env.DATABASE_URL);
+    
+    // Let's test which database we're connected to
+    try {
+      const dbTest = await pool.query('SELECT current_database() as db, version() as version');
+      console.log('Database info:', dbTest.rows[0]);
+    } catch (e) {
+      console.log('Failed to get database info via pool:', e.message);
+    }
+    
     const { rows } = await pool.query(
-      `SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone
+      `SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone, c.auto_approve_join
          FROM clubs c
         WHERE c.manager_id = $1
         UNION
-       SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone
+       SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone, c.auto_approve_join
          FROM user_clubs uc
          JOIN clubs c ON c.id = uc.club_id
         WHERE uc.user_id = $1
         ORDER BY id`,
       [id]
     );
+    console.log('GET /users/:id/clubs - raw rows:', rows.length, rows);
 
     // Backfill any missing codes so the client always receives a code value
     for (const r of rows) {
@@ -2248,6 +2295,7 @@ app.get('/users/:id/clubs', async (req, res) => {
         }
       }
     }
+    console.log('GET /users/:id/clubs - final result:', rows);
 
     res.json(rows); // [] if none
   } catch (e) {
@@ -2594,6 +2642,338 @@ app.delete('/clubs/:clubId/sports/:id', async (req, res) => {
   }
 });
 
+// ===== CLUB MANAGEMENT: REQUESTS & INVITATIONS =====
+
+// Helper function to ensure user is manager of the club
+async function ensureManager(userId, clubId) {
+  const club = await db.prepare('SELECT manager_id FROM clubs WHERE id = ?').get(clubId);
+  if (!club) return false;
+  return Number(club.manager_id) === Number(userId);
+}
+
+// Helper function to add a member to a club
+async function addMember(clubId, userId) {
+  try {
+    // Upsert into user_clubs (using the existing table)
+    await pool.query(`
+      INSERT INTO user_clubs (club_id, user_id, role) 
+      VALUES ($1, $2, 'player')
+      ON CONFLICT (club_id, user_id) DO NOTHING
+    `, [clubId, userId]);
+    
+    // Delete any pending requests/invites
+    await pool.query('DELETE FROM club_join_requests WHERE club_id = $1 AND user_id = $2', [clubId, userId]);
+    await pool.query('DELETE FROM club_invitations WHERE club_id = $1 AND invited_user_id = $2', [clubId, userId]);
+    
+    return true;
+  } catch (e) {
+    console.error('addMember error:', e);
+    return false;
+  }
+}
+
+// MANAGER: Get join requests for a club
+app.get('/clubs/:clubId/requests', authenticateToken, async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const isManager = await ensureManager(userId, clubId);
+    if (!isManager) return res.status(403).json({ error: 'only club managers can view requests' });
+    
+    const requests = await pool.query(`
+      SELECT cjr.id, cjr.status, cjr.created_at, 
+             COALESCE(u.display_name, u.username, u.email) as username
+      FROM club_join_requests cjr
+      JOIN users u ON cjr.user_id = u.id
+      WHERE cjr.club_id = $1
+      ORDER BY cjr.created_at DESC
+    `, [clubId]);
+    
+    const grouped = {
+      pending: requests.rows.filter(r => r.status === 'pending'),
+      accepted: requests.rows.filter(r => r.status === 'accepted'),
+      declined: requests.rows.filter(r => r.status === 'declined')
+    };
+    
+    res.json(grouped);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// MANAGER: Accept/decline a join request
+app.patch('/clubs/:clubId/requests/:requestId', authenticateToken, express.json(), async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const requestId = Number(req.params.requestId);
+    const { action } = req.body;
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    if (!['accept', 'decline'].includes(action)) {
+      return res.status(400).json({ error: 'action must be accept or decline' });
+    }
+    
+    const isManager = await ensureManager(userId, clubId);
+    if (!isManager) return res.status(403).json({ error: 'only club managers can manage requests' });
+    
+    // Get the request
+    const request = await pool.query(`
+      SELECT user_id FROM club_join_requests 
+      WHERE id = $1 AND club_id = $2 AND status = 'pending'
+    `, [requestId, clubId]);
+    
+    if (!request.rows.length) return res.status(404).json({ error: 'request not found or already processed' });
+    
+    if (action === 'accept') {
+      await addMember(clubId, request.rows[0].user_id);
+      await pool.query(`
+        UPDATE club_join_requests 
+        SET status = 'accepted' 
+        WHERE id = $1
+      `, [requestId]);
+    } else {
+      await pool.query(`
+        UPDATE club_join_requests 
+        SET status = 'declined' 
+        WHERE id = $1
+      `, [requestId]);
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// MANAGER: Toggle auto-approve setting
+app.patch('/clubs/:clubId/auto-approve', authenticateToken, express.json(), async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const { enabled } = req.body;
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const isManager = await ensureManager(userId, clubId);
+    if (!isManager) return res.status(403).json({ error: 'only club managers can change settings' });
+    
+    await pool.query(`
+      UPDATE clubs 
+      SET auto_approve_join = $1 
+      WHERE id = $2
+    `, [enabled, clubId]);
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// MANAGER: Get club members
+app.get('/clubs/:clubId/members', authenticateToken, async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const isManager = await ensureManager(userId, clubId);
+    if (!isManager) return res.status(403).json({ error: 'only club managers can view members' });
+    
+    const members = await pool.query(`
+      SELECT uc.user_id, uc.role, 
+             COALESCE(u.display_name, u.username, u.email) as username
+      FROM user_clubs uc
+      JOIN users u ON uc.user_id = u.id
+      WHERE uc.club_id = $1
+      ORDER BY uc.role DESC, COALESCE(u.display_name, u.username, u.email) ASC
+    `, [clubId]);
+
+    res.json(members.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// Get club members (for any club member, read-only)
+app.get('/clubs/:clubId/people', authenticateToken, async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    // Check if user is a member of this club (either manager or regular member)
+    const membershipCheck = await pool.query(`
+      SELECT 1 FROM user_clubs WHERE club_id = $1 AND user_id = $2
+      UNION
+      SELECT 1 FROM clubs WHERE id = $1 AND manager_id = $2
+    `, [clubId, userId]);
+    
+    if (membershipCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'you must be a member of this club to view members' });
+    }
+    
+    // Get all club members including the manager
+    const members = await pool.query(`
+      SELECT u.id, COALESCE(u.display_name, u.username, u.email) as name,
+             'manager' as role, 0 as sort_order
+      FROM clubs c
+      JOIN users u ON c.manager_id = u.id
+      WHERE c.id = $1
+      UNION
+      SELECT u.id, COALESCE(u.display_name, u.username, u.email) as name,
+             'member' as role, 1 as sort_order
+      FROM user_clubs uc
+      JOIN users u ON uc.user_id = u.id
+      WHERE uc.club_id = $1
+      ORDER BY sort_order ASC, name ASC
+    `, [clubId]);
+
+    res.json(members.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// MANAGER: Create invitation
+app.post('/clubs/:clubId/invitations', authenticateToken, express.json(), async (req, res) => {
+  try {
+    const clubId = Number(req.params.clubId);
+    const { username } = req.body;
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    if (!username) return res.status(400).json({ error: 'username required' });
+    
+    const isManager = await ensureManager(userId, clubId);
+    if (!isManager) return res.status(403).json({ error: 'only club managers can send invitations' });
+    
+    // Find user by username
+    const invitedUser = await pool.query(`
+      SELECT id FROM users 
+      WHERE LOWER(username) = LOWER($1) 
+         OR LOWER(display_name) = LOWER($1) 
+         OR LOWER(email) = LOWER($1)
+    `, [username]);
+    if (!invitedUser.rows.length) return res.status(404).json({ error: 'user not found' });
+    
+    // Check if already a member
+    const existingMember = await pool.query(`
+      SELECT 1 FROM user_clubs 
+      WHERE club_id = $1 AND user_id = $2
+    `, [clubId, invitedUser.rows[0].id]);
+    
+    if (existingMember.rows.length) return res.status(400).json({ error: 'user is already a member' });
+    
+    // Create invitation (or update existing)
+    await pool.query(`
+      INSERT INTO club_invitations (club_id, invited_user_id, invited_by, status, created_at)
+      VALUES ($1, $2, $3, 'pending', NOW())
+      ON CONFLICT (club_id, invited_user_id) 
+      DO UPDATE SET status = 'pending', created_at = NOW()
+    `, [clubId, invitedUser.rows[0].id, userId]);
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// USER: Get my join requests
+app.get('/me/club-requests', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const requests = await pool.query(`
+      SELECT cjr.id, cjr.status, cjr.created_at, c.name as club_name
+      FROM club_join_requests cjr
+      JOIN clubs c ON cjr.club_id = c.id
+      WHERE cjr.user_id = $1
+      ORDER BY cjr.created_at DESC
+    `, [userId]);
+    
+    res.json(requests.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// USER: Get my invitations
+app.get('/me/invitations', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    
+    const invitations = await pool.query(`
+      SELECT ci.id, ci.status, ci.created_at, c.name as club_name
+      FROM club_invitations ci
+      JOIN clubs c ON ci.club_id = c.id
+      WHERE ci.invited_user_id = $1
+      ORDER BY ci.created_at DESC
+    `, [userId]);
+    
+    res.json(invitations.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+// USER: Accept/decline invitation
+app.patch('/me/invitations/:inviteId', authenticateToken, express.json(), async (req, res) => {
+  try {
+    const inviteId = Number(req.params.inviteId);
+    const { action } = req.body;
+    const userId = req.user?.id;
+    
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+    if (!['accept', 'decline'].includes(action)) {
+      return res.status(400).json({ error: 'action must be accept or decline' });
+    }
+    
+    // Get the invitation
+    const invitation = await pool.query(`
+      SELECT club_id FROM club_invitations 
+      WHERE id = $1 AND invited_user_id = $2 AND status = 'pending'
+    `, [inviteId, userId]);
+    
+    if (!invitation.rows.length) return res.status(404).json({ error: 'invitation not found or already processed' });
+    
+    if (action === 'accept') {
+      await addMember(invitation.rows[0].club_id, userId);
+      await pool.query(`
+        UPDATE club_invitations 
+        SET status = 'accepted' 
+        WHERE id = $1
+      `, [inviteId]);
+    } else {
+      await pool.query(`
+        UPDATE club_invitations 
+        SET status = 'declined' 
+        WHERE id = $1
+      `, [inviteId]);
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
 // -------------------------------
 // Availability grid
 // -------------------------------
@@ -2840,7 +3220,8 @@ app.post('/book', async (req, res) => {
     // Diagnostic: log incoming payload for debugging court mapping issues
     console.log('POST /book payload:', { clubId, sport, courtIndex, date, time, userId, asUsername });
 
-    const clubRow = await db.prepare('SELECT manager_id FROM clubs WHERE id = ?').get(Number(clubId));
+    const clubResult = await pool.query('SELECT manager_id FROM clubs WHERE id = $1', [Number(clubId)]);
+    const clubRow = clubResult.rows.length > 0 ? clubResult.rows[0] : null;
     const isOwnClubManager = clubRow && Number(clubRow.manager_id) === Number(userId);
 
     let targetUserId = Number(userId);
@@ -2857,13 +3238,17 @@ app.post('/book', async (req, res) => {
       const lookup = String(asUsername).trim();
       let u = null;
       if (uColsForLookup.has('username')) {
-        u = await db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)').get(lookup);
+        const result = await pool.query('SELECT id FROM users WHERE LOWER(username) = LOWER($1)', [lookup]);
+        u = result.rows.length > 0 ? result.rows[0] : null;
       } else if (uColsForLookup.has('display_name')) {
-        u = await db.prepare('SELECT id FROM users WHERE LOWER(display_name) = LOWER(?)').get(lookup);
+        const result = await pool.query('SELECT id FROM users WHERE LOWER(display_name) = LOWER($1)', [lookup]);
+        u = result.rows.length > 0 ? result.rows[0] : null;
       } else if (uColsForLookup.has('email')) {
-        u = await db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(lookup);
+        const result = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [lookup]);
+        u = result.rows.length > 0 ? result.rows[0] : null;
       } else if (uColsForLookup.has('name')) {
-        u = await db.prepare('SELECT id FROM users WHERE LOWER(name) = LOWER(?)').get(lookup);
+        const result = await pool.query('SELECT id FROM users WHERE LOWER(name) = LOWER($1)', [lookup]);
+        u = result.rows.length > 0 ? result.rows[0] : null;
       } else {
         return res.status(500).json({ error: 'Cannot lookup user: users table has no username/display_name/email/name column' });
       }
@@ -2878,12 +3263,14 @@ app.post('/book', async (req, res) => {
 
     // Determine club timezone and slot length by querying club_sports so we compute
     // booking end-times using the configured slot_minutes instead of assuming 1 hour.
-    const clubRowForTzRoot = await db.prepare('SELECT timezone FROM clubs WHERE id = ?').get(Number(clubId));
+    const clubTzResult = await pool.query('SELECT timezone FROM clubs WHERE id = $1', [Number(clubId)]);
+    const clubRowForTzRoot = clubTzResult.rows.length > 0 ? clubTzResult.rows[0] : null;
     const clubTzRoot = clubRowForTzRoot && clubRowForTzRoot.timezone ? String(clubRowForTzRoot.timezone) : (req.body && req.body.clubTimezone) || (process.env.DEFAULT_TIMEZONE || 'UTC');
     // Fetch configured slot length for this sport/club (fallback to 60 minutes)
     let slotMinutes = 60;
     try {
-      const cfgRow = await db.prepare('SELECT slot_minutes FROM club_sports WHERE club_id = ? AND sport = ?').get(Number(clubId), String(sport));
+      const cfgResult = await pool.query('SELECT slot_minutes FROM club_sports WHERE club_id = $1 AND sport = $2', [Number(clubId), String(sport)]);
+      const cfgRow = cfgResult.rows.length > 0 ? cfgResult.rows[0] : null;
       if (cfgRow && cfgRow.slot_minutes) slotMinutes = Number(cfgRow.slot_minutes) || 60;
     } catch (e) {
       // ignore and default to 60
@@ -2905,46 +3292,50 @@ app.post('/book', async (req, res) => {
       // Use the club's timezone when interpreting stored date+time strings so
       // comparisons against NOW() are correct regardless of DB timezone.
       if (hasStatusCol) {
-        hasActive = await db.prepare(`
+        hasActive = await pool.query(`
           SELECT 1 FROM bookings
-          WHERE user_id = ? AND club_id = ?
+          WHERE user_id = $1 AND club_id = $2
             AND (
-              (status IS NOT NULL AND status IN ('upcoming','active') AND ((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE ?) + ($3 * interval '1 minute')) > NOW())
+              (status IS NOT NULL AND status IN ('upcoming','active') AND ((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE $3) + ($4 * interval '1 minute')) > NOW())
               OR
-              (status IS NULL AND ((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE ?) + ($3 * interval '1 minute')) > NOW())
+              (status IS NULL AND ((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE $3) + ($4 * interval '1 minute')) > NOW())
             )
           LIMIT 1
-        `).get(Number(targetUserId), Number(clubId), String(clubTzRoot), Number(slotMinutes), String(clubTzRoot));
+        `, [Number(targetUserId), Number(clubId), String(clubTzRoot), Number(slotMinutes)]);
+        hasActive = hasActive.rows.length > 0 ? hasActive.rows[0] : null;
       } else {
-        hasActive = await db.prepare(`
+        hasActive = await pool.query(`
           SELECT 1 FROM bookings
-          WHERE user_id = ? AND club_id = ?
-            AND (((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE ?) + ($3 * interval '1 minute')) > NOW())
+          WHERE user_id = $1 AND club_id = $2
+            AND (((to_timestamp(date || ' ' || time, 'YYYY-MM-DD HH24:MI') AT TIME ZONE $3) + ($4 * interval '1 minute')) > NOW())
           LIMIT 1
-        `).get(Number(targetUserId), Number(clubId), String(clubTzRoot), Number(slotMinutes));
+        `, [Number(targetUserId), Number(clubId), String(clubTzRoot), Number(slotMinutes)]);
+        hasActive = hasActive.rows.length > 0 ? hasActive.rows[0] : null;
       }
 
   } else if (bCols.has('starts_at')) {
       // Legacy schema: bookings have starts_at/ends_at timestamps. Prefer ends_at when present.
       // Use slotMinutes for legacy starts_at when ends_at is null
       if (hasStatusCol) {
-        hasActive = await db.prepare(`
+        hasActive = await pool.query(`
           SELECT 1 FROM bookings
-          WHERE user_id = ?
+          WHERE user_id = $1
             AND (
               (status IS NOT NULL AND status IN ('upcoming','active') AND ((ends_at IS NOT NULL AND ends_at > NOW()) OR (ends_at IS NULL AND (starts_at + ($2 * interval '1 minute')) > NOW())))
               OR
               (status IS NULL AND ((ends_at IS NOT NULL AND ends_at > NOW()) OR (ends_at IS NULL AND (starts_at + ($2 * interval '1 minute')) > NOW())))
             )
           LIMIT 1
-        `).get(Number(targetUserId), Number(slotMinutes));
+        `, [Number(targetUserId), Number(slotMinutes)]);
+        hasActive = hasActive.rows.length > 0 ? hasActive.rows[0] : null;
       } else {
-        hasActive = await db.prepare(`
+        hasActive = await pool.query(`
           SELECT 1 FROM bookings
-          WHERE user_id = ?
+          WHERE user_id = $1
             AND ((ends_at IS NOT NULL AND ends_at > NOW()) OR (ends_at IS NULL AND (starts_at + ($2 * interval '1 minute')) > NOW()))
           LIMIT 1
-        `).get(Number(targetUserId), Number(slotMinutes));
+        `, [Number(targetUserId), Number(slotMinutes)]);
+        hasActive = hasActive.rows.length > 0 ? hasActive.rows[0] : null;
       }
 
     } else {
@@ -3359,6 +3750,521 @@ if (process.env.AUTO_RUN_MIGRATIONS === '1' && process.env.ALLOW_DESTRUCTIVE_MIG
   // Exit to fail fast and avoid running with a dangerous automated migration flag.
   process.exit(2);
 }
+
+// ================== CHAT API ENDPOINTS ==================
+
+// Helper function to ensure user_a < user_b for consistent conversation ordering
+function orderUserIds(userId1, userId2) {
+  return userId1 < userId2 ? [userId1, userId2] : [userId2, userId1];
+}
+
+// GET /api/chat/conversations
+// Get all conversations for the current user
+app.get('/api/chat/conversations', authenticateToken, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id;
+
+    if (!currentUserId) return res.status(401).json({ error: 'unauthorized' });
+
+    // Get all conversations the user is part of, with latest message info
+    const conversations = await pool.query(`
+      SELECT 
+        c.*,
+        club.name as club_name,
+        CASE 
+          WHEN c.user_a = $1 THEN user_b_user.display_name 
+          ELSE user_a_user.display_name 
+        END as other_user_name,
+        CASE 
+          WHEN c.user_a = $1 THEN c.user_b 
+          ELSE c.user_a 
+        END as other_user_id,
+        latest_msg.body as latest_message,
+        latest_msg.created_at as latest_message_time,
+        latest_msg.sender_id as latest_message_sender_id,
+        CASE 
+          WHEN latest_msg.sender_id = $1 THEN true 
+          ELSE false 
+        END as latest_message_is_mine
+      FROM conversations c
+      JOIN clubs club ON c.club_id = club.id
+      LEFT JOIN users user_a_user ON c.user_a = user_a_user.id
+      LEFT JOIN users user_b_user ON c.user_b = user_b_user.id
+      LEFT JOIN LATERAL (
+        SELECT body, created_at, sender_id
+        FROM messages m 
+        WHERE m.conversation_id = c.id 
+        ORDER BY m.created_at DESC 
+        LIMIT 1
+      ) latest_msg ON true
+      WHERE c.user_a = $1 OR c.user_b = $1
+      ORDER BY 
+        CASE WHEN latest_msg.created_at IS NULL THEN c.updated_at ELSE latest_msg.created_at END DESC
+    `, [currentUserId]);
+
+    res.json(conversations.rows);
+  } catch (error) {
+    console.error('Error fetching conversations:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// POST /api/chat/conversations/get-or-create
+// Get existing conversation or create new one between two users in a club
+app.post('/api/chat/conversations/get-or-create', authenticateToken, async (req, res) => {
+  try {
+    const { club_id, other_user_id } = req.body;
+    const currentUserId = req.user?.id;
+
+    if (!currentUserId) return res.status(401).json({ error: 'unauthorized' });
+    if (!club_id || !other_user_id) {
+      return res.status(400).json({ error: 'club_id and other_user_id are required' });
+    }
+
+    // Verify both users are members of the club
+    const membershipCheck = await pool.query(`
+      SELECT COUNT(*) as count FROM (
+        SELECT user_id FROM user_clubs WHERE club_id = $1 AND user_id IN ($2, $3)
+        UNION
+        SELECT manager_id as user_id FROM clubs WHERE id = $1 AND manager_id IN ($2, $3)
+      ) AS members
+    `, [club_id, currentUserId, other_user_id]);
+
+    if (membershipCheck.rows[0].count < 2) {
+      return res.status(403).json({ error: 'both users must be members of this club' });
+    }
+
+    // Order user IDs consistently
+    const [user_a, user_b] = orderUserIds(currentUserId, other_user_id);
+
+    // Try to get existing conversation
+    let conversation = await pool.query(`
+      SELECT * FROM conversations 
+      WHERE club_id = $1 AND user_a = $2 AND user_b = $3
+    `, [club_id, user_a, user_b]);
+
+    // Create conversation if it doesn't exist
+    if (conversation.rows.length === 0) {
+      conversation = await pool.query(`
+        INSERT INTO conversations (club_id, user_a, user_b)
+        VALUES ($1, $2, $3)
+        RETURNING *
+      `, [club_id, user_a, user_b]);
+    }
+
+    const conversationData = conversation.rows[0];
+
+    // Get recent messages (last 50)
+    const messages = await pool.query(`
+      SELECT m.*, u.display_name as sender_name
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE m.conversation_id = $1
+      ORDER BY m.created_at DESC
+      LIMIT 50
+    `, [conversationData.id]);
+
+    res.json({
+      conversation: conversationData,
+      messages: messages.rows.reverse() // Show oldest first
+    });
+  } catch (error) {
+    console.error('Error in get-or-create conversation:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// GET /api/chat/conversations/:id/messages
+// Load full message history for a conversation
+app.get('/api/chat/conversations/:id/messages', authenticateToken, async (req, res) => {
+  try {
+    const conversationId = Number(req.params.id);
+    const currentUserId = req.user?.id;
+
+    if (!currentUserId) return res.status(401).json({ error: 'unauthorized' });
+
+    // Verify user is part of this conversation
+    const conversationCheck = await pool.query(`
+      SELECT * FROM conversations 
+      WHERE id = $1 AND (user_a = $2 OR user_b = $2)
+    `, [conversationId, currentUserId]);
+
+    if (conversationCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'access denied to this conversation' });
+    }
+
+    // Get all messages with pagination support
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 100;
+    const offset = (page - 1) * limit;
+
+    const messages = await pool.query(`
+      SELECT m.*, u.display_name as sender_name
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE m.conversation_id = $1
+      ORDER BY m.created_at ASC
+      LIMIT $2 OFFSET $3
+    `, [conversationId, limit, offset]);
+
+    res.json({
+      messages: messages.rows,
+      pagination: {
+        page,
+        limit,
+        hasMore: messages.rows.length === limit
+      }
+    });
+  } catch (error) {
+    console.error('Error loading messages:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// POST /api/chat/messages
+// Send a new message
+app.post('/api/chat/messages', authenticateToken, async (req, res) => {
+  try {
+    const { conversation_id, body } = req.body;
+    const senderId = req.user?.id;
+
+    if (!senderId) return res.status(401).json({ error: 'unauthorized' });
+    if (!conversation_id || !body || body.trim().length === 0) {
+      return res.status(400).json({ error: 'conversation_id and non-empty body are required' });
+    }
+
+    // Verify user is part of this conversation
+    const conversationCheck = await pool.query(`
+      SELECT * FROM conversations 
+      WHERE id = $1 AND (user_a = $2 OR user_b = $2)
+    `, [conversation_id, senderId]);
+
+    if (conversationCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'access denied to this conversation' });
+    }
+
+    // Insert the message
+    const message = await pool.query(`
+      INSERT INTO messages (conversation_id, sender_id, body)
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `, [conversation_id, senderId, body.trim()]);
+
+    // Get sender info for the response
+    const messageWithSender = await pool.query(`
+      SELECT m.*, u.display_name as sender_name
+      FROM messages m
+      JOIN users u ON m.sender_id = u.id
+      WHERE m.id = $1
+    `, [message.rows[0].id]);
+
+    res.status(201).json(messageWithSender.rows[0]);
+  } catch (error) {
+    console.error('Error sending message:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// -------------------- FEEDBACK ENDPOINTS --------------------
+
+// Rate limiting for feedback submissions
+const feedbackRateLimit = new Map();
+
+const checkFeedbackRateLimit = (req, res, next) => {
+  const clientKey = req.user?.id ? `user_${req.user.id}` : `ip_${req.ip}`;
+  const now = Date.now();
+  const windowMs = 10 * 60 * 1000; // 10 minutes
+  const maxRequests = 3;
+
+  if (!feedbackRateLimit.has(clientKey)) {
+    feedbackRateLimit.set(clientKey, []);
+  }
+
+  const requests = feedbackRateLimit.get(clientKey);
+  // Remove old requests outside the window
+  const validRequests = requests.filter(time => now - time < windowMs);
+  
+  if (validRequests.length >= maxRequests) {
+    return res.status(429).json({ error: 'too many feedback submissions, please try again later' });
+  }
+
+  validRequests.push(now);
+  feedbackRateLimit.set(clientKey, validRequests);
+  next();
+};
+
+// POST /api/feedback - Submit feedback (auth optional)
+app.post('/api/feedback', checkFeedbackRateLimit, async (req, res) => {
+  try {
+    const {
+      rating,
+      category,
+      message,
+      allow_contact = true,
+      email,
+      club_id,
+      attachment_data // base64 string
+    } = req.body;
+
+    // Validation
+    if (!category || !['bug', 'ux', 'feature', 'other'].includes(category)) {
+      return res.status(400).json({ error: 'invalid category' });
+    }
+
+    if (!message || typeof message !== 'string' || message.trim().length < 10 || message.trim().length > 2000) {
+      return res.status(400).json({ error: 'message must be between 10 and 2000 characters' });
+    }
+
+    if (rating !== undefined && (typeof rating !== 'number' || rating < 1 || rating > 5)) {
+      return res.status(400).json({ error: 'rating must be between 1 and 5' });
+    }
+
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'invalid email format' });
+    }
+
+    if (club_id && (typeof club_id !== 'number' || club_id < 1)) {
+      return res.status(400).json({ error: 'invalid club_id' });
+    }
+
+    const user_id = req.user?.id || null;
+    const user_agent = req.headers['user-agent'] || '';
+    const app_version = req.headers['x-app-version'] || '';
+    
+    let attachment_url = null;
+
+    // Handle attachment upload (basic base64 implementation)
+    if (attachment_data && typeof attachment_data === 'string') {
+      try {
+        // Basic validation for image data
+        if (attachment_data.startsWith('data:image/')) {
+          const matches = attachment_data.match(/^data:image\/(\w+);base64,(.+)$/);
+          if (matches && ['jpeg', 'jpg', 'png', 'gif', 'webp'].includes(matches[1])) {
+            const base64Data = matches[2];
+            const buffer = Buffer.from(base64Data, 'base64');
+            
+            // Check file size (2MB limit)
+            if (buffer.length > 2 * 1024 * 1024) {
+              return res.status(400).json({ error: 'image too large, max 2MB' });
+            }
+
+            // Generate filename and save file
+            const timestamp = Date.now();
+            const extension = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+            const filename = `feedback_${timestamp}.${extension}`;
+            const filepath = path.join(__dirname, 'uploads', 'feedback', filename);
+            
+            // Save file to disk
+            try {
+              fs.writeFileSync(filepath, buffer);
+              console.log(`[FEEDBACK] Saved attachment: ${filename} (${buffer.length} bytes)`);
+              
+              // Generate URL that points to the server (not client)
+              const serverPort = process.env.PORT || 5051;
+              attachment_url = `http://localhost:${serverPort}/uploads/feedback/${filename}`;
+            } catch (writeError) {
+              console.error('Error saving file:', writeError);
+              return res.status(500).json({ error: 'failed to save attachment' });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error processing attachment:', error);
+        return res.status(400).json({ error: 'invalid attachment data' });
+      }
+    }
+
+    // Insert feedback
+    const result = await pool.query(`
+      INSERT INTO feedback (
+        user_id, club_id, rating, category, message, 
+        allow_contact, email, attachment_url, app_version, user_agent
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id, created_at
+    `, [
+      user_id, club_id, rating, category, message.trim(),
+      allow_contact, email, attachment_url, app_version, user_agent
+    ]);
+
+    const feedback = result.rows[0];
+
+    // Fire-and-forget notifications
+    setImmediate(async () => {
+      try {
+        // Email notification
+        if (process.env.EMAIL_FROM && process.env.RESEND_API_KEY) {
+          await sendEmail({
+            to: process.env.EMAIL_FROM,
+            subject: `New feedback: ${category} ${rating ? '★'.repeat(rating) : ''}`,
+            html: `
+              <h3>New Feedback Received</h3>
+              <p><strong>Category:</strong> ${category}</p>
+              ${rating ? `<p><strong>Rating:</strong> ${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</p>` : ''}
+              <p><strong>Message:</strong></p>
+              <p>${message.replace(/\n/g, '<br>')}</p>
+              ${user_id ? `<p><strong>User ID:</strong> ${user_id}</p>` : '<p><strong>Anonymous feedback</strong></p>'}
+              ${club_id ? `<p><strong>Club ID:</strong> ${club_id}</p>` : ''}
+              ${email ? `<p><strong>Contact:</strong> ${email}</p>` : ''}
+              ${attachment_url ? `<p><strong>Attachment:</strong> ${attachment_url}</p>` : ''}
+              <p><strong>Submitted:</strong> ${feedback.created_at}</p>
+              ${process.env.APP_ORIGIN ? `<p><a href="${process.env.APP_ORIGIN}/admin/feedback?id=${feedback.id}">View in Admin</a></p>` : ''}
+            `
+          });
+        }
+
+        // Webhook notification
+        if (process.env.FEEDBACK_WEBHOOK_URL) {
+          await fetch(process.env.FEEDBACK_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: feedback.id,
+              category,
+              rating,
+              message: message.substring(0, 200) + (message.length > 200 ? '...' : ''),
+              user_id,
+              club_id,
+              created_at: feedback.created_at,
+              admin_url: process.env.APP_ORIGIN ? `${process.env.APP_ORIGIN}/admin/feedback?id=${feedback.id}` : null
+            })
+          });
+        }
+      } catch (error) {
+        console.error('Error sending feedback notifications:', error);
+      }
+    });
+
+    res.json({ ok: true, id: feedback.id });
+  } catch (error) {
+    console.error('Error submitting feedback:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// GET /api/feedback - List feedback (managers/admins only)
+app.get('/api/feedback', authenticateToken, async (req, res) => {
+  try {
+    // Check if user is a manager (simplified check)
+    const userClubs = await pool.query('SELECT id FROM clubs WHERE manager_id = $1', [req.user.id]);
+    if (userClubs.rows.length === 0) {
+      return res.status(403).json({ error: 'access denied' });
+    }
+
+    const {
+      page = 1,
+      limit = 50,
+      status,
+      category,
+      club_id,
+      min_rating
+    } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    let whereConditions = [];
+    let params = [];
+    let paramIndex = 1;
+
+    if (status) {
+      whereConditions.push(`f.status = $${paramIndex++}`);
+      params.push(status);
+    }
+
+    if (category) {
+      whereConditions.push(`f.category = $${paramIndex++}`);
+      params.push(category);
+    }
+
+    if (club_id) {
+      whereConditions.push(`f.club_id = $${paramIndex++}`);
+      params.push(parseInt(club_id));
+    }
+
+    if (min_rating) {
+      whereConditions.push(`f.rating >= $${paramIndex++}`);
+      params.push(parseInt(min_rating));
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+    const query = `
+      SELECT 
+        f.id, f.user_id, f.club_id, f.rating, f.category, f.message, 
+        f.allow_contact, f.email, f.attachment_url, f.app_version, 
+        f.created_at, f.handled_at, f.status,
+        u.display_name as user_name,
+        c.name as club_name
+      FROM feedback f
+      LEFT JOIN users u ON f.user_id = u.id
+      LEFT JOIN clubs c ON f.club_id = c.id
+      ${whereClause}
+      ORDER BY f.created_at DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+    `;
+
+    params.push(parseInt(limit), offset);
+
+    const result = await pool.query(query, params);
+    
+    // Get total count for pagination
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM feedback f
+      ${whereClause}
+    `;
+    
+    const countResult = await pool.query(countQuery, params.slice(0, -2));
+    const total = parseInt(countResult.rows[0].total);
+
+    res.json({
+      feedback: result.rows,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching feedback:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// PATCH /api/feedback/:id - Update feedback status (managers/admins only)
+app.patch('/api/feedback/:id', authenticateToken, async (req, res) => {
+  try {
+    // Check if user is a manager
+    const userClubs = await pool.query('SELECT id FROM clubs WHERE manager_id = $1', [req.user.id]);
+    if (userClubs.rows.length === 0) {
+      return res.status(403).json({ error: 'access denied' });
+    }
+
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status || !['new', 'in_progress', 'resolved', 'dismissed'].includes(status)) {
+      return res.status(400).json({ error: 'invalid status' });
+    }
+
+    const handled_at = ['resolved', 'dismissed'].includes(status) ? 'now()' : null;
+
+    const result = await pool.query(`
+      UPDATE feedback 
+      SET status = $1, handled_at = ${handled_at ? 'now()' : 'handled_at'}
+      WHERE id = $2
+      RETURNING id, status, handled_at
+    `, [status, parseInt(id)]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'feedback not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating feedback:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
 
 app.listen(PORT, () => console.log(`server listening on :${PORT}`));
 
