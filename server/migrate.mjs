@@ -30,6 +30,9 @@ const files = [
   '009_create_club_sports.sql',
   '010_add_club_timezone.sql',
   '011_create_announcements.sql',
+  '012_club_requests_invitations.sql',
+  '013_create_chat_tables.sql',
+  '014_create_feedback.sql',
 ].map(f => path.join(MIG_DIR, f));
 function looksDestructive(sql) {
   if (!sql || typeof sql !== 'string') return false;
