@@ -134,6 +134,7 @@ export default function ClubGate({ user, onJoin, onCreate }) {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : '',
         },
+        credentials: 'include',
         body: JSON.stringify({ action }),
       });
       if (!res.ok) {

@@ -1363,7 +1363,14 @@ function UserBooking({ user, club }){
     (async ()=>{
       setSportsLoading(true);
       try {
-        const r = await get(`${API}/clubs/${club.id}/sports`, { showProgress: false });
+        const token = localStorage.getItem('authToken');
+        const r = await fetch(`${API}/clubs/${club.id}/sports`, { 
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
         const all = await r.json().catch(()=>null);
         if (!r.ok || !Array.isArray(all)) {
           setSports([]);
@@ -1378,14 +1385,21 @@ function UserBooking({ user, club }){
         setSportsLoading(false);
       }
     })();
-  }, [club.id, get]);
+  }, [club.id]);
 
   useEffect(()=>{
     if (!sport || !date) return;
     (async ()=>{
       setGridLoading(true);
       try {
-        const r = await get(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`, { showProgress: false });
+        const token = localStorage.getItem('authToken');
+        const r = await fetch(`${API}/availability?clubId=${club.id}&sport=${sport}&date=${date}&userId=${user.id}`, { 
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
         const d = await r.json();
         if (r.ok) {
           // If server provided serverNowUtc and slotStartUtc values, use them; otherwise fall back to server-side isPast.
@@ -1411,7 +1425,7 @@ function UserBooking({ user, club }){
         setGridLoading(false);
       }
     })();
-  }, [sport, date, club.id, user.id, get]);
+  }, [sport, date, club.id, user.id]);
 
   // Recompute 'isPast' locally every 30s and optionally refetch availability every 60s
   useEffect(() => {
@@ -1678,9 +1692,9 @@ function UserBooking({ user, club }){
             </div>
           </div>
         </Card>
-      )}
+      ) : null}
 
-      {!grid && !gridLoading && sport && date && (
+      {!gridLoading && !grid && sport && date && (
         <Card>
           <div className="text-sm text-gray-600">Select a sport and date to see slots.</div>
         </Card>

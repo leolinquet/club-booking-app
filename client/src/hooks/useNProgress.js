@@ -59,7 +59,9 @@ export const useNProgress = () => {
     done,
     set,
     inc,
-    isStarted: isStartedRef.current
+    get isStarted() {
+      return isStartedRef.current;
+    }
   };
 };
 
