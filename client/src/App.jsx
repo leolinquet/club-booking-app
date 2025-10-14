@@ -182,24 +182,73 @@ function Select(props) {
 
 export default function App(){
   const [user, setUser] = useState(() => safeParse(localStorage.getItem('user')));
-  const [club, setClub] = useState(() => safeParse(localStorage.getItem('club')));
+  const [club, setClub] = useState(null); // Don't initialize from localStorage here - we'll load it based on user
   const [userClubs, setUserClubs] = useState([]); // List of clubs user belongs to
   const [view, setView] = useState('book'); // 'book' | 'clubs' | 'home' | 'tournaments' | 'rankings' | 'clubgate' | 'feedback-admin'
   const [requestsModalOpen, setRequestsModalOpen] = useState(false);
   const [selectedClubForModal, setSelectedClubForModal] = useState(null);
   const [appLoading, setAppLoading] = useState(true); // App initialization loading
 
+  // Helper functions for user-specific localStorage
+  function getUserClubKey(userId) {
+    return `activeClub:${userId}`;
+  }
+
   function saveUser(u){ setUser(u); localStorage.setItem('user', JSON.stringify(u)); }
-  function saveClub(c){ setClub(c); localStorage.setItem('club', JSON.stringify(c)); }
+  
+  function saveClub(c, userId = user?.id){ 
+    setClub(c); 
+    if (userId) {
+      localStorage.setItem(getUserClubKey(userId), JSON.stringify(c));
+      // Update backend with active club
+      updateActiveClubOnServer(c, userId);
+    }
+  }
+
+  function loadUserClub(userId) {
+    if (!userId) return null;
+    return safeParse(localStorage.getItem(getUserClubKey(userId)));
+  }
+
+  function clearUserClub(userId) {
+    if (userId) {
+      localStorage.removeItem(getUserClubKey(userId));
+    }
+  }
+
+  // Update active club on server
+  async function updateActiveClubOnServer(clubData, userId) {
+    try {
+      await fetch(`${API}/users/me/active-club`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ clubId: clubData?.id })
+      });
+    } catch (e) {
+      console.warn('Failed to update active club on server:', e);
+    }
+  }
 
   // Logout handler
   const handleLogout = async () => {
     try {
       await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(()=>null);
     } catch {}
+    
+    // Clear user-specific data
+    if (user?.id) {
+      clearUserClub(user.id);
+    }
+    
+    // Clean up old global keys if they exist
+    localStorage.removeItem('club');
+    localStorage.removeItem('activeClubId');
+    
     localStorage.removeItem('user');
     localStorage.removeItem('authToken'); // Clear JWT token
     setUser(null);
+    setClub(null); // Clear active club
     setUserClubs([]); // Clear club memberships
     setView('book');
   };
@@ -210,18 +259,50 @@ export default function App(){
     console.debug('handleAuthed: setting user', u && u.id);
     saveUser(u);
 
+    // Clean up old global localStorage keys
+    localStorage.removeItem('club');
+    localStorage.removeItem('activeClubId');
+
+    // Load user's specific active club from localStorage first
+    const savedClub = loadUserClub(u.id);
+    
     // load club(s) with credentials so the server sees the authenticated cookie/session
     try {
       const r = await fetch(`${API}/users/${u.id}/clubs`, { credentials: 'include' });
       if (r.ok) {
         const clubs = await r.json().catch(()=>[]);
         setUserClubs(clubs); // Store user's club memberships
-        // Only set the active club from server if the user does not already
-        // have a club selected locally. This preserves an explicit user
-        // selection across logout/login cycles.
-        if (clubs && clubs.length && (!club || !club.id)) {
-          saveClub(clubs[0]);
+        
+        // If user has a saved club and it's still in their clubs list, use it
+        if (savedClub && clubs.some(c => c.id === savedClub.id)) {
+          setClub(savedClub);
           setView('book');
+        } 
+        // Otherwise, try to get their active club from the server
+        else if (clubs && clubs.length) {
+          try {
+            const activeClubResponse = await fetch(`${API}/users/me/active-club`, { credentials: 'include' });
+            if (activeClubResponse.ok) {
+              const activeClubData = await activeClubResponse.json().catch(() => null);
+              const activeClub = activeClubData && clubs.find(c => c.id === activeClubData.id);
+              if (activeClub) {
+                saveClub(activeClub, u.id);
+                setView('book');
+              } else {
+                // Fall back to first club
+                saveClub(clubs[0], u.id);
+                setView('book');
+              }
+            } else {
+              // Fall back to first club if server call fails
+              saveClub(clubs[0], u.id);
+              setView('book');
+            }
+          } catch (e) {
+            // Fall back to first club if server call fails
+            saveClub(clubs[0], u.id);
+            setView('book');
+          }
         }
       } else {
         setUserClubs([]); // No clubs found or error
@@ -233,28 +314,45 @@ export default function App(){
       setAppLoading(false); // Hide loader after auth and club loading
     }
   }
-  // Ensure we fetch the authoritative active club (backfill code if missing).
-  // Important: do NOT overwrite an already-selected local active club. Only
-  // fetch & save the server club when the user is authenticated and we don't
-  // yet have a club stored locally. This preserves the user's explicit choice
-  // across reloads/logouts.
+  
+  // Load user's active club when user changes (including on app startup)
   useEffect(() => {
+    if (!user?.id) {
+      setClub(null);
+      setAppLoading(false);
+      return;
+    }
+
+    // Clean up old global localStorage keys
+    localStorage.removeItem('club');
+    localStorage.removeItem('activeClubId');
+
+    // Load user's specific active club from localStorage
+    const savedClub = loadUserClub(user.id);
+    if (savedClub) {
+      setClub(savedClub);
+      setAppLoading(false);
+      return;
+    }
+
+    // If no saved club, try to get from server
     (async () => {
-      if (!user || !user.id) return;
-      // If a club is already selected locally, keep it and skip the server fetch.
-      if (club && club.id) return;
       try {
-        const r = await fetch(`${API}/users/${user.id}/club`, { credentials: 'include' });
-        if (!r.ok) return;
-        const c = await r.json().catch(() => null);
-        if (c) {
-          saveClub(c);
+        const r = await fetch(`${API}/users/me/active-club`, { credentials: 'include' });
+        if (r.ok) {
+          const activeClubData = await r.json().catch(() => null);
+          if (activeClubData && activeClubData.id) {
+            setClub(activeClubData);
+            saveClub(activeClubData, user.id);
+          }
         }
       } catch (e) {
-        // ignore failures — app still works with cached club
+        console.warn('Failed to load active club from server:', e);
+      } finally {
+        setAppLoading(false);
       }
     })();
-  }, [user?.id, club?.id]);
+  }, [user?.id]);
 
   // Load user's club memberships when user loads
   useEffect(() => {
@@ -1355,8 +1453,6 @@ function UserBooking({ user, club }){
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(null); // { courtIndex, time }
   const [bookFor, setBookFor] = useState('');   // manager-only: username to assign booking
-
-  const { get } = useFetch();
 
 
   useEffect(()=>{

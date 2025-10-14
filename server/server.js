@@ -311,7 +311,7 @@ try {
   // installs may have a trimmed `clubs` table; add missing columns idempotently
   // so server code that references them will not crash on deploy.
   await addColumnsIfMissing('clubs', {
-    sport: "sport TEXT NOT NULL DEFAULT 'tennis'",
+    sport: "sport TEXT",
     code:  "code TEXT",
     manager_id: 'manager_id BIGINT',
     timezone: "timezone TEXT"
@@ -2082,7 +2082,7 @@ app.post('/clubs', async (req, res) => {
 
     // make sure clubs has the columns we need (idempotent)
     await pool.query(`ALTER TABLE clubs ADD COLUMN IF NOT EXISTS code TEXT UNIQUE`);
-    await pool.query(`ALTER TABLE clubs ADD COLUMN IF NOT EXISTS sport TEXT NOT NULL DEFAULT 'tennis'`);
+    await pool.query(`ALTER TABLE clubs ADD COLUMN IF NOT EXISTS sport TEXT`);
     await pool.query(`ALTER TABLE clubs ADD COLUMN IF NOT EXISTS manager_id BIGINT`);
     await pool.query(`ALTER TABLE clubs ADD COLUMN IF NOT EXISTS timezone TEXT`);
 
@@ -2096,10 +2096,10 @@ app.post('/clubs', async (req, res) => {
 
     for (let i = 0; i < 6; i++) {
       const tryInsert = await pool.query(
-        `INSERT INTO clubs (name, sport, manager_id, code, timezone)
-         VALUES ($1, 'tennis', $2, $3, $4)
+        `INSERT INTO clubs (name, manager_id, code, timezone)
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (code) DO NOTHING
-         RETURNING id, name, sport, manager_id, code, timezone`,
+         RETURNING id, name, manager_id, code, timezone`,
         [name, managerId, code, timezone || null]
       );
       if (tryInsert.rows.length) {
@@ -2327,6 +2327,124 @@ app.get('/users/:id/clubs', async (req, res) => {
     res.status(500).json({ error: 'unexpected error' });
   }
 });
+
+// Active club management endpoints
+app.get('/users/me/active-club', async (req, res) => {
+  try {
+    // Get user ID from session/auth
+    const userId = req.session?.user?.id || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // First check if user has an active_club_id stored in users table
+    const { rows: userRows } = await pool.query(
+      'SELECT active_club_id FROM users WHERE id = $1',
+      [userId]
+    );
+
+    let activeClubId = userRows[0]?.active_club_id;
+    
+    // If no active club stored, get their first available club
+    if (!activeClubId) {
+      const { rows: clubRows } = await pool.query(
+        `WITH all_clubs AS (
+           SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone
+             FROM clubs c
+            WHERE c.manager_id = $1
+           UNION
+           SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone
+             FROM user_clubs uc
+             JOIN clubs c ON c.id = uc.club_id
+            WHERE uc.user_id = $1
+         )
+         SELECT * FROM all_clubs
+         ORDER BY id
+         LIMIT 1`,
+        [userId]
+      );
+      
+      if (clubRows.length === 0) {
+        return res.status(404).json({ error: 'No clubs found' });
+      }
+      
+      activeClubId = clubRows[0].id;
+      // Update user's active club
+      await pool.query(
+        'UPDATE users SET active_club_id = $1 WHERE id = $2',
+        [activeClubId, userId]
+      );
+    }
+
+    // Get the full club details
+    const { rows: clubRows } = await pool.query(
+      'SELECT c.id, c.name, c.sport, c.manager_id, c.code, c.timezone FROM clubs c WHERE c.id = $1',
+      [activeClubId]
+    );
+
+    if (clubRows.length === 0) {
+      return res.status(404).json({ error: 'Active club not found' });
+    }
+
+    const club = clubRows[0];
+    
+    // Ensure club has a code
+    if (!club.code) {
+      try {
+        const newCode = await ensureClubHasCode(club.id);
+        club.code = newCode;
+      } catch (e) {
+        console.error('Failed to ensure club code for', club.id, e && e.message ? e.message : e);
+      }
+    }
+
+    res.json(club);
+  } catch (e) {
+    console.error('GET /users/me/active-club', e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
+app.post('/users/me/active-club', async (req, res) => {
+  try {
+    // Get user ID from session/auth
+    const userId = req.session?.user?.id || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const { clubId } = req.body;
+    if (!clubId) {
+      return res.status(400).json({ error: 'clubId is required' });
+    }
+
+    // Verify user has access to this club
+    const { rows: accessRows } = await pool.query(
+      `SELECT 1 FROM (
+         SELECT c.id FROM clubs c WHERE c.manager_id = $1 AND c.id = $2
+         UNION
+         SELECT c.id FROM user_clubs uc JOIN clubs c ON c.id = uc.club_id WHERE uc.user_id = $1 AND c.id = $2
+       ) AS user_clubs`,
+      [userId, clubId]
+    );
+
+    if (accessRows.length === 0) {
+      return res.status(403).json({ error: 'Access denied to this club' });
+    }
+
+    // Update user's active club
+    await pool.query(
+      'UPDATE users SET active_club_id = $1 WHERE id = $2',
+      [clubId, userId]
+    );
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error('POST /users/me/active-club', e);
+    res.status(500).json({ error: 'unexpected error' });
+  }
+});
+
 // -------------------------------
 // Club Sports CRUD
 // -------------------------------
