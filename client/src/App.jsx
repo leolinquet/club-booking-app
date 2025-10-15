@@ -3,7 +3,7 @@ import Navbar from "./Navbar";
 import './styles/theme.css';
 import './styles/ui.css';
 // removed a2hs (add-to-home-screen) to hide the Install App button in the navbar
-import ClubGate from './ClubGate.jsx';
+import JoinRequired from './components/JoinRequired.jsx';
 import LookingPanel from './LookingPanel.jsx';
 import RequestsPeopleModal from './RequestsPeopleModal.jsx';
 import ConversationsModal from './ConversationsModal.jsx';
@@ -184,7 +184,7 @@ export default function App(){
   const [user, setUser] = useState(() => safeParse(localStorage.getItem('user')));
   const [club, setClub] = useState(null); // Don't initialize from localStorage here - we'll load it based on user
   const [userClubs, setUserClubs] = useState([]); // List of clubs user belongs to
-  const [view, setView] = useState('book'); // 'book' | 'clubs' | 'home' | 'tournaments' | 'rankings' | 'clubgate' | 'feedback-admin'
+  const [view, setView] = useState('book'); // 'book' | 'clubs' | 'home' | 'tournaments' | 'rankings' | 'feedback-admin'
   const [requestsModalOpen, setRequestsModalOpen] = useState(false);
   const [selectedClubForModal, setSelectedClubForModal] = useState(null);
   const [appLoading, setAppLoading] = useState(true); // App initialization loading
@@ -580,17 +580,6 @@ export default function App(){
   // Debug logging
   console.log('App render state:', { user: user?.display_name, club: club?.name, userClubs: userClubs.length });
 
-  if (user && !club) {
-    console.log('Rendering ClubGate for user:', user.display_name);
-    return (
-      <ClubGate
-        user={user}
-        onJoin={(c) => {saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]); setView('book');}}
-        onCreate={(c) => {saveClub(c); setUserClubs(prev => prev.some(club => club.id === c.id) ? prev : [...prev, c]); setView('home');}}
-      />
-    );
-  }
-
   return (
     <>
       <PageLoaderOverlay isVisible={appLoading} message="Loading your clubs..." />
@@ -643,7 +632,7 @@ export default function App(){
                   </svg>
                 </button>
               </div>
-              <NoClubView viewName="announcements" onJoinClub={() => {setShowAnnouncements(false); setView('clubs');}} />
+              <JoinRequired viewName="announcements" onJoinClub={() => {setShowAnnouncements(false); setView('clubs');}} />
             </div>
           </div>
         ) : (
@@ -671,7 +660,7 @@ export default function App(){
                   </svg>
                 </button>
               </div>
-              <NoClubView viewName="looking for games" onJoinClub={() => {setShowLooking(false); setView('clubs');}} />
+              <JoinRequired viewName="looking for games" onJoinClub={() => {setShowLooking(false); setView('clubs');}} />
             </div>
           </div>
         ) : (
@@ -737,7 +726,7 @@ export default function App(){
         ) : effectivePage === 'home' ? (
           // Manager Dashboard - requires club membership
           userClubs.length === 0 ? (
-            <NoClubView viewName="manager dashboard" onJoinClub={() => setView('clubs')} />
+            <JoinRequired viewName="manager dashboard" onJoinClub={() => setView('clubs')} />
           ) : (
             <>
               <header className="flex items-center justify-between">
@@ -756,7 +745,7 @@ export default function App(){
         ) : effectivePage === 'tournaments' ? (
           // Tournaments - requires club membership
           userClubs.length === 0 ? (
-            <NoClubView viewName="tournaments" onJoinClub={() => setView('clubs')} />
+            <JoinRequired viewName="tournaments" onJoinClub={() => setView('clubs')} />
           ) : (
             <>
               <header className="flex items-center justify-between">
@@ -776,7 +765,7 @@ export default function App(){
         ) : effectivePage === 'rankings' ? (
           // Rankings - requires club membership
           userClubs.length === 0 ? (
-            <NoClubView viewName="rankings" onJoinClub={() => setView('clubs')} />
+            <JoinRequired viewName="rankings" onJoinClub={() => setView('clubs')} />
           ) : (
             <>
               <header className="flex items-center justify-between">
@@ -798,7 +787,7 @@ export default function App(){
         ) : (
           // Book view (default) - requires club membership
           userClubs.length === 0 ? (
-            <NoClubView viewName="court booking" onJoinClub={() => setView('clubs')} />
+            <JoinRequired viewName="court booking" onJoinClub={() => setView('clubs')} />
           ) : (
             <>
               <header className="flex items-center justify-between">
@@ -858,36 +847,6 @@ export default function App(){
 }
 
 /* -------------------- No Club View -------------------- */
-
-function NoClubView({ viewName, onJoinClub }) {
-  return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center max-w-md mx-auto p-8">
-        <div className="mb-6">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Join a Club Required</h2>
-          <p className="text-gray-600 mb-6">
-            You need to join a club to see {viewName}. Join an existing club or create your own to get started.
-          </p>
-        </div>
-        
-        <button
-          onClick={onJoinClub}
-          className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors duration-200"
-        >
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-          Join Club
-        </button>
-      </div>
-    </div>
-  );
-}
 
 /* -------------------- Announcement Panel -------------------- */
 function AnnouncementPanel({ user, club, isManager, announcements = [], onClose, onRefresh, onCreate, onMarkRead }){

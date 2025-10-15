@@ -1639,30 +1639,50 @@ async function awardTournamentPoints(tournamentId) {
   );
   if (!t) return;
 
-  // Idempotency guard: if this tournament already has per-tournament results
-  // recorded, assume it has already been awarded and skip re-awarding. This
-  // covers both the newer `tournament_player_points` table and the older
-  // `tournament_points` legacy table so installations in different migration
-  // states are handled safely.
+  // Idempotency guard: Check if this tournament has already updated the standings
+  // by looking for matches between tournament_player_points and standings.
+  // This is more reliable than just checking if tournament_player_points exists,
+  // since points might be recorded but not yet applied to standings.
   const _hasResultsTable = await tableExists('tournament_player_points');
   const _hasLegacyPoints = await tableExists('tournament_points');
+  
+  let shouldSkip = false;
   try {
     if (_hasResultsTable) {
-      const row = await get(`SELECT COUNT(*) AS c FROM tournament_player_points WHERE tournament_id = $1`, tournamentId);
-      if (row && Number(row.c) > 0) {
-        console.log('awardTournamentPoints: results already present in tournament_player_points; skipping award for', tournamentId);
-        return;
+      // Check if tournament results exist AND have been applied to standings
+      const tournamentResults = await all(`
+        SELECT tp.player_id, tp.points 
+        FROM tournament_player_points tp 
+        WHERE tp.tournament_id = $1
+      `, tournamentId);
+      
+      if (tournamentResults.length > 0) {
+        // Check if these points are already reflected in standings
+        const standingsCheck = await all(`
+          SELECT s.player_id, s.tournaments_played
+          FROM standings s
+          WHERE s.club_id = $1 AND s.player_id IN (${tournamentResults.map(() => '?').join(',')})
+        `, t.club_id, ...tournamentResults.map(r => r.player_id));
+        
+        // If all players have tournaments_played > 0, then standings were already updated
+        if (standingsCheck.length === tournamentResults.length && 
+            standingsCheck.every(s => s.tournaments_played > 0)) {
+          console.log('awardTournamentPoints: standings already updated for tournament', tournamentId);
+          shouldSkip = true;
+        }
       }
     } else if (_hasLegacyPoints) {
       const row = await get(`SELECT COUNT(*) AS c FROM tournament_points WHERE tournament_id = $1`, tournamentId);
       if (row && Number(row.c) > 0) {
         console.log('awardTournamentPoints: results already present in tournament_points (legacy); skipping award for', tournamentId);
-        return;
+        shouldSkip = true;
       }
     }
   } catch (e) {
     console.warn('awardTournamentPoints idempotency check failed, continuing with award:', e && e.message ? e.message : e);
   }
+  
+  if (shouldSkip) return;
 
   const matches = await all(
     `SELECT id, round, slot, p1_id, p2_id, winner_id
