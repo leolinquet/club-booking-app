@@ -3928,7 +3928,7 @@ app.get('/api/chat/conversations', authenticateToken, async (req, res) => {
 
     if (!currentUserId) return res.status(401).json({ error: 'unauthorized' });
 
-    // Get all conversations the user is part of, with latest message info
+    // Get all conversations the user is part of, with latest message info and unread counts
     const conversations = await pool.query(`
       SELECT 
         c.*,
@@ -3947,7 +3947,8 @@ app.get('/api/chat/conversations', authenticateToken, async (req, res) => {
         CASE 
           WHEN latest_msg.sender_id = $1 THEN true 
           ELSE false 
-        END as latest_message_is_mine
+        END as latest_message_is_mine,
+        COALESCE(unread_stats.unread_count, 0) as unread_count
       FROM conversations c
       JOIN clubs club ON c.club_id = club.id
       LEFT JOIN users user_a_user ON c.user_a = user_a_user.id
@@ -3959,6 +3960,16 @@ app.get('/api/chat/conversations', authenticateToken, async (req, res) => {
         ORDER BY m.created_at DESC 
         LIMIT 1
       ) latest_msg ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) as unread_count
+        FROM messages m
+        WHERE m.conversation_id = c.id 
+          AND m.sender_id != $1
+          AND NOT EXISTS (
+            SELECT 1 FROM message_reads mr 
+            WHERE mr.message_id = m.id AND mr.user_id = $1
+          )
+      ) unread_stats ON true
       WHERE c.user_a = $1 OR c.user_b = $1
       ORDER BY 
         CASE WHEN latest_msg.created_at IS NULL THEN c.updated_at ELSE latest_msg.created_at END DESC
@@ -4123,6 +4134,74 @@ app.post('/api/chat/messages', authenticateToken, async (req, res) => {
     res.status(201).json(messageWithSender.rows[0]);
   } catch (error) {
     console.error('Error sending message:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// POST /api/chat/conversations/:id/mark-read
+// Mark all messages in a conversation as read by the current user
+app.post('/api/chat/conversations/:id/mark-read', authenticateToken, async (req, res) => {
+  try {
+    const conversationId = Number(req.params.id);
+    const currentUserId = req.user?.id;
+
+    if (!currentUserId) return res.status(401).json({ error: 'unauthorized' });
+
+    // Verify user is part of this conversation
+    const conversationCheck = await pool.query(`
+      SELECT * FROM conversations 
+      WHERE id = $1 AND (user_a = $2 OR user_b = $2)
+    `, [conversationId, currentUserId]);
+
+    if (conversationCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'access denied to this conversation' });
+    }
+
+    // Mark all unread messages in this conversation as read
+    await pool.query(`
+      INSERT INTO message_reads (message_id, user_id)
+      SELECT m.id, $2
+      FROM messages m
+      WHERE m.conversation_id = $1 
+        AND m.sender_id != $2
+        AND NOT EXISTS (
+          SELECT 1 FROM message_reads mr 
+          WHERE mr.message_id = m.id AND mr.user_id = $2
+        )
+      ON CONFLICT (message_id, user_id) DO NOTHING
+    `, [conversationId, currentUserId]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error marking messages as read:', error);
+    res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+// GET /api/chat/unread-count
+// Get total unread message count for the current user
+app.get('/api/chat/unread-count', authenticateToken, async (req, res) => {
+  try {
+    const currentUserId = req.user?.id;
+
+    if (!currentUserId) return res.status(401).json({ error: 'unauthorized' });
+
+    // Get total unread count across all conversations
+    const result = await pool.query(`
+      SELECT COUNT(*) as unread_count
+      FROM messages m
+      JOIN conversations c ON m.conversation_id = c.id
+      WHERE (c.user_a = $1 OR c.user_b = $1)
+        AND m.sender_id != $1
+        AND NOT EXISTS (
+          SELECT 1 FROM message_reads mr 
+          WHERE mr.message_id = m.id AND mr.user_id = $1
+        )
+    `, [currentUserId]);
+
+    res.json({ unread_count: Number(result.rows[0].unread_count) });
+  } catch (error) {
+    console.error('Error getting unread count:', error);
     res.status(500).json({ error: 'internal server error' });
   }
 });

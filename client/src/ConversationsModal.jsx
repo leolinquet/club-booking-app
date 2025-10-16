@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import ChatDrawer from './ChatDrawer.jsx';
 
-const ConversationsModal = forwardRef(({ isOpen, onClose, user, API }, ref) => {
+const ConversationsModal = forwardRef(({ isOpen, onClose, user, API, onUnreadCountChange }, ref) => {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -47,7 +47,7 @@ const ConversationsModal = forwardRef(({ isOpen, onClose, user, API }, ref) => {
   };
 
   // Handle opening a conversation
-  const handleOpenConversation = (conversation) => {
+  const handleOpenConversation = async (conversation) => {
     setSelectedConversation({
       conversation,
       otherUser: {
@@ -57,6 +57,23 @@ const ConversationsModal = forwardRef(({ isOpen, onClose, user, API }, ref) => {
       clubId: conversation.club_id
     });
     setChatOpen(true);
+
+    // Mark conversation as read if it has unread messages
+    if (conversation.unread_count > 0) {
+      try {
+        await makeAuthenticatedRequest(`${API}/api/chat/conversations/${conversation.id}/mark-read`, {
+          method: 'POST'
+        });
+        // Refresh conversations to update unread count
+        loadConversations();
+        // Trigger parent to refresh unread count in navbar
+        if (onUnreadCountChange) {
+          onUnreadCountChange();
+        }
+      } catch (error) {
+        console.error('Error marking conversation as read:', error);
+      }
+    }
   };
 
   // Handle closing chat
@@ -65,6 +82,10 @@ const ConversationsModal = forwardRef(({ isOpen, onClose, user, API }, ref) => {
     setSelectedConversation(null);
     // Reload conversations when chat closes to update latest message
     loadConversations();
+    // Also refresh unread count since new messages might have arrived
+    if (onUnreadCountChange) {
+      onUnreadCountChange();
+    }
   };
 
   // Expose refresh function to parent component
@@ -142,26 +163,44 @@ const ConversationsModal = forwardRef(({ isOpen, onClose, user, API }, ref) => {
                   >
                     <div className="flex items-start space-x-3">
                       {/* Avatar */}
-                      <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium text-sm">
+                      <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium text-sm relative">
                         {conversation.other_user_name?.charAt(0)?.toUpperCase() || '?'}
+                        {/* Unread badge on avatar */}
+                        {conversation.unread_count > 0 && (
+                          <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                            {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
+                          </div>
+                        )}
                       </div>
                       
                       {/* Conversation Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-gray-900 truncate">
+                          <p className={`text-sm font-medium truncate ${
+                            conversation.unread_count > 0 ? 'text-gray-900 font-semibold' : 'text-gray-900'
+                          }`}>
                             {conversation.other_user_name || 'Unknown User'}
                           </p>
-                          <p className="text-xs text-gray-500 flex-shrink-0">
-                            {formatMessageTime(conversation.latest_message_time)}
-                          </p>
+                          <div className="flex items-center space-x-2 flex-shrink-0">
+                            <p className="text-xs text-gray-500">
+                              {formatMessageTime(conversation.latest_message_time)}
+                            </p>
+                            {/* Unread count badge next to timestamp */}
+                            {conversation.unread_count > 0 && (
+                              <div className="bg-red-500 text-white text-xs rounded-full min-w-[16px] h-[16px] flex items-center justify-center px-1">
+                                {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
                         <p className="text-xs text-gray-500 mb-1">
                           in {conversation.club_name}
                         </p>
                         
-                        <p className="text-sm text-gray-600 truncate">
+                        <p className={`text-sm truncate ${
+                          conversation.unread_count > 0 ? 'text-gray-800 font-medium' : 'text-gray-600'
+                        }`}>
                           {conversation.latest_message_is_mine && 'You: '}
                           {truncateMessage(conversation.latest_message)}
                         </p>
@@ -185,6 +224,7 @@ const ConversationsModal = forwardRef(({ isOpen, onClose, user, API }, ref) => {
           clubId={selectedConversation.clubId}
           API={API}
           onConversationUpdate={loadConversations}
+          onUnreadCountChange={onUnreadCountChange}
         />
       )}
     </>

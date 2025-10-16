@@ -13,6 +13,8 @@ export default function Navbar({
   onLogout = () => {},
   onOpenLooking = () => {},
   lookingCount = 0,
+  unreadCount = 0,
+  unreadMessageCount = 0,
   isManager = false,
   user = null,
 }) {
@@ -71,8 +73,22 @@ export default function Navbar({
 
         {/* Desktop nav */}
         <nav className="hidden sm:flex items-center gap-2">
-          <button onClick={onOpenConversations} className={navBtn}>💬</button>
-          <button onClick={onOpenAnnouncements} className={navBtn}>Announcements</button>
+          <div className="relative">
+            <button onClick={onOpenConversations} className={navBtn}>💬</button>
+            {unreadMessageCount > 0 && (
+              <span className="absolute -top-2 -right-2 inline-flex items-center justify-center w-5 h-5 text-xs bg-red-600 text-white rounded-full">
+                {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+              </span>
+            )}
+          </div>
+          <div className="relative">
+            <button onClick={onOpenAnnouncements} className={navBtn}>Announcements</button>
+            {unreadCount > 0 && (
+              <span className="absolute -top-2 -right-2 inline-flex items-center justify-center w-5 h-5 text-xs bg-red-600 text-white rounded-full">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </div>
           {/* Desktop Looking (visible on sm and up). For mobile, Looking stays inside the hamburger menu. */}
           <div className="hidden sm:block relative">
             <button onClick={onOpenLooking} className={navBtn}>Looking</button>
@@ -154,8 +170,26 @@ export default function Navbar({
             style={{ transformOrigin: "top center" }}
           >
               <div className="p-1 flex flex-col">
-              <button onClick={handle(onOpenConversations)} className={menuItem}>💬 Conversations</button>
-              <button onClick={handle(onOpenAnnouncements)} className={menuItem}>Announcements</button>
+              <button onClick={handle(onOpenConversations)} className={menuItem}>
+                <div className="flex items-center justify-between">
+                  <span>💬 Conversations</span>
+                  {unreadMessageCount > 0 && (
+                    <span className="inline-flex items-center justify-center w-6 h-6 text-xs bg-red-600 text-white rounded-full">
+                      {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                    </span>
+                  )}
+                </div>
+              </button>
+              <button onClick={handle(onOpenAnnouncements)} className={menuItem}>
+                <div className="flex items-center justify-between">
+                  <span>Announcements</span>
+                  {unreadCount > 0 && (
+                    <span className="inline-flex items-center justify-center w-6 h-6 text-xs bg-red-600 text-white rounded-full">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </div>
+              </button>
               <button onClick={handle(onOpenLooking)} className={menuItem}>
                 <div className="flex items-center justify-between">
                   <span>Looking</span>

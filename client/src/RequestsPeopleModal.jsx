@@ -177,7 +177,16 @@ const RequestsPeopleModal = ({ club, isOpen, onClose, isManager, user, API, onCo
 
   // Handle opening chat with a member
   const handleMessageUser = (member) => {
-    setChatUser(member);
+    // Normalize the member data structure since different endpoints return different formats
+    // /clubs/:clubId/members returns: {user_id, username, role}
+    // /clubs/:clubId/people returns: {id, name, role}
+    const normalizedUser = {
+      id: member.id || member.user_id,
+      name: member.name || member.username,
+      role: member.role
+    };
+    
+    setChatUser(normalizedUser);
     setChatOpen(true);
   };
 
@@ -416,6 +425,7 @@ const RequestsPeopleModal = ({ club, isOpen, onClose, isManager, user, API, onCo
           clubId={club?.id}
           API={API}
           onConversationUpdate={onConversationUpdate}
+          onUnreadCountChange={onConversationUpdate} // Use same callback for now
         />
       )}
     </div>

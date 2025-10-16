@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Navbar from "./Navbar";
 import './styles/theme.css';
 import './styles/ui.css';
@@ -181,6 +181,15 @@ function Select(props) {
 }
 
 export default function App(){
+  // Simple debounce function to prevent rapid successive calls
+  const debounce = useCallback((func, delay) => {
+    let timeoutId;
+    return (...args) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func.apply(null, args), delay);
+    };
+  }, []);
+
   const [user, setUser] = useState(() => safeParse(localStorage.getItem('user')));
   const [club, setClub] = useState(null); // Don't initialize from localStorage here - we'll load it based on user
   const [userClubs, setUserClubs] = useState([]); // List of clubs user belongs to
@@ -385,6 +394,7 @@ export default function App(){
   // Chat functionality
   const [showConversations, setShowConversations] = useState(false);
   const [conversations, setConversations] = useState([]);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const conversationsModalRef = useRef();
   
   // Feedback functionality
@@ -426,8 +436,8 @@ export default function App(){
 
   useEffect(() => {
     loadAnnouncements();
-    // poll every 20s
-    const id = setInterval(() => { loadAnnouncements(); }, 20000);
+    // poll every 15s for announcements (more frequent)
+    const id = setInterval(() => { loadAnnouncements(); }, 15000);
     return () => clearInterval(id);
   }, [user?.id]);
 
@@ -436,7 +446,39 @@ export default function App(){
     if (conversationsModalRef.current) {
       conversationsModalRef.current.refreshConversations();
     }
+    // Also refresh unread count when conversations change
+    loadUnreadMessageCount();
   };
+
+  // Load unread message count with debouncing to prevent rapid successive calls
+  const loadUnreadMessageCount = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const res = await fetch(`${API}/api/chat/unread-count`, {
+        credentials: 'include',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('authToken')}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUnreadMessageCount(data.unread_count || 0);
+      }
+    } catch (e) {
+      console.error('Failed to load unread message count:', e);
+    }
+  }, [user?.id, API]);
+
+  // Debounced version to prevent rapid successive calls
+  const debouncedLoadUnreadMessageCount = useCallback(
+    debounce(loadUnreadMessageCount, 500),
+    [loadUnreadMessageCount]
+  );
+
+  useEffect(() => {
+    loadUnreadMessageCount();
+    // Poll for unread messages every 15 seconds (consistent with announcements)
+    const id = setInterval(() => { loadUnreadMessageCount(); }, 15000);
+    return () => clearInterval(id);
+  }, [user?.id, loadUnreadMessageCount]);
 
   // Fetch list of players looking for partner in current club
   const loadLooking = async () => {
@@ -559,12 +601,14 @@ export default function App(){
       // optimistic update
       setAnnouncements(prev => prev.map(a => (Number(a.id) === Number(announcementId) ? { ...a, read: true } : a)));
       setUnreadCount(prev => Math.max(0, prev - 1));
+      // Also refresh from server to ensure accurate count
+      await loadAnnouncements();
     } catch (e) {
       // ignore
     }
   };
 
-  if (!user) {
+  if (!user || !user.id) {
     return (
       <>
         <PageLoaderOverlay isVisible={appLoading} message="Initializing app..." />
@@ -619,6 +663,7 @@ export default function App(){
         }}
         
         unreadCount={unreadCount}
+        unreadMessageCount={unreadMessageCount}
       />
       {showAnnouncements && (
         userClubs.length === 0 ? (
@@ -727,15 +772,19 @@ export default function App(){
           // Manager Dashboard - requires club membership
           userClubs.length === 0 ? (
             <JoinRequired viewName="manager dashboard" onJoinClub={() => setView('clubs')} />
+          ) : !club ? (
+            <div className="flex justify-center items-center h-32">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
           ) : (
             <>
               <header className="flex items-center justify-between">
                 <h1 className="text-2xl font-semibold">Manager Home</h1>
                 <div className="text-sm text-gray-600 flex items-center gap-2">
-                  <span>{user.name} ({user.role})</span>
+                  <span>{user?.display_name ?? user?.name ?? 'User'} ({user?.role ?? 'Member'})</span>
                   <span className="mx-2">•</span>
-                  <span>{club.name} </span>
-                  <CodeWithCopy code={club.code} />
+                  <span>{club?.name ?? 'Club'} </span>
+                  <CodeWithCopy code={club?.code} />
                   <LogoutButton onClick={handleLogout} />
                 </div>
               </header>
@@ -746,15 +795,19 @@ export default function App(){
           // Tournaments - requires club membership
           userClubs.length === 0 ? (
             <JoinRequired viewName="tournaments" onJoinClub={() => setView('clubs')} />
+          ) : !club ? (
+            <div className="flex justify-center items-center h-32">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
           ) : (
             <>
               <header className="flex items-center justify-between">
                 <h1 className="text-2xl font-semibold">Tournaments</h1>
                 <div className="text-sm text-gray-600 flex items-center gap-2">
-                  <span>{user.name} ({user.role})</span>
+                  <span>{user?.display_name ?? user?.name ?? 'User'} ({user?.role ?? 'Member'})</span>
                   <span className="mx-2">•</span>
-                  <span>{club.name} </span>
-                  <CodeWithCopy code={club.code} />
+                  <span>{club?.name ?? 'Club'} </span>
+                  <CodeWithCopy code={club?.code} />
                   <LogoutButton onClick={handleLogout} />
                 </div>
               </header>
@@ -766,15 +819,19 @@ export default function App(){
           // Rankings - requires club membership
           userClubs.length === 0 ? (
             <JoinRequired viewName="rankings" onJoinClub={() => setView('clubs')} />
+          ) : !club ? (
+            <div className="flex justify-center items-center h-32">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
           ) : (
             <>
               <header className="flex items-center justify-between">
                 <h1 className="text-2xl font-semibold">Rankings</h1>
                 <div className="text-sm text-gray-600 flex items-center gap-2">
-                  <span>{user.name} ({user.role})</span>
+                  <span>{user?.display_name ?? user?.name ?? 'User'} ({user?.role ?? 'Member'})</span>
                   <span className="mx-2">•</span>
-                  <span>{club.name} </span>
-                  <CodeWithCopy code={club.code} />
+                  <span>{club?.name ?? 'Club'} </span>
+                  <CodeWithCopy code={club?.code} />
                   <LogoutButton onClick={handleLogout} />
                 </div>
               </header>
@@ -788,15 +845,19 @@ export default function App(){
           // Book view (default) - requires club membership
           userClubs.length === 0 ? (
             <JoinRequired viewName="court booking" onJoinClub={() => setView('clubs')} />
+          ) : !club ? (
+            <div className="flex justify-center items-center h-32">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
           ) : (
             <>
               <header className="flex items-center justify-between">
                 <h1 className="text-2xl font-semibold">Book</h1>
                 <div className="text-sm text-gray-600 flex items-center gap-2">
-                  <span>{user.name} ({user.role})</span>
+                  <span>{user?.display_name ?? user?.name ?? 'User'} ({user?.role ?? 'Member'})</span>
                   <span className="mx-2">•</span>
-                  <span>{club.name} </span>
-                  <CodeWithCopy code={club.code} />
+                  <span>{club?.name ?? 'Club'} </span>
+                  <CodeWithCopy code={club?.code} />
                   <LogoutButton onClick={handleLogout} />
                 </div>
               </header>
@@ -827,6 +888,7 @@ export default function App(){
         onClose={() => setShowConversations(false)}
         user={user}
         API={API}
+        onUnreadCountChange={debouncedLoadUnreadMessageCount}
       />
 
       {/* Feedback Modal */}

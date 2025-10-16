@@ -7,7 +7,8 @@ const ChatDrawer = ({
   otherUser, 
   clubId,
   API,
-  onConversationUpdate // New prop for notifying parent of conversation changes
+  onConversationUpdate, // New prop for notifying parent of conversation changes
+  onUnreadCountChange // New prop for refreshing unread counts
 }) => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -114,6 +115,10 @@ const ChatDrawer = ({
         // Notify parent that conversation was updated
         if (onConversationUpdate) {
           onConversationUpdate();
+        }
+        // Also refresh unread count since a new message was sent
+        if (onUnreadCountChange) {
+          onUnreadCountChange();
         }
       } else {
         console.error('Failed to send message');
