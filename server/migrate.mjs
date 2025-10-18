@@ -38,16 +38,38 @@ const files = [
   '012_club_requests_invitations.sql',
   '013_create_chat_tables.sql',
   '014_create_feedback.sql',
+  '015_remove_club_sport_default.sql',
   '016_create_message_reads.sql',
 ].map(f => path.join(MIG_DIR, f));
 function looksDestructive(sql) {
   if (!sql || typeof sql !== 'string') return false;
+  
+  // Truly destructive patterns that remove data
   const destructivePatterns = [
-    /\bDROP\s+TABLE\b/i,
+    /\bDROP\s+TABLE\b(?!\s+IF\s+EXISTS)/i,  // DROP TABLE but not DROP TABLE IF EXISTS
     /\bDROP\s+SCHEMA\b/i,
     /\bTRUNCATE\s+TABLE\b/i,
-    /\bDROP\s+DATABASE\b/i
+    /\bDROP\s+DATABASE\b/i,
+    /\bDELETE\s+FROM\b/i  // DELETE statements
   ];
+  
+  // Safe DROP patterns that don't remove data
+  const safeDropPatterns = [
+    /\bDROP\s+TABLE\s+IF\s+EXISTS\b/i,
+    /\bDROP\s+INDEX\b/i,
+    /\bDROP\s+CONSTRAINT\b/i,
+    /\bDROP\s+TRIGGER\b/i,
+    /\bDROP\s+FUNCTION\b/i,
+    /\bDROP\s+VIEW\b/i,
+    /\bALTER\s+TABLE\s+\w+\s+ALTER\s+COLUMN\s+\w+\s+DROP\s+(DEFAULT|NOT\s+NULL)\b/i
+  ];
+  
+  // If it contains safe DROP patterns, it's not destructive
+  if (safeDropPatterns.some(rx => rx.test(sql))) {
+    return false;
+  }
+  
+  // Check for truly destructive patterns
   return destructivePatterns.some(rx => rx.test(sql));
 }
 
