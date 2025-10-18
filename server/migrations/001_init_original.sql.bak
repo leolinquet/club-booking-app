@@ -1,11 +1,11 @@
--- 001_init.sql — clean, ordered schema for Postgres (Production Safe)
+-- 001_init.sql — clean, ordered schema for Postgres
 
 BEGIN;
 
 -- Create tables with IF NOT EXISTS for production safety
 
 -- users first (no FKs)
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   display_name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- clubs next
-CREATE TABLE IF NOT EXISTS clubs (
+CREATE TABLE clubs (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   city TEXT,
@@ -22,14 +22,14 @@ CREATE TABLE IF NOT EXISTS clubs (
 );
 
 -- courts references clubs
-CREATE TABLE IF NOT EXISTS courts (
+CREATE TABLE courts (
   id SERIAL PRIMARY KEY,
   club_id INT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   label TEXT NOT NULL
 );
 
 -- bookings references clubs, courts, users
-CREATE TABLE IF NOT EXISTS bookings (
+CREATE TABLE bookings (
   id SERIAL PRIMARY KEY,
   club_id  INT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   court_id INT NOT NULL REFERENCES courts(id) ON DELETE CASCADE,
@@ -39,11 +39,11 @@ CREATE TABLE IF NOT EXISTS bookings (
   UNIQUE (court_id, starts_at)   -- prevents double-booking a court at that hour
 );
 
--- helpful index for app-level "one upcoming booking per user" check
-CREATE INDEX IF NOT EXISTS idx_bookings_user_starts ON bookings(user_id, starts_at);
+-- helpful index for app-level “one upcoming booking per user” check
+CREATE INDEX idx_bookings_user_starts ON bookings(user_id, starts_at);
 
 -- tournaments (if you use them)
-CREATE TABLE IF NOT EXISTS tournaments (
+CREATE TABLE tournaments (
   id SERIAL PRIMARY KEY,
   club_id INT NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS tournaments (
 );
 
 -- matches (if you use them)
-CREATE TABLE IF NOT EXISTS matches (
+CREATE TABLE matches (
   id SERIAL PRIMARY KEY,
   tournament_id INT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
   round INT NOT NULL,

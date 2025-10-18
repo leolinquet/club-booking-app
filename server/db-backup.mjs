@@ -23,13 +23,25 @@ const BACKUP_DIR = path.join(__dirname, 'backups');
 
 // Parse database URL to get connection info
 function parseDatabaseUrl(url) {
-  const match = url.match(/postgres:\/\/([^:]+)@([^:]+):(\d+)\/(.+)/);
-  if (!match) throw new Error('Invalid DATABASE_URL format');
+  // Handle both simple postgres:// and postgresql:// URLs with various formats
+  const match = url.match(/postgres(?:ql)?:\/\/([^:]+):([^@]+)@([^:\/]+)(?::(\d+))?\/([^?]+)(?:\?.*)?/);
+  if (!match) {
+    // Fallback for simpler URLs
+    const simpleMatch = url.match(/postgres(?:ql)?:\/\/([^@]+)@([^:\/]+)(?::(\d+))?\/([^?]+)(?:\?.*)?/);
+    if (!simpleMatch) throw new Error('Invalid DATABASE_URL format');
+    return {
+      user: simpleMatch[1],
+      host: simpleMatch[2],
+      port: simpleMatch[3] || '5432',
+      database: simpleMatch[4].split('?')[0]
+    };
+  }
   return {
     user: match[1],
-    host: match[2],
-    port: match[3],
-    database: match[4]
+    password: match[2],
+    host: match[3],
+    port: match[4] || '5432',
+    database: match[5].split('?')[0]
   };
 }
 
@@ -61,8 +73,22 @@ async function createBackup(label = '') {
   console.log('📄 Backup file:', filename);
 
   try {
-    // Create the backup using pg_dump
-    await execAsync(`pg_dump -h ${db.host} -p ${db.port} -U ${db.user} -d ${db.database} -f "${filepath}"`);
+    // Create the backup using pg_dump with proper SSL and auth handling
+    let pgDumpCmd = `pg_dump -h ${db.host} -p ${db.port} -U ${db.user} -d ${db.database}`;
+    
+    // Add password if available
+    if (db.password) {
+      pgDumpCmd = `PGPASSWORD="${db.password}" ${pgDumpCmd}`;
+    }
+    
+    // For SSL connections (like Neon), add SSL mode
+    if (DATABASE_URL.includes('sslmode=require')) {
+      pgDumpCmd += ' --no-password';
+    }
+    
+    pgDumpCmd += ` -f "${filepath}"`;
+    
+    await execAsync(pgDumpCmd);
     
     // Get file size
     const stats = fs.statSync(filepath);
