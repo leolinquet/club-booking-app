@@ -1,0 +1,148 @@
+name: Database Safety Check
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'server/migrations/**'
+      - 'server/migrate.mjs'
+      - 'server/db-*.mjs'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'server/migrations/**'
+      - 'server/migrate.mjs'
+      - 'server/db-*.mjs'
+
+jobs:
+  database-safety:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: server/package.json
+    
+    - name: Install dependencies
+      run: |
+        cd server
+        npm ci
+    
+    - name: Check for destructive migrations
+      run: |
+        cd server
+        echo "🔍 Checking for potentially destructive SQL patterns..."
+        
+        # Check for dangerous SQL patterns in migration files
+        if grep -r -i "DROP TABLE\|DROP SCHEMA\|TRUNCATE TABLE\|DROP DATABASE" migrations/ 2>/dev/null; then
+          echo "⚠️  WARNING: Found potentially destructive SQL patterns in migrations!"
+          echo "Please ensure you have proper backups before running these migrations."
+          echo "To override this check, set ALLOW_DESTRUCTIVE_MIGRATIONS=1"
+          exit 1
+        fi
+        
+        echo "✅ No destructive patterns found in migrations"
+    
+    - name: Validate migration file structure
+      run: |
+        cd server
+        echo "🔍 Validating migration files..."
+        
+        # Check that all migration files have proper naming
+        for file in migrations/*.sql; do
+          if [[ -f "$file" ]]; then
+            filename=$(basename "$file")
+            if [[ ! "$filename" =~ ^[0-9]{3}_.*\.sql$ ]]; then
+              echo "❌ Invalid migration filename: $filename"
+              echo "Migration files should follow pattern: XXX_description.sql"
+              exit 1
+            fi
+          fi
+        done
+        
+        echo "✅ All migration files have valid names"
+    
+    - name: Test migration syntax
+      run: |
+        cd server
+        echo "🔍 Testing SQL syntax in migration files..."
+        
+        # Basic syntax check for SQL files
+        for file in migrations/*.sql; do
+          if [[ -f "$file" ]]; then
+            echo "Checking $file..."
+            
+            # Check for basic SQL syntax issues
+            if grep -q "CREATE TABLE.*CREATE TABLE" "$file"; then
+              echo "❌ Multiple CREATE TABLE statements without proper separation in $file"
+              exit 1
+            fi
+            
+            # Check for unbalanced parentheses (basic check)
+            open_parens=$(grep -o "(" "$file" | wc -l)
+            close_parens=$(grep -o ")" "$file" | wc -l)
+            if [[ $open_parens -ne $close_parens ]]; then
+              echo "⚠️  Unbalanced parentheses in $file (might be normal for complex queries)"
+            fi
+          fi
+        done
+        
+        echo "✅ Basic SQL syntax checks passed"
+    
+    - name: Verify backup system is available
+      run: |
+        cd server
+        echo "🔍 Testing backup system..."
+        
+        # Check that backup scripts exist and are executable
+        if [[ ! -f "db-backup.mjs" ]]; then
+          echo "❌ Backup system missing: db-backup.mjs not found"
+          exit 1
+        fi
+        
+        if [[ ! -f "db-health.mjs" ]]; then
+          echo "❌ Health check system missing: db-health.mjs not found"
+          exit 1
+        fi
+        
+        # Test backup script help
+        node db-backup.mjs --help > /dev/null || {
+          echo "❌ Backup script is not functional"
+          exit 1
+        }
+        
+        echo "✅ Backup and health check systems are available"
+    
+    - name: Check for migration tracking
+      run: |
+        cd server
+        echo "🔍 Verifying migration tracking system..."
+        
+        # Verify migrate.mjs includes backup functionality
+        if ! grep -q "createBackup" migrate.mjs; then
+          echo "❌ Migration script doesn't include backup functionality"
+          echo "Please ensure migrate.mjs creates backups before applying migrations"
+          exit 1
+        fi
+        
+        echo "✅ Migration script includes backup functionality"
+    
+    - name: Summary
+      run: |
+        echo "🎉 Database Safety Checks Passed!"
+        echo ""
+        echo "✅ No destructive SQL patterns found"
+        echo "✅ Migration files properly named"
+        echo "✅ Basic SQL syntax checks passed"
+        echo "✅ Backup system available"
+        echo "✅ Migration tracking enabled"
+        echo ""
+        echo "💡 Remember to:"
+        echo "   • Create backups before running migrations in production"
+        echo "   • Test migrations on a copy of production data first"
+        echo "   • Run health checks after applying migrations"

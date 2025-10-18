@@ -1,6 +1,8 @@
 -- Migration: Create feedback table and related indexes
 -- File: 014_create_feedback.sql
 
+BEGIN;
+
 -- Create feedback table
 CREATE TABLE IF NOT EXISTS feedback (
   id BIGSERIAL PRIMARY KEY,
@@ -26,11 +28,16 @@ CREATE INDEX IF NOT EXISTS feedback_club_idx ON feedback(club_id);
 CREATE INDEX IF NOT EXISTS feedback_user_idx ON feedback(user_id);
 CREATE INDEX IF NOT EXISTS feedback_category_idx ON feedback(category);
 
--- Add constraint for email validation (basic check)
-ALTER TABLE feedback ADD CONSTRAINT feedback_email_valid 
-  CHECK (email IS NULL OR email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
+-- Add constraint for email validation (basic check) - only if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.constraint_column_usage 
+    WHERE constraint_name = 'feedback_email_valid'
+  ) THEN
+    ALTER TABLE feedback ADD CONSTRAINT feedback_email_valid 
+      CHECK (email IS NULL OR email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$');
+  END IF;
+END $$;
 
--- Grant appropriate permissions
-GRANT SELECT, INSERT ON feedback TO PUBLIC;
-GRANT UPDATE ON feedback TO PUBLIC; -- For status updates by managers
-GRANT USAGE, SELECT ON SEQUENCE feedback_id_seq TO PUBLIC;
+COMMIT;
