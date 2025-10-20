@@ -532,14 +532,38 @@ app.post('/auth/signup', async (req, res) => {
     const display_name = (name && String(name).trim()) || String(email).split('@')[0];
     const username = String(display_name).trim().toLowerCase().replace(/\s+/g, '') || null;
 
+    // Generate verification token
+    const crypto = await import('crypto');
+    const email_verify_token = crypto.randomBytes(24).toString('hex');
+    const email_verify_expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
     const ins = await pool.query(
-      `INSERT INTO users (display_name, username, email, password_hash, role, is_manager, email_verified_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      `INSERT INTO users (display_name, username, email, password_hash, role, is_manager, email_verify_token, email_verify_expires)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id, display_name, username, email, role, is_manager`,
-      [display_name, username, email.toLowerCase(), password_hash, 'player', false]
+      [display_name, username, email.toLowerCase(), password_hash, 'player', false, email_verify_token, email_verify_expires]
     );
 
-    return res.status(201).json({ user: ins.rows[0] });
+    // Send verification email
+    const verifyUrl = `${req.protocol}://${req.get('host')}/auth/verify?token=${email_verify_token}`;
+    try {
+      const { sendEmail, generateVerificationEmail } = await import('./email/resend.js');
+      const emailData = await generateVerificationEmail(verifyUrl, display_name);
+      await sendEmail({
+        to: email.toLowerCase(),
+        subject: emailData.subject,
+        html: emailData.html,
+        text: emailData.text
+      });
+    } catch (mailErr) {
+      console.error('Verification email failed:', mailErr?.message || mailErr);
+      // Continue with signup even if email fails - user can resend later
+    }
+
+    return res.status(201).json({ 
+      user: ins.rows[0], 
+      message: 'Account created! Please check your email to verify your account before logging in.' 
+    });
   } catch (e) {
     if (e?.code === '23505') {
       return res.status(409).json({ error: 'Email or username already in use' });
@@ -574,6 +598,7 @@ app.post('/auth/login', async (req, res) => {
     if (ucols.has('password_hash')) select.push('password_hash');
     if (ucols.has('role'))          select.push('role');
     if (ucols.has('is_manager'))    select.push('is_manager');
+    if (ucols.has('email_verified_at')) select.push('email_verified_at');
 
     // WHERE predicates (build only from real cols)
     const preds = [];
@@ -610,6 +635,14 @@ app.post('/auth/login', async (req, res) => {
       }
     }
 
+    // Check email verification status
+    if (ucols.has('email_verified_at') && !user.email_verified_at) {
+      return res.status(403).json({ 
+        error: 'Please verify your email address before logging in. Check your email for a verification link.',
+        requiresVerification: true 
+      });
+    }
+
     // Generate JWT token
     const token = jwt.sign(
       { 
@@ -638,6 +671,129 @@ app.post('/auth/login', async (req, res) => {
   } catch (e) {
     console.error('login error', e);
     res.status(500).json({ error: 'server error' });
+  }
+});
+
+// Email verification endpoint
+app.get('/auth/verify', async (req, res) => {
+  try {
+    const token = String(req.query.token || '').trim();
+    if (!token) {
+      return res.status(400).send(
+        `<!DOCTYPE html><html><head><title>Invalid Link</title></head><body>
+        <div style="max-width:560px;margin:48px auto;padding:0 16px;font:16px/1.5 system-ui;">
+        <h1>Invalid Link</h1><p>Missing verification token.</p></div></body></html>`
+      );
+    }
+
+    const user = await pool.query(
+      `SELECT id, email, display_name, email_verify_expires FROM users WHERE email_verify_token=$1`,
+      [token]
+    );
+
+    if (!user.rows.length) {
+      return res.status(400).send(
+        `<!DOCTYPE html><html><head><title>Invalid Link</title></head><body>
+        <div style="max-width:560px;margin:48px auto;padding:0 16px;font:16px/1.5 system-ui;">
+        <h1>Invalid Link</h1><p>Token not found or already used.</p></div></body></html>`
+      );
+    }
+
+    const userData = user.rows[0];
+    if (userData.email_verify_expires && new Date(userData.email_verify_expires) < new Date()) {
+      return res.status(400).send(
+        `<!DOCTYPE html><html><head><title>Expired Link</title></head><body>
+        <div style="max-width:560px;margin:48px auto;padding:0 16px;font:16px/1.5 system-ui;">
+        <h1>Expired Link</h1><p>Your verification link has expired. Please request a new one.</p></div></body></html>`
+      );
+    }
+
+    // Update user as verified
+    await pool.query(
+      `UPDATE users SET email_verified_at = NOW(), email_verify_token = NULL, email_verify_expires = NULL WHERE id=$1`,
+      [userData.id]
+    );
+
+    // Send welcome email
+    try {
+      const { sendEmail, generateWelcomeEmail } = await import('./email/resend.js');
+      const welcomeEmailData = await generateWelcomeEmail(userData.display_name || 'there');
+      await sendEmail({
+        to: userData.email,
+        subject: welcomeEmailData.subject,
+        html: welcomeEmailData.html,
+        text: welcomeEmailData.text
+      });
+    } catch (mailErr) {
+      console.error('Welcome email failed:', mailErr?.message || mailErr);
+    }
+
+    return res.send(
+      `<!DOCTYPE html><html><head><title>Email Verified</title></head><body>
+      <div style="max-width:560px;margin:48px auto;padding:0 16px;font:16px/1.5 system-ui;">
+      <h1>Email Verified ✅</h1><p>Welcome! Your email has been verified successfully. You can now close this tab and log in to the app.</p></div></body></html>`
+    );
+  } catch (e) {
+    console.error('Email verification error:', e);
+    return res.status(500).send(
+      `<!DOCTYPE html><html><head><title>Error</title></head><body>
+      <div style="max-width:560px;margin:48px auto;padding:0 16px;font:16px/1.5 system-ui;">
+      <h1>Error</h1><p>An error occurred during verification. Please try again.</p></div></body></html>`
+    );
+  }
+});
+
+// Resend verification email endpoint
+app.post('/auth/resend-verification', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'Email address required' });
+
+    const user = await pool.query(
+      `SELECT id, email, display_name, email_verified_at FROM users WHERE LOWER(email) = LOWER($1)`,
+      [email.trim()]
+    );
+
+    if (!user.rows.length) {
+      // Don't reveal whether email exists for security
+      return res.json({ ok: true, message: 'If that email address is registered, we\'ve sent a verification email.' });
+    }
+
+    const userData = user.rows[0];
+    if (userData.email_verified_at) {
+      return res.status(400).json({ error: 'Email address is already verified' });
+    }
+
+    // Generate new verification token
+    const crypto = await import('crypto');
+    const email_verify_token = crypto.randomBytes(24).toString('hex');
+    const email_verify_expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await pool.query(
+      `UPDATE users SET email_verify_token=$1, email_verify_expires=$2 WHERE id=$3`,
+      [email_verify_token, email_verify_expires, userData.id]
+    );
+
+    // Send verification email
+    const verifyUrl = `${req.protocol}://${req.get('host')}/auth/verify?token=${email_verify_token}`;
+    try {
+      const { sendEmail, generateVerificationEmail } = await import('./email/resend.js');
+      const emailData = await generateVerificationEmail(verifyUrl, userData.display_name || 'there');
+      await sendEmail({
+        to: userData.email,
+        subject: emailData.subject,
+        html: emailData.html,
+        text: emailData.text
+      });
+    } catch (mailErr) {
+      console.error('Resend verification email failed:', mailErr?.message || mailErr);
+      return res.status(500).json({ error: 'Failed to send verification email' });
+    }
+
+    return res.json({ ok: true, message: 'Verification email sent successfully' });
+  } catch (e) {
+    console.error('Resend verification error:', e);
+    return res.status(500).json({ error: 'Failed to resend verification email' });
   }
 });
 

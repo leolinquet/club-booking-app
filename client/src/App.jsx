@@ -983,11 +983,12 @@ function AnnouncementPanel({ user, club, isManager, announcements = [], onClose,
 
 /* -------------------- Auth (Login / Register) -------------------- */
 export function Auth({ onLogin, onRegister }) {
-  const [mode, setMode] = useState("login"); // 'login' | 'register'
+  const [mode, setMode] = useState("login"); // 'login' | 'register' | 'verification-sent'
   const [username, setUsername] = useState(""); // email OR username
   const [email, setEmail] = useState("");       // only used in register
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(""); // Success/error messages
 
   // Reset app loading state when auth component mounts
   useEffect(() => {
@@ -1002,6 +1003,7 @@ export function Auth({ onLogin, onRegister }) {
   const doLogin = async () => {
     console.log('doLogin invoked', { username });
     setBusy(true);
+    setMessage("");
     try {
       const r = await fetch(`${API}/auth/login`, {
         method: "POST",
@@ -1015,7 +1017,14 @@ export function Auth({ onLogin, onRegister }) {
       const data = await r.json().catch(() => null);
       if (!r.ok) {
         console.error('login failed', { status: r.status, data });
-        return alert((data && data.error) || "Login failed");
+        
+        // Handle email verification required
+        if (r.status === 403 && data?.email_verification_required) {
+          setMessage("Please verify your email address before logging in. Check your email for the verification link.");
+          return;
+        }
+        
+        return setMessage((data && data.error) || "Login failed");
       }
 
       // Store JWT token in localStorage
@@ -1027,7 +1036,7 @@ export function Auth({ onLogin, onRegister }) {
       onLogin?.(data.user || { id: data.user_id });
     } catch (e) {
       console.error('doLogin error', e);
-      alert('Login failed: ' + (e && e.message ? e.message : String(e)));
+      setMessage('Login failed: ' + (e && e.message ? e.message : String(e)));
     } finally {
       setBusy(false);
     }
@@ -1036,6 +1045,7 @@ export function Auth({ onLogin, onRegister }) {
   // REGISTER: send { email, password, name }
   const doRegister = async () => {
     setBusy(true);
+    setMessage("");
     try {
       const name =
         (username && username.trim()) ||
@@ -1053,14 +1063,46 @@ export function Auth({ onLogin, onRegister }) {
         }),
       });
       const data = await r.json().catch(() => null);
-      if (!r.ok) return alert((data && data.error) || "Signup failed");
+      if (!r.ok) {
+        return setMessage((data && data.error) || "Signup failed");
+      }
 
-      alert("We sent a verification email. Verify, then log in.");
-  setMode("login");
-  // Call onRegister with the actual user object when available so the
-  // app's handleAuthed() receives a user with `id` and can immediately
-  // fetch the user's clubs. Server returns { user: { ... } } on success.
-  onRegister?.(data && data.user ? data.user : data);
+      // Show verification sent message
+      setMode("verification-sent");
+      setMessage("We've sent a verification email to " + email.trim() + ". Please check your email and click the verification link before logging in.");
+      
+      // Do NOT auto-login after registration - user must verify email first
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Resend verification email
+  const resendVerification = async () => {
+    if (!email.trim()) {
+      setMessage("Please enter your email address");
+      return;
+    }
+    
+    setBusy(true);
+    try {
+      const r = await fetch(`${API}/auth/resend-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          email: email.trim(),
+        }),
+      });
+      const data = await r.json().catch(() => null);
+      
+      if (!r.ok) {
+        return setMessage((data && data.error) || "Failed to resend verification email");
+      }
+      
+      setMessage("Verification email sent! Please check your email.");
+    } catch (e) {
+      setMessage("Failed to resend verification email");
     } finally {
       setBusy(false);
     }
@@ -1068,6 +1110,37 @@ export function Auth({ onLogin, onRegister }) {
 
   const canLogin = username.trim() && password;
   const canRegister = username.trim() && email.trim() && password;
+
+  // Handle verification-sent mode
+  if (mode === "verification-sent") {
+    return (
+      <div className="min-h-screen grid place-items-center p-4">
+        <div className="auth-form">
+          <div className="form">
+            <h2 className="title">Check Your Email</h2>
+            <p className="subtitle">We've sent you a verification link</p>
+            
+            {message && <div style={{ color: "#2d7c47", marginBottom: "1rem", padding: "0.75rem", backgroundColor: "#f0f9ff", border: "1px solid #2d7c47", borderRadius: "4px" }}>{message}</div>}
+            
+            <p style={{ marginBottom: "1rem", color: "#6b7280" }}>
+              Didn't receive an email? Check your spam folder or resend it.
+            </p>
+            
+            <button onClick={resendVerification} disabled={busy} style={{ marginBottom: "1rem", width: "100%" }}>
+              {busy ? "Sending..." : "Resend Verification Email"}
+            </button>
+            
+            <div className="form-section">
+              Already verified?{" "}
+              <a href="#" onClick={(e) => { e.preventDefault(); setMode("login"); setMessage(""); }}>
+                Log in
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen grid place-items-center p-4">
@@ -1079,6 +1152,21 @@ export function Auth({ onLogin, onRegister }) {
           <p className="subtitle">
             {mode === "login" ? "Welcome back!" : "Join us today"}
           </p>
+
+          {/* Display messages */}
+          {message && (
+            <div style={{ 
+              color: message.includes("verification") || message.includes("verify") ? "#ed8936" : "#dc2626", 
+              marginBottom: "1rem", 
+              padding: "0.75rem", 
+              backgroundColor: message.includes("verification") || message.includes("verify") ? "#fef3c7" : "#fee2e2", 
+              border: `1px solid ${message.includes("verification") || message.includes("verify") ? "#ed8936" : "#dc2626"}`, 
+              borderRadius: "4px",
+              fontSize: "0.875rem"
+            }}>
+              {message}
+            </div>
+          )}
 
           {/* Login: label as "Email or Username" */}
           <div className="form-container">
@@ -1127,7 +1215,7 @@ export function Auth({ onLogin, onRegister }) {
               </button>
               <div className="form-section">
                 Don’t have an account?{" "}
-                <a href="#" onClick={(e) => { e.preventDefault(); setMode("register"); }}>
+                <a href="#" onClick={(e) => { e.preventDefault(); setMode("register"); setMessage(""); }}>
                   Create one
                 </a>
               </div>
@@ -1139,7 +1227,7 @@ export function Auth({ onLogin, onRegister }) {
               </button>
               <div className="form-section">
                 Already have an account?{" "}
-                <a href="#" onClick={(e) => { e.preventDefault(); setMode("login"); }}>
+                <a href="#" onClick={(e) => { e.preventDefault(); setMode("login"); setMessage(""); }}>
                   Log in
                 </a>
               </div>

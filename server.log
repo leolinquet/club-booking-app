@@ -1,85 +1,16 @@
-Manager account already exists: leolinquet
-[db] connected to "clubbooking_local" as "leolopez-linquet"
-[db] PostgreSQL 16.10 (Homebrew) on aarch64-apple-darwin24.4.0, compiled by Apple clang version 17.0.0 (clang-1700.0.13.3), 64-bit
-server listening on :5051
-DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
-DEBUG availability: bookings count: 0
-DEBUG availability response sample for {
-  clubId: 2,
-  sport: 'soccer',
-  date: '2025-10-04',
-  bookingsCount: 0,
-  sample: {
-    time: '14:00',
-    isPast: false,
-    courts: [
-      [Object], [Object],
-      [Object], [Object],
-      [Object], [Object],
-      [Object], [Object]
-    ]
-  }
-}
-[auth/login] lookup {
-  select: 'id, display_name, email, password_hash, role, is_manager',
-  where: 'LOWER(email) = LOWER($1) OR LOWER(display_name) = LOWER($1) OR LOWER(username) = LOWER($1)',
-  params: [ 'leolinquet' ]
-}
-[auth/login] userRow {
-  id: 2,
-  email: 'leolinquet@example.local',
-  display_name: 'leolinquet'
-}
-players upsert: { club_id: 3, user_id: 2, player_id: 69, display_name: 'leolinquet' }
-players upsert: { club_id: 3, user_id: 3, player_id: 70, display_name: 'user1' }
-players upsert: { club_id: 3, user_id: 4, player_id: 71, display_name: 'user2' }
-players upsert: { club_id: 3, user_id: 5, player_id: 72, display_name: 'user3' }
-players upsert: { club_id: 3, user_id: 7, player_id: 73, display_name: 'user4' }
-Save result: match 33 winnerId 73 round 3 slot 2
-Advancing winner to nextRound 2
-Computed nextSlot 1
-Existing next match? false null
-Sibling slot 3 found? true siblingWinner 70
-Inserted next match with both players { p1: 73, p2: 70, nextSlot: 1 }
-DEBUG availability: bookings columns: id,club_id,court_id,user_id,starts_at,ends_at
-DEBUG availability: bookings count: 0
-DEBUG availability response sample for {
-  clubId: 2,
-  sport: 'soccer',
-  date: '2025-10-04',
-  bookingsCount: 0,
-  sample: {
-    time: '14:00',
-    isPast: false,
-    courts: [
-      [Object], [Object],
-      [Object], [Object],
-      [Object], [Object],
-      [Object], [Object]
-    ]
-  }
-}
-GET /clubs/2/standings from ::1
-  -> standings rows: 5 [
-  {
-    player_id: 1,
-    name: 'leolinquet',
-    tournaments_played: 7,
-    points: 1410
-  },
-  { player_id: 8, name: 'user3', tournaments_played: 6, points: 570 },
-  { player_id: 2, name: 'user1', tournaments_played: 7, points: 385 },
-  { player_id: 3, name: 'user2', tournaments_played: 7, points: 385 },
-  { player_id: 25, name: 'user42', tournaments_played: 1, points: 20 }
-]
-players upsert: { club_id: 2, user_id: 2, player_id: 1, display_name: 'leolinquet' }
-players upsert: { club_id: 2, user_id: 3, player_id: 2, display_name: 'user1' }
-players upsert: { club_id: 2, user_id: 4, player_id: 3, display_name: 'user2' }
-players upsert: { club_id: 2, user_id: 5, player_id: 8, display_name: 'user3' }
-players upsert: { club_id: 2, user_id: 7, player_id: 78, display_name: 'user4' }
-Save result: match 38 winnerId 78 round 3 slot 2
-Advancing winner to nextRound 2
-Computed nextSlot 1
-Existing next match? false null
-Sibling slot 3 found? true siblingWinner 8
-Inserted next match with both players { p1: 78, p2: 8, nextSlot: 1 }
+/Users/leolopez-linquet/Documents/club-booking-app/server.js:1
+app.get('/health', (req, res) => res.status(200).send('ok'));
+^
+
+ReferenceError: app is not defined
+    at Object.<anonymous> (/Users/leolopez-linquet/Documents/club-booking-app/server.js:1:1)
+    at Module._compile (node:internal/modules/cjs/loader:1688:14)
+    at Object..js (node:internal/modules/cjs/loader:1820:10)
+    at Module.load (node:internal/modules/cjs/loader:1423:32)
+    at Function._load (node:internal/modules/cjs/loader:1246:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    at node:internal/main/run_main_module:36:49
+
+Node.js v22.18.0

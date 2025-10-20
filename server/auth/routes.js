@@ -2,9 +2,10 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { q, get, all, run } from '../db.js';
 import { colSet, tableInfo } from '../pg_introspect.js';
-import { sendEmail } from '../email/resend.js';
+import { sendEmail, generateVerificationEmail, generateWelcomeEmail } from '../email/resend.js';
 
 // small helper for the minimal HTML screens
 function page(title, msg) {
@@ -97,10 +98,12 @@ export function buildAuthRouter() {
         );
         const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${token}`;
         try {
+          const emailData = await generateVerificationEmail(verifyUrl, values[nameField] || 'there');
           await sendEmail(
             values.email,
-            'Verify your email',
-            `<p>Welcome! Please verify your email:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`
+            emailData.subject,
+            emailData.html,
+            emailData.text
           );
         } catch (mailErr) {
           console.error('sendEmail failed:', mailErr?.message || mailErr);
@@ -121,8 +124,8 @@ export function buildAuthRouter() {
   });
 
   // ---- POST /login ---------------------------------------------------------
-  // POST /login — email OR username + password
-router.post('/login', async (req, res) => {
+  // POST /login — email OR username + password (with mandatory email verification)
+  router.post('/login', async (req, res) => {
     try {
       const { login, password } = req.body || {};
       if (!login || !password) return res.status(400).json({ error: 'Missing credentials' });
@@ -137,20 +140,66 @@ router.post('/login', async (req, res) => {
       if (cols.has('display_name'))  { parts.push(`display_name=$${i++}`);  vals.push(String(login).trim()); }
       if (!parts.length) return res.status(500).json({ error: 'server schema not ready' });
 
-      const user = await get(`SELECT id, password_hash FROM users WHERE ${parts.join(' OR ')} LIMIT 1`, ...vals);
+      // Get user with email verification status
+      const selectFields = ['id', 'password_hash'];
+      if (cols.has('email_verified_at')) selectFields.push('email_verified_at');
+      if (cols.has('email')) selectFields.push('email');
+      const nameField = pickNameField(cols);
+      if (nameField) selectFields.push(nameField);
+      
+      const user = await get(
+        `SELECT ${selectFields.join(', ')} FROM users WHERE ${parts.join(' OR ')} LIMIT 1`, 
+        ...vals
+      );
       if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
       const ok = await bcrypt.compare(String(password), user.password_hash || '');
       if (!ok)  return res.status(401).json({ error: 'Invalid credentials' });
 
-      return res.json({ ok: true, user_id: user.id });
+      // Check email verification status
+      if (cols.has('email_verified_at') && !user.email_verified_at) {
+        return res.status(403).json({ 
+          error: 'Please verify your email address before logging in. Check your email for a verification link.',
+          requiresVerification: true 
+        });
+      }
+
+      // Generate JWT token
+      const jwtSecret = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
+      const token = jwt.sign(
+        { 
+          userId: user.id, 
+          email: user.email 
+        },
+        jwtSecret,
+        { expiresIn: '7d' }
+      );
+
+      // Set httpOnly cookie for security
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      });
+
+      return res.json({ 
+        ok: true, 
+        user_id: user.id,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user[nameField] || 'User'
+        },
+        token
+      });
     } catch (e) {
       console.error('[auth] login error:', e);
       return res.status(500).json({ error: 'Login failed' });
     }
   });
 
-  // ---- GET /verify?token=... ----------------------------------------------
+    // ---- GET /verify?token=... ----------------------------------------------
   router.get('/verify', async (req, res) => {
     const cols = await colSet('users');
     const need = ['email_verify_token', 'email_verify_expires', 'email_verified_at'];
@@ -164,8 +213,13 @@ router.post('/login', async (req, res) => {
     const token = String(req.query.token || '').trim();
     if (!token) return res.status(400).send(page('Invalid link', 'Missing token.'));
 
+    // Get user with email and name for welcome email
+    const selectFields = ['id', 'email_verify_expires', 'email'];
+    const nameField = pickNameField(cols);
+    if (nameField) selectFields.push(nameField);
+    
     const user = await get(
-      `SELECT id, email_verify_expires FROM users WHERE email_verify_token=$1`,
+      `SELECT ${selectFields.join(', ')} FROM users WHERE email_verify_token=$1`,
       token
     );
     if (!user) {
@@ -175,6 +229,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).send(page('Expired link', 'Your verification link has expired. Please request a new one.'));
     }
 
+    // Update user as verified
     await run(
       `UPDATE users
           SET email_verified_at = NOW(),
@@ -184,7 +239,86 @@ router.post('/login', async (req, res) => {
       user.id
     );
 
-    return res.send(page('Email verified ✅', 'You’re all set. You can close this tab and return to the app.'));
+    // Send welcome email
+    try {
+      const userName = user[nameField] || 'there';
+      const welcomeEmailData = await generateWelcomeEmail(userName);
+      await sendEmail(
+        user.email,
+        welcomeEmailData.subject,
+        welcomeEmailData.html,
+        welcomeEmailData.text
+      );
+    } catch (mailErr) {
+      console.error('Welcome email failed:', mailErr?.message || mailErr);
+      // Don't fail verification if welcome email fails
+    }
+
+    return res.send(page('Email verified ✅', 'Welcome! Your email has been verified successfully. You can now close this tab and log in to the app.'));
+  });
+
+  // ---- POST /resend-verification ------------------------------------------
+  router.post('/resend-verification', async (req, res) => {
+    try {
+      const { email } = req.body || {};
+      if (!email) return res.status(400).json({ error: 'Email address required' });
+
+      const cols = await colSet('users');
+      const need = ['email_verify_token', 'email_verify_expires', 'email_verified_at'];
+      const missing = need.some(k => !cols.has(k));
+      if (missing) {
+        return res.status(501).json({ error: 'Email verification is not configured on this server' });
+      }
+
+      // Find user by email
+      const nameField = pickNameField(cols);
+      const selectFields = ['id', 'email', 'email_verified_at'];
+      if (nameField) selectFields.push(nameField);
+      
+      const user = await get(
+        `SELECT ${selectFields.join(', ')} FROM users WHERE email=$1`,
+        String(email).toLowerCase().trim()
+      );
+      
+      if (!user) {
+        // Don't reveal whether email exists for security
+        return res.json({ ok: true, message: 'If that email address is registered, we\'ve sent a verification email.' });
+      }
+
+      if (user.email_verified_at) {
+        return res.status(400).json({ error: 'Email address is already verified' });
+      }
+
+      // Generate new verification token
+      const token = crypto.randomBytes(24).toString('hex');
+      const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      
+      await run(
+        `UPDATE users SET email_verify_token=$1, email_verify_expires=$2 WHERE id=$3`,
+        token, expires, user.id
+      );
+
+      // Send verification email
+      const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${token}`;
+      try {
+        const userName = user[nameField] || 'there';
+        const emailData = await generateVerificationEmail(verifyUrl, userName);
+        await sendEmail(
+          user.email,
+          emailData.subject,
+          emailData.html,
+          emailData.text
+        );
+      } catch (mailErr) {
+        console.error('Resend verification email failed:', mailErr?.message || mailErr);
+        return res.status(500).json({ error: 'Failed to send verification email' });
+      }
+
+      return res.json({ ok: true, message: 'Verification email sent successfully' });
+    } catch (e) {
+      console.error('[auth] resend-verification error:', e);
+      return res.status(500).json({ error: 'Failed to resend verification email' });
+    }
   });
 
   return router;
