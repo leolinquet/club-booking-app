@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from "./Navbar";
 import './styles/theme.css';
 import './styles/ui.css';
@@ -13,6 +14,20 @@ import FloatingHelpButton from './FloatingHelpButton.jsx';
 import { PageLoaderOverlay } from './components/ui/PageLoaderOverlay';
 import { Skeleton, SkeletonCard, SkeletonText } from './components/ui/Skeleton';
 import { useFetch } from './hooks/useFetch';
+import LandingPage from './pages/LandingPage.jsx';
+import AboutPage from './pages/marketing/AboutPage.jsx';
+import BlogPage from './pages/marketing/BlogPage.jsx';
+import ContactPage from './pages/marketing/ContactPage.jsx';
+import HelpCenterPage from './pages/marketing/HelpCenterPage.jsx';
+import HelpArticlePage from './pages/marketing/HelpArticlePage.jsx';
+import SystemStatusPage from './pages/marketing/SystemStatusPage.jsx';
+import CommunityPage from './pages/marketing/CommunityPage.jsx';
+import PrivacyPage from './pages/marketing/PrivacyPage.jsx';
+import TermsPage from './pages/marketing/TermsPage.jsx';
+import SecurityPage from './pages/marketing/SecurityPage.jsx';
+import CookiePage from './pages/marketing/CookiePage.jsx';
+import HelpPage from './pages/marketing/HelpPage.jsx';
+import ComingSoonPage from './pages/marketing/ComingSoonPage.jsx';
 
 const safeParse = (s) => {
   try { return JSON.parse(s); } catch { return null; }
@@ -180,7 +195,8 @@ function Select(props) {
   return <select {...props} className={"border rounded-lg px-3 py-2 w-full "+(props.className||'')} />;
 }
 
-export default function App(){
+// Main authenticated app component
+function AuthenticatedApp() {
   // Simple debounce function to prevent rapid successive calls
   const debounce = useCallback((func, delay) => {
     let timeoutId;
@@ -610,10 +626,120 @@ export default function App(){
 
   if (!user || !user.id) {
     return (
-      <>
+      <div>
         <PageLoaderOverlay isVisible={appLoading} message="Initializing app..." />
-        <Auth onLogin={handleAuthed} onRegister={handleAuthed} />
-      </>
+        
+        {/* Header with Logo */}
+        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-gray-200">
+          <div className="max-w-5xl mx-auto px-4 h-14 flex items-center">
+            <a
+              href="/"
+              className="text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-black/20 rounded px-1 hover:text-gray-600 transition-colors"
+              aria-label="Go to landing page"
+            >
+              Club Booking
+            </a>
+          </div>
+        </header>
+
+        {/* Main Content with Auth - Full viewport height minus header */}
+        <div className="min-h-[calc(100vh-3.5rem)] grid place-items-center p-4">
+          <Auth onLogin={handleAuthed} onRegister={handleAuthed} />
+        </div>
+
+        {/* Footer Navigation - Below the viewport */}
+        <footer className="bg-gray-900">
+          <div className="mx-auto max-w-7xl px-6 py-8 lg:px-8">
+            <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
+              <div>
+                <h3 className="text-sm font-semibold leading-6 text-white">Product</h3>
+                <ul role="list" className="mt-4 space-y-3">
+                  <li>
+                    <a href="/#features" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      Features
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/#how-it-works" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      How It Works
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/app" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      Demo
+                    </a>
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold leading-6 text-white">Company</h3>
+                <ul role="list" className="mt-4 space-y-3">
+                  <li>
+                    <a href="/about" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      About
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/blog" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      Blog
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/contact" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      Contact
+                    </a>
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold leading-6 text-white">Resources</h3>
+                <ul role="list" className="mt-4 space-y-3">
+                  <li>
+                    <a href="/help-center" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      Help Center
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/status" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      Status
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/community" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      Community
+                    </a>
+                  </li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold leading-6 text-white">Legal</h3>
+                <ul role="list" className="mt-4 space-y-3">
+                  <li>
+                    <a href="/privacy" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      Privacy
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/terms" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      Terms
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/security" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
+                      Security
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div className="mt-8 border-t border-white/10 pt-6">
+              <p className="text-xs leading-5 text-gray-400">
+                &copy; 2024 Club Booking App. All rights reserved.
+              </p>
+            </div>
+          </div>
+        </footer>
+      </div>
     );
   }
 
@@ -905,6 +1031,52 @@ export default function App(){
       <FloatingHelpButton onClick={() => setShowFeedback(true)} />
     </div>
     </>
+  );
+}
+
+// Main App component with routing
+export default function App() {
+  return (
+    <Router>
+      <Routes>
+        {/* Marketing landing page - no auth required */}
+        <Route path="/" element={<LandingPage />} />
+        
+        {/* Marketing pages */}
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/blog" element={<BlogPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/help-center" element={<HelpCenterPage />} />
+        <Route path="/help-center/article/:articleId" element={<HelpArticlePage />} />
+        <Route path="/status" element={<SystemStatusPage />} />
+        <Route path="/community" element={<CommunityPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/security" element={<SecurityPage />} />
+        <Route path="/cookies" element={<CookiePage />} />
+        <Route path="/help" element={<HelpPage />} />
+        
+        {/* Coming soon pages */}
+        <Route path="/status" element={<ComingSoonPage title="System Status" description="System status and uptime information will be available here." />} />
+        <Route path="/community" element={<ComingSoonPage title="Community" description="Connect with other club managers in our community forum, coming soon!" />} />
+        
+        {/* Authenticated app routes */}
+        <Route path="/app/*" element={<AuthenticatedApp />} />
+        <Route path="/book" element={<Navigate to="/app" replace />} />
+        <Route path="/clubs" element={<Navigate to="/app" replace />} />
+        <Route path="/tournaments" element={<Navigate to="/app" replace />} />
+        <Route path="/rankings" element={<Navigate to="/app" replace />} />
+        <Route path="/home" element={<Navigate to="/app" replace />} />
+        
+        {/* Auth routes */}
+        <Route path="/login" element={<Navigate to="/app" replace />} />
+        <Route path="/signup" element={<Navigate to="/app" replace />} />
+        <Route path="/demo" element={<Navigate to="/app" replace />} />
+        
+        {/* Catch-all redirect to landing page */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
   );
 }
 
