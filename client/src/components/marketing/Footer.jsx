@@ -12,7 +12,6 @@ export default function Footer() {
     company: [
       { name: 'About', href: '/about', external: false },
       { name: 'Blog', href: '/blog', external: false },
-      { name: 'Careers', href: '/careers', external: false },
       { name: 'Contact', href: 'mailto:support@clubbooking.app', external: true },
     ],
     resources: [

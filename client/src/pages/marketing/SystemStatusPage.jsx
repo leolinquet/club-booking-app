@@ -373,32 +373,6 @@ export default function SystemStatusPage() {
               </div>
             ))}
           </div>
-
-          {/* Subscribe to Updates */}
-          <div className="mx-auto max-w-2xl text-center mt-12">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">
-                Stay Updated
-              </h3>
-              <p className="text-gray-600 mb-6">
-                Get notified about system updates and maintenance windows.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <a
-                  href="/contact"
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium"
-                >
-                  Subscribe to Updates
-                </a>
-                <a
-                  href="/help"
-                  className="border border-gray-300 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-50 font-medium"
-                >
-                  Contact Support
-                </a>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
