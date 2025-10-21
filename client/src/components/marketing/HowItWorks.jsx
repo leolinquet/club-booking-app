@@ -55,11 +55,9 @@ export default function HowItWorks() {
                 <p className="text-base leading-7 text-gray-600">
                   {step.description}
                 </p>
-                {stepIdx < steps.length - 1 && (
-                  <div className="mt-8 hidden lg:block">
-                    <div className="h-0.5 w-16 bg-gray-200"></div>
-                  </div>
-                )}
+                <div className="mt-8 hidden lg:block">
+                  <div className="h-0.5 w-16 bg-gray-200"></div>
+                </div>
               </div>
             ))}
           </div>

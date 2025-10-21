@@ -83,15 +83,112 @@ export default function Hero() {
                 </div>
               </div>
               
-              {/* Right image */}
+              {/* Right illustration */}
               <div className="mt-12 lg:mt-0 lg:w-1/2">
                 <div className="max-w-lg mx-auto">
-                  <img
-                    className="w-full rounded-2xl shadow-2xl"
-                    src="/assets/marketing/hero.svg"
-                    alt="Club management dashboard showing court booking interface"
-                    loading="eager"
-                  />
+                  <div className="relative bg-gradient-to-br from-blue-50 to-indigo-100 rounded-2xl shadow-2xl p-8 overflow-hidden">
+                    {/* Background pattern */}
+                    <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
+                    
+                    {/* Court time slots illustration */}
+                    <div className="relative z-10">
+                      <div className="bg-white rounded-lg shadow-lg p-4 mb-4 border border-gray-200">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-semibold text-gray-800 text-sm">Sport X</h3>
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        </div>
+                        {/* Court labels */}
+                        <div className="grid grid-cols-7 gap-1 mb-2">
+                          <div></div> {/* Empty space for time column */}
+                          <div className="text-xs text-gray-500 text-center font-medium">Court 1</div>
+                          <div className="text-xs text-gray-500 text-center font-medium">Court 2</div>
+                          <div className="text-xs text-gray-500 text-center font-medium">Court 3</div>
+                          <div className="text-xs text-gray-500 text-center font-medium">Court 4</div>
+                          <div className="text-xs text-gray-500 text-center font-medium">Court 5</div>
+                          <div className="text-xs text-gray-500 text-center font-medium">Court 6</div>
+                        </div>
+                        
+                        <div className="grid grid-cols-7 gap-1">
+                          {/* First row - grey (past/unavailable) */}
+                          <div className="h-6 flex items-center text-xs text-gray-500 font-medium pr-2">10:00</div>
+                          <div className="h-6 bg-gray-300 rounded-sm"></div>
+                          <div className="h-6 bg-gray-300 rounded-sm"></div>
+                          <div className="h-6 bg-gray-300 rounded-sm"></div>
+                          <div className="h-6 bg-gray-300 rounded-sm"></div>
+                          <div className="h-6 bg-gray-300 rounded-sm"></div>
+                          <div className="h-6 bg-gray-300 rounded-sm"></div>
+                          
+                          {/* Second row - mixed availability */}
+                          <div className="h-6 flex items-center text-xs text-gray-500 font-medium pr-2">12:00</div>
+                          <div className="h-6 bg-green-500 rounded-sm"></div>
+                          <div className="h-6 bg-red-500 rounded-sm"></div>
+                          <div className="h-6 bg-green-500 rounded-sm"></div>
+                          <div className="h-6 bg-yellow-500 rounded-sm"></div>
+                          <div className="h-6 bg-green-500 rounded-sm"></div>
+                          <div className="h-6 bg-green-500 rounded-sm"></div>
+                          
+                          {/* Third row - mostly available */}
+                          <div className="h-6 flex items-center text-xs text-gray-500 font-medium pr-2">14:00</div>
+                          <div className="h-6 bg-green-500 rounded-sm"></div>
+                          <div className="h-6 bg-green-500 rounded-sm"></div>
+                          <div className="h-6 bg-red-500 rounded-sm"></div>
+                          <div className="h-6 bg-green-500 rounded-sm"></div>
+                          <div className="h-6 bg-green-500 rounded-sm"></div>
+                          <div className="h-6 bg-red-500 rounded-sm"></div>
+                        </div>
+                      </div>
+                      
+                      {/* Booking status legend */}
+                      <div className="bg-white rounded-lg shadow-lg p-4 mb-4 border border-gray-200">
+                        <h3 className="font-semibold text-gray-800 text-sm mb-3">Booking Status</h3>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="flex items-center">
+                            <div className="w-3 h-3 bg-green-500 rounded-sm mr-2"></div>
+                            <span className="text-gray-600">Available</span>
+                          </div>
+                          <div className="flex items-center">
+                            <div className="w-3 h-3 bg-red-500 rounded-sm mr-2"></div>
+                            <span className="text-gray-600">Booked</span>
+                          </div>
+                          <div className="flex items-center">
+                            <div className="w-3 h-3 bg-yellow-500 rounded-sm mr-2"></div>
+                            <span className="text-gray-600">Yours</span>
+                          </div>
+                          <div className="flex items-center">
+                            <div className="w-3 h-3 bg-gray-300 rounded-sm mr-2"></div>
+                            <span className="text-gray-600">Unavailable</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Members section */}
+                      <div className="bg-white rounded-lg shadow-lg p-4 border border-gray-200">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-semibold text-gray-800 text-sm">Active Members</h3>
+                          <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">47</span>
+                        </div>
+                        <div className="flex -space-x-2">
+                          <div className="w-6 h-6 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full border-2 border-white flex items-center justify-center">
+                            <span className="text-white text-xs font-bold">J</span>
+                          </div>
+                          <div className="w-6 h-6 bg-gradient-to-br from-purple-400 to-purple-600 rounded-full border-2 border-white flex items-center justify-center">
+                            <span className="text-white text-xs font-bold">S</span>
+                          </div>
+                          <div className="w-6 h-6 bg-gradient-to-br from-green-400 to-green-600 rounded-full border-2 border-white flex items-center justify-center">
+                            <span className="text-white text-xs font-bold">M</span>
+                          </div>
+                          <div className="w-6 h-6 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full border-2 border-white flex items-center justify-center">
+                            <span className="text-white text-xs font-bold">+</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Floating elements for visual appeal */}
+                    <div className="absolute top-4 right-4 w-4 h-4 bg-yellow-400 rounded-full animate-bounce"></div>
+                    <div className="absolute bottom-6 left-4 w-3 h-3 bg-pink-400 rounded-full animate-pulse"></div>
+                    <div className="absolute top-1/2 right-2 w-2 h-2 bg-indigo-400 rounded-full animate-ping"></div>
+                  </div>
                 </div>
               </div>
             </div>
