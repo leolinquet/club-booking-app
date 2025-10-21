@@ -192,8 +192,6 @@ if (isProd) {
   try {
     if (fs.existsSync(clientDist)) {
       app.use(express.static(clientDist));
-      // Serve index.html for any unknown route (SPA fallback)
-      app.get('*', (req, res) => res.sendFile(path.join(clientDist, 'index.html')));
       console.log('Serving built client from', clientDist);
     } else {
       console.warn('Client dist not found; static files will not be served from server.');
@@ -4508,6 +4506,18 @@ app.patch('/api/feedback/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'internal server error' });
   }
 });
+
+// SPA fallback - MUST be at the very end after all API routes
+if (isProd) {
+  const clientDist = path.join(__dirname, '..', 'client', 'dist');
+  if (fs.existsSync(clientDist)) {
+    // Serve index.html for any unknown route (SPA fallback)
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(clientDist, 'index.html'));
+    });
+    console.log('SPA fallback configured for client routes');
+  }
+}
 
 app.listen(PORT, async () => {
   console.log(`server listening on :${PORT}`);
