@@ -53,26 +53,34 @@ export default function Navbar({
   const handle = (fn) => () => { setOpen(false); fn(); };
 
   const navBtn =
-    "px-3 py-1.5 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10";
+    "px-3 py-1.5 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10 whitespace-nowrap";
   const menuItem =
     "w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-black/10";
 
   return (
     <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-gray-200">
-      <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between relative">
-        {/* Brand */}
+      <div className="max-w-7xl mx-auto px-2 h-14 flex items-center justify-between">
+        {/* Brand with Logo */}
         <button
           onClick={onBook}
-          className="text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-black/20 rounded px-1"
-          aria-label="Go to booking"
+          className="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-black/20 rounded p-1 group flex-shrink-0"
+          aria-label="Go to SportsClubNet home"
+          title="SportsClubNet"
         >
-          SportsClubNet
+          <img 
+            src="/sportsclubnet-high-resolution-logo.png" 
+            alt="SportsClubNet Logo" 
+            className="h-8 w-auto max-w-[40px] object-contain transition-transform group-hover:scale-105" 
+          />
+          <span className="text-lg font-semibold text-gray-900 hidden lg:inline">
+            SportsClubNet
+          </span>
         </button>
 
         {/* Mobile quick access removed — Looking is only available from hamburger menu */}
 
         {/* Desktop nav */}
-        <nav className="hidden sm:flex items-center gap-2">
+        <nav className="hidden sm:flex items-center gap-2 flex-shrink-0 overflow-x-auto">
           <div className="relative">
             <button onClick={onOpenConversations} className={navBtn}>💬</button>
             {unreadMessageCount > 0 && (
@@ -105,13 +113,13 @@ export default function Navbar({
           {isManager && <button onClick={onFeedbackAdmin} className={navBtn}>Feedback Admin</button>}
 
           {user ? (
-            <>
-              <span className="ml-2 text-sm opacity-75">
+            <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+              <span className="text-sm opacity-75 whitespace-nowrap">
                 Hi, {user.display_name ?? user.name ?? "you"}
               </span>
               <button
                 onClick={onLogout}
-                className="ml-2 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors duration-200 flex items-center gap-1"
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors duration-200 flex items-center gap-1"
                 title="Logout"
               >
                 <svg className="w-3 h-3" viewBox="0 0 512 512" fill="currentColor">
@@ -119,7 +127,7 @@ export default function Navbar({
                 </svg>
                 Logout
               </button>
-            </>
+            </div>
           ) : null}
         </nav>
 

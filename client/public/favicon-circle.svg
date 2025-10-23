@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Circular background -->
+  <circle cx="256" cy="256" r="256" fill="#2563EB"/>
+  
+  <!-- Logo image centered in circle -->
+  <image 
+    href="/sportsclubnet-high-resolution-logo.png" 
+    x="128" 
+    y="128" 
+    width="256" 
+    height="256"
+    preserveAspectRatio="xMidYMid meet"
+  />
+</svg>

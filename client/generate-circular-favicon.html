@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate Circular Favicon</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            margin: 20px 0;
+        }
+        button {
+            background: #2563EB;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+        .preview {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin: 20px 0;
+        }
+        .icon-preview {
+            border: 1px solid #ddd;
+            padding: 10px;
+            background: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>Generate Circular Favicon from Logo</h1>
+    <p>This tool will create a circular version of your logo for the browser favicon.</p>
+    
+    <div class="preview">
+        <div>
+            <h3>512x512 (PWA Icon)</h3>
+            <canvas id="canvas512" width="512" height="512"></canvas>
+            <br>
+            <button onclick="downloadCanvas('canvas512', 'favicon-circular-512.png')">Download 512x512</button>
+        </div>
+        <div>
+            <h3>192x192 (Standard)</h3>
+            <canvas id="canvas192" width="192" height="192"></canvas>
+            <br>
+            <button onclick="downloadCanvas('canvas192', 'favicon-circular-192.png')">Download 192x192</button>
+        </div>
+        <div>
+            <h3>32x32 (Browser Tab)</h3>
+            <canvas id="canvas32" width="32" height="32"></canvas>
+            <br>
+            <button onclick="downloadCanvas('canvas32', 'favicon-circular-32.png')">Download 32x32</button>
+        </div>
+    </div>
+
+    <div>
+        <button onclick="downloadAll()">Download All Sizes</button>
+    </div>
+
+    <h3>Instructions:</h3>
+    <ol>
+        <li>Click the download buttons to save the circular favicon in different sizes</li>
+        <li>Save the files to <code>client/public/</code> directory</li>
+        <li>The favicon will appear circular in browser tabs</li>
+    </ol>
+
+    <script>
+        function createCircularLogo(canvas, size) {
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            img.onload = function() {
+                // Clear canvas
+                ctx.clearRect(0, 0, size, size);
+                
+                // Create circular clipping path
+                ctx.beginPath();
+                ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+                ctx.closePath();
+                ctx.clip();
+                
+                // Fill with white background (optional - comment out for transparent)
+                ctx.fillStyle = 'white';
+                ctx.fill();
+                
+                // Draw the logo centered and scaled to fit
+                const scale = 0.8; // 80% of circle size for padding
+                const logoSize = size * scale;
+                const offset = (size - logoSize) / 2;
+                
+                ctx.drawImage(img, offset, offset, logoSize, logoSize);
+            };
+            
+            // Load the logo
+            img.src = '/sportsclubnet-high-resolution-logo.png';
+        }
+
+        // Generate all sizes on page load
+        window.onload = function() {
+            createCircularLogo(document.getElementById('canvas512'), 512);
+            createCircularLogo(document.getElementById('canvas192'), 192);
+            createCircularLogo(document.getElementById('canvas32'), 32);
+        };
+
+        function downloadCanvas(canvasId, filename) {
+            const canvas = document.getElementById(canvasId);
+            const url = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = url;
+            link.click();
+        }
+
+        function downloadAll() {
+            setTimeout(() => downloadCanvas('canvas512', 'favicon-circular-512.png'), 100);
+            setTimeout(() => downloadCanvas('canvas192', 'favicon-circular-192.png'), 300);
+            setTimeout(() => downloadCanvas('canvas32', 'favicon-circular-32.png'), 500);
+        }
+    </script>
+</body>
+</html>

@@ -9,8 +9,12 @@ export default function Hero() {
         <nav className="mx-auto max-w-7xl px-6 lg:px-8" aria-label="Top">
           <div className="flex w-full items-center justify-between border-b border-gray-200 py-6">
             <div className="flex items-center">
-              <a href="#" className="text-2xl font-bold text-gray-900">
-                SportsClubNet
+              <a href="#" className="flex items-center group">
+                <img 
+                  src="/sportsclubnet-high-resolution-logo.png" 
+                  alt="SportsClubNet Logo" 
+                  className="h-10 w-auto max-w-[150px] object-contain transition-transform group-hover:scale-105"
+                />
               </a>
             </div>
             <div className="ml-10 space-x-8 lg:block">
