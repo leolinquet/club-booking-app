@@ -66,7 +66,7 @@ export default function Navbar({
           className="text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-black/20 rounded px-1"
           aria-label="Go to booking"
         >
-          Club Booking
+          SportsClubNet
         </button>
 
         {/* Mobile quick access removed — Looking is only available from hamburger menu */}

@@ -23,13 +23,13 @@ export default function CookiePage() {
           name: 'Session ID',
           purpose: 'Maintains your logged-in session',
           duration: 'Session (until browser closes)',
-          provider: 'Club Booking App'
+          provider: 'SportsClubNet'
         },
         {
           name: 'Security Token',
           purpose: 'Prevents cross-site request forgery attacks',
           duration: '1 hour',
-          provider: 'Club Booking App'
+          provider: 'SportsClubNet'
         },
         {
           name: 'Load Balancer',
@@ -51,19 +51,19 @@ export default function CookiePage() {
           name: 'User Preferences',
           purpose: 'Stores your preferred language and timezone',
           duration: '1 year',
-          provider: 'Club Booking App'
+          provider: 'SportsClubNet'
         },
         {
           name: 'Theme Selection',
           purpose: 'Remembers your light/dark mode preference',
           duration: '6 months',
-          provider: 'Club Booking App'
+          provider: 'SportsClubNet'
         },
         {
           name: 'Notification Settings',
           purpose: 'Stores your notification preferences',
           duration: '1 year',
-          provider: 'Club Booking App'
+          provider: 'SportsClubNet'
         }
       ]
     },
@@ -85,7 +85,7 @@ export default function CookiePage() {
           name: 'Page Views',
           purpose: 'Counts page visits to improve our content',
           duration: '30 days',
-          provider: 'Club Booking App'
+          provider: 'SportsClubNet'
         },
         {
           name: 'Error Tracking',

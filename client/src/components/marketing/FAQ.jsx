@@ -87,7 +87,7 @@ export default function FAQ() {
           <p className="text-gray-600">
             Still have questions?{' '}
             <a
-              href="mailto:support@clubbooking.app"
+              href="mailto:support@sportsclubnet.com"
               className="font-semibold text-indigo-600 hover:text-indigo-500"
             >
               Contact our support team

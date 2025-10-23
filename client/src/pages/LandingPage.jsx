@@ -11,7 +11,7 @@ import Footer from '../components/marketing/Footer';
 export default function LandingPage() {
   useEffect(() => {
     // Set meta tags for SEO
-    document.title = "Club Booking – Club bookings, members & tournaments in one platform";
+    document.title = "SportsClubNet – Club bookings, members & tournaments in one platform";
     
     // Update meta description
     const metaDescription = document.querySelector('meta[name="description"]');
@@ -26,7 +26,7 @@ export default function LandingPage() {
 
     // Add Open Graph tags
     const ogTags = [
-      { property: 'og:title', content: 'Club Booking – All-in-one club management' },
+      { property: 'og:title', content: 'SportsClubNet – All-in-one club management' },
       { property: 'og:description', content: 'Streamline your sports club with flexible bookings, member management, and automated tournaments.' },
       { property: 'og:type', content: 'website' },
       { property: 'og:image', content: '/icons/icon-512.png' },

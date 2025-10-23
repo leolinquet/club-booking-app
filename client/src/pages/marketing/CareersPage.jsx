@@ -89,7 +89,7 @@ export default function CareersPage() {
     'Top-tier equipment and workspace setup',
     'Unlimited PTO policy',
     'Team retreats and sports events',
-    'Free Club Booking platform access for personal use'
+    'Free SportsClubNet platform access for personal use'
   ];
 
   return (
@@ -164,12 +164,12 @@ export default function CareersPage() {
               We're Hiring Soon!
             </h2>
             <p className="mt-6 text-lg leading-8 text-blue-100">
-              Club Booking is growing rapidly, and we're preparing to expand our team. 
+              SportsClubNet is growing rapidly, and we're preparing to expand our team. 
               While we don't have open positions right now, we're actively planning for several key roles.
             </p>
             <div className="mt-10">
               <a
-                href="mailto:careers@clubbooking.app?subject=Interest%20in%20Future%20Opportunities"
+                href="mailto:careers@sportsclubnet.com?subject=Interest%20in%20Future%20Opportunities"
                 className="rounded-md bg-white px-6 py-3 text-base font-semibold text-blue-600 shadow-sm hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 Get Notified About Openings
@@ -271,7 +271,7 @@ export default function CareersPage() {
             </p>
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
               <a
-                href="mailto:careers@clubbooking.app?subject=Career%20Opportunity%20Interest"
+                href="mailto:careers@sportsclubnet.com?subject=Career%20Opportunity%20Interest"
                 className="rounded-md bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               >
                 Send Us Your Resume
@@ -286,7 +286,7 @@ export default function CareersPage() {
             
             <div className="mt-12 text-sm text-gray-400">
               <p>Questions about working with us?</p>
-              <p>Email us at <a href="mailto:careers@clubbooking.app" className="text-blue-400 hover:text-blue-300">careers@clubbooking.app</a></p>
+              <p>Email us at <a href="mailto:careers@sportsclubnet.com" className="text-blue-400 hover:text-blue-300">careers@sportsclubnet.com</a></p>
             </div>
           </div>
         </div>

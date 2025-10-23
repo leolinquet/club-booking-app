@@ -5,7 +5,7 @@ export default function HelpPage() {
   return (
     <ComingSoonPage 
       title="Help Center"
-      description="Get help with Club Booking. Our comprehensive help center with guides and FAQs is coming soon."
+      description="Get help with SportsClubNet. Our comprehensive help center with guides and FAQs is coming soon."
     />
   );
 }

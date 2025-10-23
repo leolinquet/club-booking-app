@@ -6,19 +6,19 @@ import Footer from '../../components/marketing/Footer.jsx';
 // Article content database
 const articleContent = {
   1: {
-    title: 'Getting Started with Club Booking',
+    title: 'Getting Started with SportsClubNet',
     category: 'getting-started',
     readTime: '5 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <div style="background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%); padding: 2rem; border-radius: 1rem; margin-bottom: 2rem; border-left: 4px solid #3b82f6;">
-        <h2 style="margin-top: 0; color: #1e40af;">👋 Welcome to Club Booking!</h2>
-        <p>Club Booking is designed to make managing your sports club simple and efficient. Whether you're a club manager or a member looking to book courts, this comprehensive guide will help you get started quickly and confidently.</p>
+        <h2 style="margin-top: 0; color: #1e40af;">👋 Welcome to SportsClubNet!</h2>
+        <p>SportsClubNet is designed to make managing your sports club simple and efficient. Whether you're a club manager or a member looking to book courts, this comprehensive guide will help you get started quickly and confidently.</p>
       </div>
       
-      <h2>🏆 What is Club Booking?</h2>
-      <p>Club Booking is your all-in-one platform that transforms how sports clubs operate. Here's what makes us special:</p>
+      <h2>🏆 What is SportsClubNet?</h2>
+      <p>SportsClubNet is your all-in-one platform that transforms how sports clubs operate. Here's what makes us special:</p>
       
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 1.5rem 0;">
         <div style="background: #f9fafb; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid #e5e7eb;">
@@ -69,7 +69,7 @@ const articleContent = {
       </div>
       
       <h2>🎭 Understanding User Roles</h2>
-      <p>Club Booking has two main user types, each with specific capabilities:</p>
+      <p>SportsClubNet has two main user types, each with specific capabilities:</p>
       
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin: 2rem 0;">
         <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 2rem; border-radius: 1rem; border: 1px solid #f59e0b;">
@@ -130,7 +130,7 @@ const articleContent = {
       </div>
       
       <div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); padding: 2rem; border-radius: 1rem; border-left: 4px solid #10b981; margin: 2rem 0;">
-        <h3 style="margin-top: 0; color: #047857;">🎉 Welcome to the Club Booking Community!</h3>
+        <h3 style="margin-top: 0; color: #047857;">🎉 Welcome to the SportsClubNet Community!</h3>
         <p style="margin-bottom: 0; color: #047857;">We're excited to have you on board! Our team is here to help make your club management experience as smooth and enjoyable as possible. Don't hesitate to reach out if you need any assistance.</p>
       </div>
     `
@@ -140,13 +140,13 @@ const articleContent = {
     category: 'getting-started',
     readTime: '3 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <h2>Creating or Joining a Club</h2>
-      <p>Once you have a Club Booking account, you'll need to either join an existing club or create a new one. Here's how to do both.</p>
+      <p>Once you have a SportsClubNet account, you'll need to either join an existing club or create a new one. Here's how to do both.</p>
       
       <h3>Joining an Existing Club</h3>
-      <p>If your club is already using Club Booking, you can join with an invitation:</p>
+      <p>If your club is already using SportsClubNet, you can join with an invitation:</p>
       <ol>
         <li><strong>Get an invitation:</strong> Ask your club manager for an invitation code or link.</li>
         <li><strong>Use the invitation:</strong> Click the invitation link or enter the code when prompted.</li>
@@ -154,7 +154,7 @@ const articleContent = {
       </ol>
       
       <h3>Creating a New Club</h3>
-      <p>If you're a club manager setting up Club Booking for the first time:</p>
+      <p>If you're a club manager setting up SportsClubNet for the first time:</p>
       <ol>
         <li><strong>Choose "Create a Club":</strong> From your dashboard, select the option to create a new club.</li>
         <li><strong>Enter club details:</strong> Provide your club name, location, and description.</li>
@@ -184,7 +184,7 @@ const articleContent = {
     category: 'bookings',
     readTime: '4 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); padding: 2rem; border-radius: 1rem; margin-bottom: 2rem; border-left: 4px solid #10b981;">
         <h2 style="margin-top: 0; color: #047857;">🎾 Making Your First Court Booking</h2>
@@ -339,7 +339,7 @@ const articleContent = {
     category: 'bookings',
     readTime: '3 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <h2>How Time Slots and Availability Work</h2>
       <p>Understanding how our booking system organizes time slots will help you find the perfect court times for your games.</p>
@@ -393,7 +393,7 @@ const articleContent = {
     category: 'bookings',
     readTime: '2 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <h2>Managing Your Bookings</h2>
       <p>Plans change, and we make it easy to modify or cancel your court reservations when needed.</p>
@@ -446,7 +446,7 @@ const articleContent = {
     category: 'club-management',
     readTime: '6 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <h2>Manager Guide: Setting Up Courts and Sports</h2>
       <p>As a club manager, properly configuring your courts and sports is essential for smooth operations. This guide will walk you through the setup process.</p>
@@ -495,10 +495,10 @@ const articleContent = {
     category: 'members',
     readTime: '4 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <h2>Connecting with Fellow Club Members</h2>
-      <p>One of the best features of Club Booking is our ability to help you find playing partners and connect with other members. Here's how to make the most of our social features.</p>
+      <p>One of the best features of SportsClubNet is our ability to help you find playing partners and connect with other members. Here's how to make the most of our social features.</p>
       
       <h3>The "Looking for Partners" Feature</h3>
       <p>When making a booking, you can mark it as "Looking for Partners":</p>
@@ -530,7 +530,7 @@ const articleContent = {
       <h3>Club Messaging</h3>
       <p>Once you connect with someone:</p>
       <ul>
-        <li><strong>In-App Messaging:</strong> Chat directly through Club Booking</li>
+        <li><strong>In-App Messaging:</strong> Chat directly through SportsClubNet</li>
         <li><strong>Share Contact Info:</strong> Exchange phone numbers or emails if desired</li>
         <li><strong>Coordinate Details:</strong> Discuss game format, equipment, etc.</li>
         <li><strong>Set Expectations:</strong> Agree on skill level and game intensity</li>
@@ -581,10 +581,10 @@ const articleContent = {
     category: 'getting-started',
     readTime: '6 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <h2>Common Issues and Solutions</h2>
-      <p>Running into problems? Here are solutions to the most frequently encountered issues with Club Booking.</p>
+      <p>Running into problems? Here are solutions to the most frequently encountered issues with SportsClubNet.</p>
       
       <h3>Login and Account Issues</h3>
       
@@ -599,7 +599,7 @@ const articleContent = {
       <h4>Not Receiving Emails</h4>
       <ul>
         <li><strong>Check spam folder:</strong> Our emails might be filtered as spam</li>
-        <li><strong>Add to contacts:</strong> Add noreply@clubbooking.app to your contacts</li>
+        <li><strong>Add to contacts:</strong> Add noreply@sportsclubnet.com to your contacts</li>
         <li><strong>Check email address:</strong> Verify your email address is correct in settings</li>
         <li><strong>Corporate firewalls:</strong> Work emails may block external messages</li>
       </ul>
@@ -627,7 +627,7 @@ const articleContent = {
       <h4>App Running Slowly</h4>
       <ul>
         <li><strong>Close other apps:</strong> Free up memory by closing unused apps</li>
-        <li><strong>Restart the app:</strong> Close Club Booking completely and reopen</li>
+        <li><strong>Restart the app:</strong> Close SportsClubNet completely and reopen</li>
         <li><strong>Check internet connection:</strong> Ensure you have a stable connection</li>
         <li><strong>Update the app:</strong> Make sure you have the latest version</li>
       </ul>
@@ -704,7 +704,7 @@ const articleContent = {
         <li>You need to report inappropriate behavior</li>
       </ul>
       
-      <p>Our support team is here to help! Don't hesitate to reach out at <a href="/contact">support@clubbooking.app</a>.</p>
+      <p>Our support team is here to help! Don't hesitate to reach out at <a href="/contact">support@sportsclubnet.com</a>.</p>
     `
   },
   7: {
@@ -712,7 +712,7 @@ const articleContent = {
     category: 'club-management',
     readTime: '5 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 2rem; border-radius: 1rem; margin-bottom: 2rem; border-left: 4px solid #f59e0b;">
         <h2 style="margin-top: 0; color: #92400e;">👥 Managing Club Members and Permissions</h2>
@@ -751,7 +751,7 @@ const articleContent = {
       </div>
       
       <h2>🔐 Understanding Member Permissions</h2>
-      <p>Club Booking has a simple but effective permission system:</p>
+      <p>SportsClubNet has a simple but effective permission system:</p>
       
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin: 2rem 0;">
         <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 2rem; border-radius: 1rem; border: 1px solid #f59e0b;">
@@ -847,7 +847,7 @@ const articleContent = {
     category: 'club-management',
     readTime: '3 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <div style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); padding: 2rem; border-radius: 1rem; margin-bottom: 2rem; border-left: 4px solid #6366f1;">
         <h2 style="margin-top: 0; color: #3730a3;">📢 Club Announcements and Communications</h2>
@@ -980,7 +980,7 @@ const articleContent = {
     category: 'members',
     readTime: '3 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 2rem; border-radius: 1rem; margin-bottom: 2rem; border-left: 4px solid #f59e0b;">
         <h2 style="margin-top: 0; color: #92400e;">💬 Club Messaging and Chat Features</h2>
@@ -1101,7 +1101,7 @@ const articleContent = {
     category: 'club-management',
     readTime: '6 min read',
     lastUpdated: 'October 20, 2025',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     content: `
       <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 2rem; border-radius: 1rem; margin-bottom: 2rem; border-left: 4px solid #f59e0b;">
         <h2 style="margin-top: 0; color: #92400e;">🏆 Tournament Management System</h2>
@@ -1109,7 +1109,7 @@ const articleContent = {
       </div>
       
       <h2>🎾 Creating Your First Tournament</h2>
-      <p>Setting up a tournament in Club Booking is straightforward and powerful:</p>
+      <p>Setting up a tournament in SportsClubNet is straightforward and powerful:</p>
       
       <div style="background: #f8fafc; padding: 2rem; border-radius: 1rem; border: 1px solid #cbd5e1; margin: 1.5rem 0;">
         <div style="counter-reset: step;">
@@ -1230,7 +1230,7 @@ const articleContent = {
     category: 'club-management',
     readTime: '4 min read',
     lastUpdated: 'Coming Soon',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     comingSoon: true,
     content: `
       <div style="background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); padding: 2rem; border-radius: 1rem; margin-bottom: 2rem; border-left: 4px solid #6366f1; opacity: 0.8;">
@@ -1249,12 +1249,12 @@ const articleContent = {
     category: 'getting-started',
     readTime: '5 min read',
     lastUpdated: 'Coming Soon',
-    author: 'Club Booking Team',
+    author: 'SportsClubNet Team',
     comingSoon: true,
     content: `
       <div style="background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); padding: 2rem; border-radius: 1rem; margin-bottom: 2rem; border-left: 4px solid #10b981; opacity: 0.8;">
         <h2 style="margin-top: 0; color: #047857;">📱 Mobile App Features Guide <span style="background: #10b981; color: white; padding: 0.25rem 0.75rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 500; margin-left: 1rem;">🚧 Coming Soon</span></h2>
-        <p style="color: #047857;">Learn about our upcoming mobile app features and how to make the most of Club Booking on your smartphone or tablet.</p>
+        <p style="color: #047857;">Learn about our upcoming mobile app features and how to make the most of SportsClubNet on your smartphone or tablet.</p>
       </div>
       
       <div style="text-align: center; padding: 3rem; opacity: 0.6;">

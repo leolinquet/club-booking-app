@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Club Booking",
-  "short_name": "ClubBooking",
+  "name": "SportsClubNet",
+  "short_name": "SportsClubNet",
   "description": "Book courts, run tournaments, track rankings.",
   "start_url": "/",
   "scope": "/",

@@ -12,7 +12,7 @@ export default function Footer() {
     company: [
       { name: 'About', href: '/about', external: false },
       { name: 'Blog', href: '/blog', external: false },
-      { name: 'Contact', href: 'mailto:support@clubbooking.app', external: true },
+      { name: 'Contact', href: 'mailto:support@sportsclubnet.com', external: true },
     ],
     resources: [
       { name: 'Help Center', href: '/help-center', external: false },
@@ -37,7 +37,7 @@ export default function Footer() {
           <div className="space-y-8">
             <div>
               <span className="text-2xl font-bold text-white">
-                Club Booking
+                SportsClubNet
               </span>
               <p className="text-sm leading-6 text-gray-300 mt-4">
                 The all-in-one platform for sports club management. 
@@ -47,7 +47,7 @@ export default function Footer() {
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-sm text-gray-300">
                 <Mail className="h-4 w-4" />
-                <span>support@clubbooking.app</span>
+                <span>support@sportsclubnet.com</span>
               </div>
               <div className="flex items-center gap-3 text-sm text-gray-300">
                 <Phone className="h-4 w-4" />
@@ -128,7 +128,7 @@ export default function Footer() {
         </div>
         <div className="mt-16 border-t border-white/10 pt-8 sm:mt-20 lg:mt-24">
           <p className="text-xs leading-5 text-gray-400">
-            &copy; 2024 Club Booking App. All rights reserved.
+            &copy; 2024 SportsClubNet. All rights reserved.
           </p>
         </div>
       </div>

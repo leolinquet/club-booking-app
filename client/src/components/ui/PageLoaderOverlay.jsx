@@ -44,7 +44,7 @@ export const PageLoaderOverlay = ({
         
         {/* App Title */}
         <h1 className="text-2xl font-bold text-gray-900 mb-6">
-          Club Booking
+          SportsClubNet
         </h1>
         
         {/* Spinner */}

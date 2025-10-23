@@ -13,11 +13,11 @@ export default function TermsPage() {
       content: [
         {
           subtitle: "Agreement to Terms",
-          text: "By accessing and using Club Booking, you accept and agree to be bound by the terms and provision of this agreement. If you do not agree to abide by the above, please do not use this service."
+          text: "By accessing and using SportsClubNet, you accept and agree to be bound by the terms and provision of this agreement. If you do not agree to abide by the above, please do not use this service."
         },
         {
           subtitle: "Service Description",
-          text: "Club Booking is a web-based platform that provides sports club management tools, including court booking, member management, tournaments, and communication features."
+          text: "SportsClubNet is a web-based platform that provides sports club management tools, including court booking, member management, tournaments, and communication features."
         }
       ]
     },
@@ -47,7 +47,7 @@ export default function TermsPage() {
       content: [
         {
           subtitle: "Permitted Uses",
-          text: "You may use Club Booking for lawful purposes related to sports club management, booking facilities, and connecting with other club members."
+          text: "You may use SportsClubNet for lawful purposes related to sports club management, booking facilities, and connecting with other club members."
         },
         {
           subtitle: "Prohibited Activities",
@@ -108,7 +108,7 @@ export default function TermsPage() {
               </h1>
             </div>
             <p className="text-xl leading-8 text-gray-600">
-              These terms govern your use of Club Booking. By using our service, 
+              These terms govern your use of SportsClubNet. By using our service, 
               you agree to be bound by these terms and conditions.
             </p>
             <p className="mt-4 text-sm text-gray-500">
@@ -127,7 +127,7 @@ export default function TermsPage() {
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 mb-12">
               <h2 className="text-xl font-semibold text-yellow-900 mb-3">Terms Summary</h2>
               <ul className="text-yellow-800 space-y-2">
-                <li>• You must be authorized to use Club Booking on behalf of your club</li>
+                <li>• You must be authorized to use SportsClubNet on behalf of your club</li>
                 <li>• You're responsible for maintaining account security and appropriate use</li>
                 <li>• Bookings are subject to club policies and platform availability</li>
                 <li>• We provide the service "as is" with reasonable effort for reliability</li>
@@ -167,16 +167,16 @@ export default function TermsPage() {
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Liability and Disclaimers</h2>
               <div className="space-y-4 text-gray-700">
                 <p>
-                  <strong>Service "As Is":</strong> Club Booking is provided on an "as is" basis. 
+                  <strong>Service "As Is":</strong> SportsClubNet is provided on an "as is" basis. 
                   We make no warranties, expressed or implied, and hereby disclaim all other warranties.
                 </p>
                 <p>
-                  <strong>Limitation of Liability:</strong> In no event shall Club Booking be liable 
+                  <strong>Limitation of Liability:</strong> In no event shall SportsClubNet be liable 
                   for any indirect, incidental, special, consequential, or punitive damages arising 
                   out of your use of the service.
                 </p>
                 <p>
-                  <strong>Indemnification:</strong> You agree to indemnify and hold harmless Club Booking 
+                  <strong>Indemnification:</strong> You agree to indemnify and hold harmless SportsClubNet 
                   from any claims, damages, or expenses arising from your use of the service or violation 
                   of these terms.
                 </p>
@@ -191,7 +191,7 @@ export default function TermsPage() {
                 we will notify users through the platform and update the "Last updated" date above.
               </p>
               <p className="text-gray-700">
-                Your continued use of Club Booking after any changes constitutes acceptance 
+                Your continued use of SportsClubNet after any changes constitutes acceptance 
                 of the updated terms.
               </p>
             </div>
@@ -212,7 +212,7 @@ export default function TermsPage() {
                   Contact Us
                 </a>
                 <a
-                  href="mailto:legal@clubbooking.app"
+                  href="mailto:legal@sportsclubnet.com"
                   className="border border-gray-300 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-50 font-medium"
                 >
                   Email Legal Team

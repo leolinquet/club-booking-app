@@ -113,7 +113,7 @@ export default function PrivacyPage() {
             </div>
             <p className="text-xl leading-8 text-gray-600">
               Your privacy is important to us. This policy explains how we collect, 
-              use, and protect your information when you use Club Booking.
+              use, and protect your information when you use SportsClubNet.
             </p>
             <p className="mt-4 text-sm text-gray-500">
               Last updated: {lastUpdated}
@@ -206,7 +206,7 @@ export default function PrivacyPage() {
                   Contact Us
                 </a>
                 <a
-                  href="mailto:privacy@clubbooking.app"
+                  href="mailto:privacy@sportsclubnet.com"
                   className="border border-gray-300 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-50 font-medium"
                 >
                   Email Privacy Team
