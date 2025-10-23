@@ -1,6 +1,6 @@
-# Multi-Sport Club Booking App
+# SportsClubNet
 
-A comprehensive booking system for sports clubs with real-time chat, user management, and automated database protection.
+A comprehensive booking and management system for sports clubs with real-time chat, user management, and automated database protection.
 
 ## 🚀 Quick Start
 
@@ -124,13 +124,14 @@ The app includes automatic protection against data loss:
 
 ## 📋 Features
 
-- 🏟️ Multi-sport club management
-- 📅 Court booking system
-- 💬 Real-time chat conversations
+- 🏟️ Multi-sport club management (Tennis, Basketball, Soccer, Pickleball, and more)
+- 📅 Court/field booking system with real-time availability
+- 💬 Real-time chat conversations between members
 - 👥 User management and authentication
 - 🔔 Unread message notifications
-- 📊 Database health monitoring
-- 🛡️ Automated backup system
+- 🏆 Tournament management with bracket generation
+- 📊 Rankings and leaderboards
+- 🛡️ Automated database backup system
 - 🚀 Production deployment tools
 
 ## 🚨 Emergency Procedures

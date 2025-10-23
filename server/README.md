@@ -1,4 +1,4 @@
-# Club Booking Server
+# SportsClubNet Server
 
 Run:
 ```
@@ -6,7 +6,7 @@ cd server
 npm install
 npm start
 ```
-Server on http://localhost:4000
+Server on http://localhost:5051
 
 Migrations:
 - The repository contains a migration runner at `server/migrate.mjs` which will apply SQL files in `server/migrations/`.

@@ -3,7 +3,7 @@ import 'dotenv/config'
 import nodemailer from 'nodemailer'
 
 export const emailFrom =
-  process.env.EMAIL_FROM || 'Club Booking <no-reply@dev.local>'
+  process.env.EMAIL_FROM || 'SportsClubNet <no-reply@dev.local>'
 
 // choose backend: Resend if key is present, otherwise Ethereal
 let resendClient = null

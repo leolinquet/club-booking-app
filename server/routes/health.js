@@ -55,7 +55,7 @@ router.get('/db', async (req, res) => {
 router.get('/', (req, res) => {
   res.json({
     status: 'healthy',
-    service: 'club-booking-api',
+    service: 'sportsclubnet-api',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
