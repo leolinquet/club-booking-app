@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generate PWA Icons</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        .preview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .preview-item {
+            text-align: center;
+        }
+        .preview-item canvas {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: white;
+        }
+        .preview-item p {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+        button {
+            background: #0ea5e9;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #0284c7;
+        }
+        .success {
+            background: #4caf50;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Generate PWA Homescreen Icons</h1>
+        <div class="status" id="status">
+            Ready to generate icons from sportsclubnet-high-resolution-logo.png
+        </div>
+        
+        <button onclick="generateIcons()">Generate All Icons</button>
+        
+        <div class="preview" id="preview"></div>
+        
+        <div id="downloads"></div>
+    </div>
+
+    <script>
+        const icons = [
+            { name: 'web-app-manifest-192x192.png', size: 192, circular: true },
+            { name: 'web-app-manifest-512x512.png', size: 512, circular: true },
+            { name: 'apple-touch-icon.png', size: 180, circular: false }
+        ];
+
+        async function generateIcons() {
+            const statusEl = document.getElementById('status');
+            const previewEl = document.getElementById('preview');
+            const downloadsEl = document.getElementById('downloads');
+            
+            previewEl.innerHTML = '';
+            downloadsEl.innerHTML = '';
+            statusEl.textContent = 'Loading logo...';
+            
+            try {
+                // Load the source image
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = () => reject(new Error('Failed to load logo'));
+                    img.src = '/public/sportsclubnet-high-resolution-logo.png';
+                });
+                
+                statusEl.textContent = 'Generating icons...';
+                
+                // Generate each icon
+                for (const icon of icons) {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = icon.size;
+                    canvas.height = icon.size;
+                    
+                    // Fill with transparent background
+                    ctx.clearRect(0, 0, icon.size, icon.size);
+                    
+                    if (icon.circular) {
+                        // Create circular clipping path
+                        ctx.save();
+                        ctx.beginPath();
+                        ctx.arc(icon.size / 2, icon.size / 2, icon.size / 2, 0, Math.PI * 2);
+                        ctx.closePath();
+                        ctx.clip();
+                    }
+                    
+                    // Draw the logo centered and scaled to fit
+                    const padding = icon.size * 0.1; // 10% padding
+                    const availableSize = icon.size - (padding * 2);
+                    ctx.drawImage(img, padding, padding, availableSize, availableSize);
+                    
+                    if (icon.circular) {
+                        ctx.restore();
+                    }
+                    
+                    // Add to preview
+                    const previewItem = document.createElement('div');
+                    previewItem.className = 'preview-item';
+                    
+                    const previewCanvas = canvas.cloneNode();
+                    const previewCtx = previewCanvas.getContext('2d');
+                    previewCtx.drawImage(canvas, 0, 0);
+                    previewCanvas.style.width = '120px';
+                    previewCanvas.style.height = '120px';
+                    
+                    const label = document.createElement('p');
+                    label.textContent = `${icon.name}\n${icon.size}×${icon.size}`;
+                    
+                    previewItem.appendChild(previewCanvas);
+                    previewItem.appendChild(label);
+                    previewEl.appendChild(previewItem);
+                    
+                    // Create download link
+                    canvas.toBlob(blob => {
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = icon.name;
+                        link.textContent = `Download ${icon.name}`;
+                        link.style.display = 'block';
+                        link.style.margin = '10px 0';
+                        link.style.color = '#0ea5e9';
+                        downloadsEl.appendChild(link);
+                    });
+                }
+                
+                statusEl.className = 'success';
+                statusEl.textContent = '✅ All icons generated! Click the download links below and save them to client/public/';
+                
+            } catch (error) {
+                statusEl.style.background = '#f44336';
+                statusEl.style.color = 'white';
+                statusEl.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
