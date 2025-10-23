@@ -24,7 +24,7 @@ export default function ContactPage() {
       `Message:\n${formData.message}`
     );
     
-    window.location.href = `mailto:support@clubbooking.app?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:support@sportsclubnet.com?subject=${subject}&body=${body}`;
     setIsSubmitted(true);
   };
 
@@ -40,16 +40,16 @@ export default function ContactPage() {
       icon: Mail,
       title: 'Email Support',
       description: 'Get help with your account, billing, or technical issues.',
-      contact: 'support@clubbooking.app',
-      action: 'mailto:support@clubbooking.app',
+      contact: 'support@sportsclubnet.com',
+      action: 'mailto:support@sportsclubnet.com',
       responseTime: 'Usually responds within 24 hours'
     },
     {
       icon: MessageCircle,
       title: 'Sales Inquiries',
       description: 'Questions about pricing, features, or setting up your club.',
-      contact: 'sales@clubbooking.app',
-      action: 'mailto:sales@clubbooking.app',
+      contact: 'sales@sportsclubnet.com',
+      action: 'mailto:sales@sportsclubnet.com',
       responseTime: 'Usually responds within 4 hours'
     },
     {
@@ -106,7 +106,7 @@ export default function ContactPage() {
               Get in Touch
             </h1>
             <p className="mt-6 text-lg leading-8 text-gray-600">
-              Have questions about Club Booking? Need help getting started? 
+              Have questions about SportsClubNet? Need help getting started? 
               Our team is here to support you every step of the way.
             </p>
           </div>
@@ -175,7 +175,7 @@ export default function ContactPage() {
                 </h3>
                 <p className="text-green-700">
                   Your email client should have opened with your message. 
-                  If not, you can email us directly at support@clubbooking.app
+                  If not, you can email us directly at support@sportsclubnet.com
                 </p>
               </div>
             ) : (
@@ -288,7 +288,7 @@ export default function ContactPage() {
               Frequently Asked Questions
             </h2>
             <p className="mt-4 text-lg text-gray-600">
-              Quick answers to common questions about Club Booking
+              Quick answers to common questions about SportsClubNet
             </p>
           </div>
 
@@ -310,7 +310,7 @@ export default function ContactPage() {
               Don't see your question here?
             </p>
             <a
-              href="mailto:support@clubbooking.app"
+              href="mailto:support@sportsclubnet.com"
               className="text-blue-600 hover:text-blue-800 font-semibold"
             >
               Ask us directly →

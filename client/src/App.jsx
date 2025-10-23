@@ -637,7 +637,7 @@ function AuthenticatedApp() {
               className="text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-black/20 rounded px-1 hover:text-gray-600 transition-colors"
               aria-label="Go to landing page"
             >
-              Club Booking
+              SportsClubNet
             </a>
           </div>
         </header>
@@ -734,7 +734,7 @@ function AuthenticatedApp() {
             </div>
             <div className="mt-8 border-t border-white/10 pt-6">
               <p className="text-xs leading-5 text-gray-400">
-                &copy; 2024 Club Booking App. All rights reserved.
+                &copy; 2024 SportsClubNet. All rights reserved.
               </p>
             </div>
           </div>

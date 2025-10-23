@@ -27,7 +27,7 @@ export default function BlogPage() {
       date: '2024-12-05',
       readTime: '7 min read',
       category: 'Tournaments',
-      author: 'Club Booking Team'
+      author: 'SportsClubNet Team'
     },
     {
       title: 'Why Digital Court Booking Beats Paper Schedules Every Time',
@@ -43,7 +43,7 @@ export default function BlogPage() {
       date: '2024-11-20',
       readTime: '4 min read',
       category: 'Community Building',
-      author: 'Club Booking Team'
+      author: 'SportsClubNet Team'
     },
     {
       title: 'Revenue Optimization for Sports Clubs: Beyond Just Court Fees',
@@ -119,7 +119,7 @@ export default function BlogPage() {
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <a
-                href="mailto:support@clubbooking.app?subject=Blog%20Notifications"
+                href="mailto:support@sportsclubnet.com?subject=Blog%20Notifications"
                 className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium"
               >
                 Get Notified When We Launch
@@ -237,7 +237,7 @@ export default function BlogPage() {
             </p>
             <div className="mt-8">
               <a
-                href="mailto:support@clubbooking.app?subject=Blog%20Newsletter%20Signup"
+                href="mailto:support@sportsclubnet.com?subject=Blog%20Newsletter%20Signup"
                 className="inline-flex items-center rounded-md bg-blue-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               >
                 Subscribe for Updates

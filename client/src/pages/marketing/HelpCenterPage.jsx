@@ -18,7 +18,7 @@ export default function HelpCenterPage() {
   const articles = [
     {
       id: 1,
-      title: 'Getting Started with Club Booking',
+      title: 'Getting Started with SportsClubNet',
       category: 'getting-started',
       excerpt: 'Learn the basics of setting up your club and making your first booking.',
       readTime: '5 min read',
@@ -179,7 +179,7 @@ export default function HelpCenterPage() {
               How can we help you?
             </h1>
             <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-              Find answers, learn features, and get the most out of Club Booking with our comprehensive help resources.
+              Find answers, learn features, and get the most out of SportsClubNet with our comprehensive help resources.
             </p>
           </div>
           
@@ -207,7 +207,7 @@ export default function HelpCenterPage() {
               Get started quickly
             </h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Jump right into the most important topics to get up and running with Club Booking
+              Jump right into the most important topics to get up and running with SportsClubNet
             </p>
           </div>
 
@@ -436,7 +436,7 @@ export default function HelpCenterPage() {
             Still need help?
           </h2>
           <p className="text-lg text-gray-600 mb-12 max-w-2xl mx-auto">
-            Can't find what you're looking for? We're here to help you succeed with Club Booking.
+            Can't find what you're looking for? We're here to help you succeed with SportsClubNet.
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -489,7 +489,7 @@ export default function HelpCenterPage() {
                   Video Tutorials
                 </h3>
                 <p className="text-gray-600 mb-6 leading-relaxed">
-                  Watch step-by-step video guides to learn Club Booking features visually.
+                  Watch step-by-step video guides to learn SportsClubNet features visually.
                 </p>
                 <a
                   href="/help-center/article/1"

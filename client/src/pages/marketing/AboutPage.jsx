@@ -57,7 +57,7 @@ export default function AboutPage() {
         <div className="mx-auto max-w-7xl px-6 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-6xl">
-              About Club Booking
+              About SportsClubNet
             </h1>
             <p className="mt-6 text-lg leading-8 text-gray-600">
               We're on a mission to transform how sports clubs operate, making management 
@@ -76,7 +76,7 @@ export default function AboutPage() {
             </h2>
             <div className="prose prose-lg text-gray-600 space-y-6">
               <p>
-                Club Booking was born from a simple observation during our founder Leo's childhood at a 
+                SportsClubNet was born from a simple observation during our founder Leo's childhood at a 
                 local tennis club. The club was buzzing with activity and potential, but everything was 
                 unorganized—not from lack of care, but from the limitations of the time.
               </p>
@@ -100,14 +100,14 @@ export default function AboutPage() {
                 thrive and connect.
               </p>
               <p>
-                Today, Club Booking serves sports clubs worldwide, turning what began as a booking solution 
+                Today, SportsClubNet serves sports clubs worldwide, turning what began as a booking solution 
                 into a complete sports club transformation. Players can reserve courts from their phones, 
                 join tournaments with ease, track their progress through rankings, and discover new 
                 hitting partners who share their love of the game.
               </p>
               <p>
                 What we've learned is that great club software isn't just about efficiency—it's about 
-                amplifying the human connections that make sports communities special. Club Booking 
+                amplifying the human connections that make sports communities special. SportsClubNet 
                 started as a booking idea, but it became something that changes how sports clubs operate 
                 and how players experience their favorite sports.
               </p>
@@ -195,7 +195,7 @@ export default function AboutPage() {
               Ready to transform your club?
             </h2>
             <p className="mt-6 text-lg leading-8 text-blue-100">
-              Join thousands of clubs worldwide who trust Club Booking for their daily operations.
+              Join thousands of clubs worldwide who trust SportsClubNet for their daily operations.
             </p>
             <div className="mt-10 flex items-center justify-center gap-x-6">
               <a
@@ -205,7 +205,7 @@ export default function AboutPage() {
                 Get Started Free
               </a>
               <a 
-                href="mailto:support@clubbooking.app" 
+                href="mailto:support@sportsclubnet.com" 
                 className="text-base font-semibold leading-6 text-white hover:text-blue-100"
               >
                 Contact Us <span aria-hidden="true">→</span>

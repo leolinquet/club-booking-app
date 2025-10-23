@@ -46,7 +46,7 @@ export default function ApiDocsPage() {
   const endpoints = {
     auth: {
       title: 'Authentication',
-      description: 'Club Booking API uses JWT tokens for authentication. Include your token in the Authorization header.',
+      description: 'SportsClubNet API uses JWT tokens for authentication. Include your token in the Authorization header.',
       content: (
         <div className="space-y-6">
           <div>
@@ -362,7 +362,7 @@ const data = await response.json();`}
               </h1>
             </div>
             <p className="text-xl leading-8 text-gray-300">
-              Build powerful integrations with the Club Booking API. 
+              Build powerful integrations with the SportsClubNet API. 
               Manage bookings, clubs, and members programmatically.
             </p>
             

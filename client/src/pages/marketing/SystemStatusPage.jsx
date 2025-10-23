@@ -40,7 +40,7 @@ export default function SystemStatusPage() {
   const services = [
     {
       name: 'Web Application',
-      description: 'Main Club Booking web application',
+      description: 'Main SportsClubNet web application',
       status: 'operational',
       icon: Globe,
       uptime: '99.98%',
@@ -205,7 +205,7 @@ export default function SystemStatusPage() {
               </h1>
             </div>
             <p className="text-xl leading-8 text-gray-600 mb-8">
-              Real-time status and performance metrics for Club Booking services.
+              Real-time status and performance metrics for SportsClubNet services.
             </p>
 
             {/* Overall Status */}
@@ -233,7 +233,7 @@ export default function SystemStatusPage() {
               Service Status
             </h2>
             <p className="mt-4 text-lg text-gray-600">
-              Current status of all Club Booking services and components
+              Current status of all SportsClubNet services and components
             </p>
           </div>
 
@@ -381,7 +381,7 @@ export default function SystemStatusPage() {
         <div className="mx-auto max-w-7xl px-6 lg:px-8">
           <div className="text-center">
             <p className="text-gray-400 text-sm">
-              Status page powered by Club Booking • Last updated: {lastUpdated.toLocaleString()}
+              Status page powered by SportsClubNet • Last updated: {lastUpdated.toLocaleString()}
             </p>
             <div className="mt-4 flex justify-center space-x-6 text-sm">
               <a href="/help" className="text-gray-400 hover:text-white">Help Center</a>

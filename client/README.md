@@ -1,4 +1,4 @@
-# Club Booking Client
+# SportsClubNet Client
 
 Run:
 ```

@@ -33,7 +33,7 @@ export default function CommunityPage() {
     {
       id: 2,
       title: 'New Tournament Management Features Coming Soon!',
-      author: 'Club Booking Team',
+      author: 'SportsClubNet Team',
       authorRole: 'Staff',
       category: 'announcements',
       replies: 15,
@@ -54,7 +54,7 @@ export default function CommunityPage() {
       views: 756,
       timeAgo: '1 week ago',
       isPinned: false,
-      excerpt: 'Has anyone successfully integrated Club Booking with Google Calendar or Outlook? Looking for tips on syncing court bookings...'
+      excerpt: 'Has anyone successfully integrated SportsClubNet with Google Calendar or Outlook? Looking for tips on syncing court bookings...'
     }
   ];
 
@@ -205,7 +205,7 @@ export default function CommunityPage() {
               </h1>
             </div>
             <p className="text-xl leading-8 text-blue-100 mb-8">
-              Connect with club managers, share experiences, and get help from the Club Booking community.
+              Connect with club managers, share experiences, and get help from the SportsClubNet community.
             </p>
             
             <div className="bg-blue-800/50 backdrop-blur-sm rounded-xl p-6 mb-8">
@@ -237,7 +237,7 @@ export default function CommunityPage() {
               Growing Community
             </h2>
             <p className="mt-4 text-lg text-gray-600">
-              Join thousands of club managers and members already using Club Booking
+              Join thousands of club managers and members already using SportsClubNet
             </p>
           </div>
 

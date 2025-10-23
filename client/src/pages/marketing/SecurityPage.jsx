@@ -259,7 +259,7 @@ export default function SecurityPage() {
                 </p>
                 <ul className="list-disc list-inside space-y-2 ml-4">
                   <li>Change your password immediately</li>
-                  <li>Contact us at <a href="mailto:security@clubbooking.app" className="text-orange-600 hover:text-orange-800 underline">security@clubbooking.app</a></li>
+                  <li>Contact us at <a href="mailto:security@sportsclubnet.com" className="text-orange-600 hover:text-orange-800 underline">security@sportsclubnet.com</a></li>
                   <li>Document any suspicious activity</li>
                   <li>Inform your club manager if you're a member</li>
                 </ul>
@@ -290,7 +290,7 @@ export default function SecurityPage() {
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-3">Please Do:</h3>
                   <ul className="space-y-2 text-gray-700 text-sm">
-                    <li>• Email us at security@clubbooking.app</li>
+                    <li>• Email us at security@sportsclubnet.com</li>
                     <li>• Provide detailed steps to reproduce</li>
                     <li>• Allow reasonable time for us to respond</li>
                     <li>• Avoid accessing or modifying user data</li>
@@ -308,7 +308,7 @@ export default function SecurityPage() {
               </div>
               <div className="mt-8">
                 <a
-                  href="mailto:security@clubbooking.app"
+                  href="mailto:security@sportsclubnet.com"
                   className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-medium"
                 >
                   Report Security Issue

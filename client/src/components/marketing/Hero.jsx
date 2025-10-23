@@ -10,7 +10,7 @@ export default function Hero() {
           <div className="flex w-full items-center justify-between border-b border-gray-200 py-6">
             <div className="flex items-center">
               <a href="#" className="text-2xl font-bold text-gray-900">
-                Club Booking
+                SportsClubNet
               </a>
             </div>
             <div className="ml-10 space-x-8 lg:block">
