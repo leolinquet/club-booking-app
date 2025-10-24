@@ -4,27 +4,54 @@ import { Mail, Phone, MapPin } from 'lucide-react';
 export default function Footer() {
   const navigation = {
     product: [
-      { name: 'Features', href: '#features' },
-      { name: 'How It Works', href: '#how-it-works' },
-      { name: 'Pricing', href: '/app', external: false }, // Direct to app for now
-      { name: 'Demo', href: '/app', external: false }, // Direct to app for demo
+      { name: 'Features', href: '#features', type: 'anchor' },
+      { name: 'How It Works', href: '#how-it-works', type: 'anchor' },
+      { name: 'Pricing', href: '/app', type: 'app' },
+      { name: 'Demo', href: '/app', type: 'app' },
     ],
     company: [
-      { name: 'About', href: '/about', external: false },
-      { name: 'Blog', href: '/blog', external: false },
-      { name: 'Contact', href: 'mailto:support@sportsclubnet.com', external: true },
+      { name: 'About', href: '/about', type: 'page' },
+      { name: 'Blog', href: '/blog', type: 'page' },
+      { name: 'Contact', href: 'mailto:support@sportsclubnet.com', type: 'external' },
     ],
     resources: [
-      { name: 'Help Center', href: '/help-center', external: false },
-      { name: 'System Status', href: '/status', external: false },
-      { name: 'Community', href: '/community', external: false },
+      { name: 'Help Center', href: '/help-center', type: 'page' },
+      { name: 'System Status', href: '/status', type: 'page' },
+      { name: 'Community', href: '/community', type: 'page' },
     ],
     legal: [
-      { name: 'Privacy', href: '/privacy', external: false },
-      { name: 'Terms', href: '/terms', external: false },
-      { name: 'Security', href: '/security', external: false },
-      { name: 'Cookies', href: '/cookies', external: false },
+      { name: 'Privacy', href: '/privacy', type: 'page' },
+      { name: 'Terms', href: '/terms', type: 'page' },
+      { name: 'Security', href: '/security', type: 'page' },
+      { name: 'Cookies', href: '/cookies', type: 'page' },
     ],
+  };
+
+  const handleClick = (e, item) => {
+    if (item.type === 'anchor') {
+      // Anchor links on same page - allow default behavior
+      return;
+    }
+    
+    if (item.type === 'external') {
+      // External links (mailto, etc.) - allow default behavior
+      return;
+    }
+    
+    if (item.type === 'app') {
+      // Navigate to app
+      e.preventDefault();
+      window.history.pushState({}, '', '/app');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      return;
+    }
+    
+    if (item.type === 'page') {
+      // Navigate to the page
+      e.preventDefault();
+      window.location.href = item.href;
+      return;
+    }
   };
 
   return (
@@ -68,7 +95,8 @@ export default function Footer() {
                     <li key={item.name}>
                       <a
                         href={item.href}
-                        className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200"
+                        onClick={(e) => handleClick(e, item)}
+                        className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200 cursor-pointer"
                       >
                         {item.name}
                       </a>
@@ -83,7 +111,8 @@ export default function Footer() {
                     <li key={item.name}>
                       <a
                         href={item.href}
-                        className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200"
+                        onClick={(e) => handleClick(e, item)}
+                        className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200 cursor-pointer"
                       >
                         {item.name}
                       </a>
@@ -100,7 +129,8 @@ export default function Footer() {
                     <li key={item.name}>
                       <a
                         href={item.href}
-                        className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200"
+                        onClick={(e) => handleClick(e, item)}
+                        className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200 cursor-pointer"
                       >
                         {item.name}
                       </a>
@@ -115,7 +145,8 @@ export default function Footer() {
                     <li key={item.name}>
                       <a
                         href={item.href}
-                        className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200"
+                        onClick={(e) => handleClick(e, item)}
+                        className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200 cursor-pointer"
                       >
                         {item.name}
                       </a>

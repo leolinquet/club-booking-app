@@ -13,6 +13,17 @@ import FloatingHelpButton from './FloatingHelpButton.jsx';
 import { PageLoaderOverlay } from './components/ui/PageLoaderOverlay';
 import { Skeleton, SkeletonCard, SkeletonText } from './components/ui/Skeleton';
 import { useFetch } from './hooks/useFetch';
+import Footer from './components/marketing/Footer';
+import LandingPage from './pages/LandingPage';
+import AboutPage from './pages/marketing/AboutPage';
+import BlogPage from './pages/marketing/BlogPage';
+import HelpCenterPage from './pages/marketing/HelpCenterPage';
+import SystemStatusPage from './pages/marketing/SystemStatusPage';
+import CommunityPage from './pages/marketing/CommunityPage';
+import PrivacyPage from './pages/marketing/PrivacyPage';
+import TermsPage from './pages/marketing/TermsPage';
+import SecurityPage from './pages/marketing/SecurityPage';
+import CookiePage from './pages/marketing/CookiePage';
 
 const safeParse = (s) => {
   try { return JSON.parse(s); } catch { return null; }
@@ -190,6 +201,11 @@ export default function App(){
     };
   }, []);
 
+  // Simple routing: check current path
+  const [currentPage, setCurrentPage] = useState(() => {
+    return window.location.pathname;
+  });
+
   const [user, setUser] = useState(() => safeParse(localStorage.getItem('user')));
   const [club, setClub] = useState(null); // Don't initialize from localStorage here - we'll load it based on user
   const [userClubs, setUserClubs] = useState([]); // List of clubs user belongs to
@@ -197,6 +213,16 @@ export default function App(){
   const [requestsModalOpen, setRequestsModalOpen] = useState(false);
   const [selectedClubForModal, setSelectedClubForModal] = useState(null);
   const [appLoading, setAppLoading] = useState(true); // App initialization loading
+
+  // Handle URL changes for navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPage(window.location.pathname);
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Helper functions for user-specific localStorage
   function getUserClubKey(userId) {
@@ -608,11 +634,54 @@ export default function App(){
     }
   };
 
+  // Route to marketing pages (accessible whether logged in or not)
+  if (currentPage === '/about') return <AboutPage />;
+  if (currentPage === '/blog') return <BlogPage />;
+  if (currentPage === '/help-center') return <HelpCenterPage />;
+  if (currentPage === '/status') return <SystemStatusPage />;
+  if (currentPage === '/community') return <CommunityPage />;
+  if (currentPage === '/privacy') return <PrivacyPage />;
+  if (currentPage === '/terms') return <TermsPage />;
+  if (currentPage === '/security') return <SecurityPage />;
+  if (currentPage === '/cookies') return <CookiePage />;
+
+  // Show landing page if on root path and not logged in
+  if ((currentPage === '/' || currentPage === '') && (!user || !user.id)) {
+    return <LandingPage />;
+  }
+
   if (!user || !user.id) {
     return (
       <>
         <PageLoaderOverlay isVisible={appLoading} message="Initializing app..." />
-        <Auth onLogin={handleAuthed} onRegister={handleAuthed} />
+        <div className="min-h-screen flex flex-col">
+          {/* Header with logo */}
+          <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+            <div className="max-w-7xl mx-auto px-4 py-3">
+              <a 
+                href="/" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  window.location.href = '/';
+                }}
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+              >
+                <img 
+                  src="/sportsclubnet-high-resolution-logo.png" 
+                  alt="SportsClubNet Logo" 
+                  className="h-8 w-8"
+                />
+                <span className="font-bold text-xl">SportsClubNet</span>
+              </a>
+            </div>
+          </header>
+          
+          {/* Auth content */}
+          <Auth onLogin={handleAuthed} onRegister={handleAuthed} />
+          
+          {/* Footer - same as landing page */}
+          <Footer />
+        </div>
       </>
     );
   }
@@ -1114,7 +1183,7 @@ export function Auth({ onLogin, onRegister }) {
   // Handle verification-sent mode
   if (mode === "verification-sent") {
     return (
-      <div className="min-h-screen grid place-items-center p-4">
+      <div className="flex-1 grid place-items-center p-4">
         <div className="auth-form">
           <div className="form">
             <h2 className="title">Check Your Email</h2>
@@ -1143,7 +1212,7 @@ export function Auth({ onLogin, onRegister }) {
   }
 
   return (
-    <div className="min-h-screen grid place-items-center p-4">
+    <div className="flex-1 grid place-items-center p-4">
       <div className="auth-form">
         <div className="form">
           <h2 className="title">
