@@ -110,6 +110,9 @@ const allowed = new Set(
     'https://club-booking-app.onrender.com',
     // Add common variations
     'https://club-booking-app-client.onrender.com',
+    // Production domain
+    'https://www.sportsclubnet.com',
+    'https://sportsclubnet.com',
   ].filter(Boolean)
 );
 const allowOnrenderRegex = /^https:\/\/.+\.onrender\.com$/;

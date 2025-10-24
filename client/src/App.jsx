@@ -59,10 +59,10 @@ const API = (() => {
   const envBase = typeof import.meta !== 'undefined' ? (import.meta.env?.VITE_API_BASE || '') : '';
   let base = runtimeBase || envBase || 'http://localhost:5051';
 
-  // If hosted on Render, prefer the Render API URL unless explicitly overridden
+  // If hosted on Render or production domain, prefer the production API URL unless explicitly overridden
   try {
     const h = typeof window !== 'undefined' ? window.location.hostname : '';
-    if (/\.onrender\.com$/i.test(h) && (!runtimeBase || /localhost/.test(runtimeBase))) {
+    if ((/\.onrender\.com$/i.test(h) || /sportsclubnet\.com$/i.test(h)) && (!runtimeBase || /localhost/.test(runtimeBase))) {
       base = 'https://club-booking-app.onrender.com';
       if (typeof window !== 'undefined') window.API_BASE = base;
     }
