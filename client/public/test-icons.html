@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Icon Test - SportsClubNet</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0ea5e9;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+        .icon-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .icon-item {
+            text-align: center;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+        }
+        .icon-item img {
+            width: 100%;
+            max-width: 120px;
+            height: auto;
+            margin-bottom: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .icon-item .label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
+        .icon-item .size {
+            font-size: 11px;
+            color: #999;
+            margin-top: 4px;
+        }
+        .instructions {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #0ea5e9;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #0277bd;
+        }
+        .instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin: 8px 0;
+            color: #555;
+        }
+        .warning {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #ffc107;
+            margin: 20px 0;
+        }
+        .warning strong {
+            color: #856404;
+        }
+        .timestamp {
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 SportsClubNet Icons</h1>
+        <div class="subtitle">Preview of all homescreen icons</div>
+
+        <div class="icon-grid">
+            <div class="icon-item">
+                <img src="/apple-touch-icon.png?v=3" alt="iOS Icon">
+                <div class="label">iOS Homescreen</div>
+                <div class="size">180×180 PNG</div>
+            </div>
+            <div class="icon-item">
+                <img src="/web-app-manifest-192x192.png?v=3" alt="Android Icon">
+                <div class="label">Android (Small)</div>
+                <div class="size">192×192 PNG</div>
+            </div>
+            <div class="icon-item">
+                <img src="/web-app-manifest-512x512.png?v=3" alt="Android Icon Large">
+                <div class="label">Android (Large)</div>
+                <div class="size">512×512 PNG</div>
+            </div>
+        </div>
+
+        <div class="warning">
+            <strong>⚠️ Seeing the old logo above?</strong><br>
+            If these images show your old logo instead of the SportsClubNet logo, your browser is caching the old icons. Try:
+            <ul style="margin: 10px 0;">
+                <li>Hard refresh: Hold Shift and tap reload</li>
+                <li>Clear browser cache completely</li>
+                <li>Open in private/incognito mode</li>
+            </ul>
+        </div>
+
+        <div class="instructions">
+            <h3>📱 To Update Your Homescreen Icon:</h3>
+            
+            <strong>iOS (iPhone/iPad):</strong>
+            <ol>
+                <li>Delete the old SportsClubNet icon from your home screen (long press → Remove)</li>
+                <li>Close Safari completely (swipe up from home, swipe Safari away)</li>
+                <li>Open Safari and go to your app URL</li>
+                <li>Tap Share → "Add to Home Screen"</li>
+                <li>You should see the NEW logo in the preview</li>
+                <li>Tap "Add"</li>
+            </ol>
+
+            <strong>Android (Chrome):</strong>
+            <ol>
+                <li>Remove the old SportsClubNet icon from your home screen</li>
+                <li>In Chrome: Menu (⋮) → Settings → Privacy → Clear browsing data</li>
+                <li>Select "Cached images and files" → Clear data</li>
+                <li>Go to your app URL</li>
+                <li>Menu (⋮) → "Add to Home screen"</li>
+                <li>You should see the NEW circular logo</li>
+                <li>Tap "Add"</li>
+            </ol>
+        </div>
+
+        <div class="instructions" style="background: #f1f8e9; border-left-color: #4caf50;">
+            <h3>✅ Verification</h3>
+            <p>The icons above should show your <strong>SportsClubNet high-resolution logo</strong> with:</p>
+            <ul>
+                <li>Circular design for Android icons</li>
+                <li>10% padding around the logo</li>
+                <li>Transparent background</li>
+            </ul>
+            <p>If you see the correct logo above, your icons are ready! Just follow the steps to add to your homescreen.</p>
+        </div>
+
+        <div class="timestamp">
+            Generated: <span id="timestamp"></span>
+        </div>
+    </div>
+
+    <script>
+        // Show current timestamp to verify page freshness
+        document.getElementById('timestamp').textContent = new Date().toLocaleString();
+        
+        // Force reload images if cached
+        const images = document.querySelectorAll('.icon-item img');
+        images.forEach(img => {
+            img.src = img.src.split('?')[0] + '?v=' + Date.now();
+        });
+    </script>
+</body>
+</html>

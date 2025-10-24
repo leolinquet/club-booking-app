@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PWA Debug - SportsClubNet</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .section {
+            background: #252526;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 3px solid #0ea5e9;
+        }
+        h2 {
+            color: #0ea5e9;
+            margin-top: 0;
+        }
+        .ok { color: #4ec9b0; }
+        .error { color: #f48771; }
+        .warning { color: #dcdcaa; }
+        button {
+            background: #0ea5e9;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0284c7;
+        }
+        pre {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        img {
+            max-width: 100px;
+            margin: 5px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 PWA Debug Panel</h1>
+    
+    <div class="section">
+        <h2>Current Icons (with cache-busting)</h2>
+        <div id="icons"></div>
+        <button onclick="refreshIcons()">Force Refresh Icons</button>
+    </div>
+
+    <div class="section">
+        <h2>Manifest Check</h2>
+        <div id="manifest"></div>
+    </div>
+
+    <div class="section">
+        <h2>Service Worker Status</h2>
+        <div id="sw-status"></div>
+        <button onclick="unregisterSW()">Unregister Service Worker</button>
+        <button onclick="checkSW()">Refresh Status</button>
+    </div>
+
+    <div class="section">
+        <h2>Cache Info</h2>
+        <div id="cache-info"></div>
+        <button onclick="clearAllCaches()">Clear All Caches</button>
+    </div>
+
+    <div class="section">
+        <h2>Quick Actions</h2>
+        <button onclick="fullReset()">🔥 FULL RESET (Clear Everything)</button>
+        <button onclick="location.reload(true)">Hard Reload Page</button>
+    </div>
+
+    <script>
+        const timestamp = Date.now();
+
+        async function refreshIcons() {
+            const icons = document.getElementById('icons');
+            icons.innerHTML = `
+                <div>
+                    <p>iOS Icon (180×180):</p>
+                    <img src="/apple-touch-icon.png?t=${timestamp}" alt="iOS">
+                    <p>Android 192×192:</p>
+                    <img src="/web-app-manifest-192x192.png?t=${timestamp}" alt="Android 192">
+                    <p>Android 512×512:</p>
+                    <img src="/web-app-manifest-512x512.png?t=${timestamp}" alt="Android 512">
+                </div>
+            `;
+        }
+
+        async function checkManifest() {
+            try {
+                const response = await fetch('/manifest.webmanifest?v=3&t=' + timestamp);
+                const manifest = await response.json();
+                const manifestDiv = document.getElementById('manifest');
+                manifestDiv.innerHTML = `
+                    <p class="ok">✓ Manifest loaded successfully</p>
+                    <pre>${JSON.stringify(manifest, null, 2)}</pre>
+                `;
+            } catch (e) {
+                document.getElementById('manifest').innerHTML = 
+                    `<p class="error">✗ Error loading manifest: ${e.message}</p>`;
+            }
+        }
+
+        async function checkSW() {
+            const statusDiv = document.getElementById('sw-status');
+            
+            if (!('serviceWorker' in navigator)) {
+                statusDiv.innerHTML = '<p class="error">✗ Service Worker not supported</p>';
+                return;
+            }
+
+            try {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                if (registrations.length === 0) {
+                    statusDiv.innerHTML = '<p class="warning">⚠ No service worker registered</p>';
+                } else {
+                    let html = '<p class="ok">✓ Service Worker(s) found:</p>';
+                    registrations.forEach((reg, i) => {
+                        html += `<pre>Registration ${i + 1}:
+Scope: ${reg.scope}
+Active: ${reg.active ? 'Yes' : 'No'}
+Waiting: ${reg.waiting ? 'Yes' : 'No'}
+Installing: ${reg.installing ? 'Yes' : 'No'}</pre>`;
+                    });
+                    statusDiv.innerHTML = html;
+                }
+            } catch (e) {
+                statusDiv.innerHTML = `<p class="error">✗ Error: ${e.message}</p>`;
+            }
+        }
+
+        async function unregisterSW() {
+            if (!('serviceWorker' in navigator)) return;
+            
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (let reg of registrations) {
+                await reg.unregister();
+            }
+            alert('Service worker unregistered! Reload the page.');
+            checkSW();
+        }
+
+        async function getCacheInfo() {
+            const cacheDiv = document.getElementById('cache-info');
+            
+            if (!('caches' in window)) {
+                cacheDiv.innerHTML = '<p class="error">✗ Cache API not supported</p>';
+                return;
+            }
+
+            try {
+                const cacheNames = await caches.keys();
+                if (cacheNames.length === 0) {
+                    cacheDiv.innerHTML = '<p class="ok">✓ No caches found (clean state)</p>';
+                } else {
+                    let html = `<p class="warning">⚠ Found ${cacheNames.length} cache(s):</p><ul>`;
+                    for (const name of cacheNames) {
+                        const cache = await caches.open(name);
+                        const keys = await cache.keys();
+                        html += `<li>${name} (${keys.length} items)</li>`;
+                    }
+                    html += '</ul>';
+                    cacheDiv.innerHTML = html;
+                }
+            } catch (e) {
+                cacheDiv.innerHTML = `<p class="error">✗ Error: ${e.message}</p>`;
+            }
+        }
+
+        async function clearAllCaches() {
+            if (!('caches' in window)) {
+                alert('Cache API not supported');
+                return;
+            }
+
+            try {
+                const cacheNames = await caches.keys();
+                await Promise.all(cacheNames.map(name => caches.delete(name)));
+                alert(`Cleared ${cacheNames.length} cache(s)!`);
+                getCacheInfo();
+            } catch (e) {
+                alert('Error clearing caches: ' + e.message);
+            }
+        }
+
+        async function fullReset() {
+            if (!confirm('This will clear ALL caches and unregister service workers. Continue?')) {
+                return;
+            }
+
+            // Clear all caches
+            if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                await Promise.all(cacheNames.map(name => caches.delete(name)));
+            }
+
+            // Unregister all service workers
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(registrations.map(reg => reg.unregister()));
+            }
+
+            alert('🔥 Complete reset done! The page will reload.');
+            location.reload(true);
+        }
+
+        // Initialize on load
+        refreshIcons();
+        checkManifest();
+        checkSW();
+        getCacheInfo();
+    </script>
+</body>
+</html>

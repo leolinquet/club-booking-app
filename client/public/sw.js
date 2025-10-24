@@ -4,16 +4,18 @@
  * - Static assets (js/css/images): stale-while-revalidate
  * - Version bump CACHE_VERSION to invalidate old cache
  */
-const CACHE_VERSION = 'v1.0.1';
+const CACHE_VERSION = 'v1.0.4';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const HTML_CACHE = `html-${CACHE_VERSION}`;
 
 const APP_SHELL_GLOB = [
   '/',                 // your SPA entry
-  '/manifest.webmanifest',
-  '/web-app-manifest-192x192.png',
-  '/web-app-manifest-512x512.png',
-  '/apple-touch-icon.png',
+  '/manifest.webmanifest?v=5',
+  '/web-app-manifest-192x192.png?v=5',
+  '/web-app-manifest-512x512.png?v=5',
+  '/apple-touch-icon.png?v=5',
+  '/favicon-32x32.png?v=5',
+  '/favicon.ico?v=5',
   '/sportsclubnet-high-resolution-logo.png'
 ];
 
