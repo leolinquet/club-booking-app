@@ -97,11 +97,11 @@ export function buildAuthRouter() {
         );
         const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${token}`;
         try {
-          await sendEmail(
-            values.email,
-            'Verify your email',
-            `<p>Welcome! Please verify your email:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`
-          );
+          await sendEmail({
+            to: values.email,
+            subject: 'Verify your email',
+            html: `<p>Welcome! Please verify your email:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`
+          });
         } catch (mailErr) {
           console.error('sendEmail failed:', mailErr?.message || mailErr);
         }

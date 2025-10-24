@@ -41,6 +41,7 @@ const files = [
   '015_remove_club_sport_default.sql',
   '016_create_message_reads.sql',
   '017_add_tournament_settings.sql',
+  '018_add_email_verification_columns.sql',
 ].map(f => path.join(MIG_DIR, f));
 function looksDestructive(sql) {
   if (!sql || typeof sql !== 'string') return false;
