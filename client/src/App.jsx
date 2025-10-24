@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from "./Navbar";
 import './styles/theme.css';
 import './styles/ui.css';
@@ -14,20 +13,6 @@ import FloatingHelpButton from './FloatingHelpButton.jsx';
 import { PageLoaderOverlay } from './components/ui/PageLoaderOverlay';
 import { Skeleton, SkeletonCard, SkeletonText } from './components/ui/Skeleton';
 import { useFetch } from './hooks/useFetch';
-import LandingPage from './pages/LandingPage.jsx';
-import AboutPage from './pages/marketing/AboutPage.jsx';
-import BlogPage from './pages/marketing/BlogPage.jsx';
-import ContactPage from './pages/marketing/ContactPage.jsx';
-import HelpCenterPage from './pages/marketing/HelpCenterPage.jsx';
-import HelpArticlePage from './pages/marketing/HelpArticlePage.jsx';
-import SystemStatusPage from './pages/marketing/SystemStatusPage.jsx';
-import CommunityPage from './pages/marketing/CommunityPage.jsx';
-import PrivacyPage from './pages/marketing/PrivacyPage.jsx';
-import TermsPage from './pages/marketing/TermsPage.jsx';
-import SecurityPage from './pages/marketing/SecurityPage.jsx';
-import CookiePage from './pages/marketing/CookiePage.jsx';
-import HelpPage from './pages/marketing/HelpPage.jsx';
-import ComingSoonPage from './pages/marketing/ComingSoonPage.jsx';
 
 const safeParse = (s) => {
   try { return JSON.parse(s); } catch { return null; }
@@ -195,8 +180,7 @@ function Select(props) {
   return <select {...props} className={"border rounded-lg px-3 py-2 w-full "+(props.className||'')} />;
 }
 
-// Main authenticated app component
-function AuthenticatedApp() {
+export default function App(){
   // Simple debounce function to prevent rapid successive calls
   const debounce = useCallback((func, delay) => {
     let timeoutId;
@@ -626,120 +610,10 @@ function AuthenticatedApp() {
 
   if (!user || !user.id) {
     return (
-      <div>
+      <>
         <PageLoaderOverlay isVisible={appLoading} message="Initializing app..." />
-        
-        {/* Header with Logo */}
-        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-gray-200">
-          <div className="max-w-5xl mx-auto px-4 h-14 flex items-center">
-            <a
-              href="/"
-              className="text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-black/20 rounded px-1 hover:text-gray-600 transition-colors"
-              aria-label="Go to landing page"
-            >
-              SportsClubNet
-            </a>
-          </div>
-        </header>
-
-        {/* Main Content with Auth - Full viewport height minus header */}
-        <div className="min-h-[calc(100vh-3.5rem)] grid place-items-center p-4">
-          <Auth onLogin={handleAuthed} onRegister={handleAuthed} />
-        </div>
-
-        {/* Footer Navigation - Below the viewport */}
-        <footer className="bg-gray-900">
-          <div className="mx-auto max-w-7xl px-6 py-8 lg:px-8">
-            <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
-              <div>
-                <h3 className="text-sm font-semibold leading-6 text-white">Product</h3>
-                <ul role="list" className="mt-4 space-y-3">
-                  <li>
-                    <a href="/#features" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      Features
-                    </a>
-                  </li>
-                  <li>
-                    <a href="/#how-it-works" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      How It Works
-                    </a>
-                  </li>
-                  <li>
-                    <a href="/app" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      Demo
-                    </a>
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold leading-6 text-white">Company</h3>
-                <ul role="list" className="mt-4 space-y-3">
-                  <li>
-                    <a href="/about" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      About
-                    </a>
-                  </li>
-                  <li>
-                    <a href="/blog" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      Blog
-                    </a>
-                  </li>
-                  <li>
-                    <a href="/contact" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      Contact
-                    </a>
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold leading-6 text-white">Resources</h3>
-                <ul role="list" className="mt-4 space-y-3">
-                  <li>
-                    <a href="/help-center" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      Help Center
-                    </a>
-                  </li>
-                  <li>
-                    <a href="/status" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      Status
-                    </a>
-                  </li>
-                  <li>
-                    <a href="/community" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      Community
-                    </a>
-                  </li>
-                </ul>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold leading-6 text-white">Legal</h3>
-                <ul role="list" className="mt-4 space-y-3">
-                  <li>
-                    <a href="/privacy" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      Privacy
-                    </a>
-                  </li>
-                  <li>
-                    <a href="/terms" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      Terms
-                    </a>
-                  </li>
-                  <li>
-                    <a href="/security" className="text-sm leading-6 text-gray-300 hover:text-white transition-colors duration-200">
-                      Security
-                    </a>
-                  </li>
-                </ul>
-              </div>
-            </div>
-            <div className="mt-8 border-t border-white/10 pt-6">
-              <p className="text-xs leading-5 text-gray-400">
-                &copy; 2024 SportsClubNet. All rights reserved.
-              </p>
-            </div>
-          </div>
-        </footer>
-      </div>
+        <Auth onLogin={handleAuthed} onRegister={handleAuthed} />
+      </>
     );
   }
 
@@ -1034,52 +908,6 @@ function AuthenticatedApp() {
   );
 }
 
-// Main App component with routing
-export default function App() {
-  return (
-    <Router>
-      <Routes>
-        {/* Marketing landing page - no auth required */}
-        <Route path="/" element={<LandingPage />} />
-        
-        {/* Marketing pages */}
-        <Route path="/about" element={<AboutPage />} />
-        <Route path="/blog" element={<BlogPage />} />
-        <Route path="/contact" element={<ContactPage />} />
-        <Route path="/help-center" element={<HelpCenterPage />} />
-        <Route path="/help-center/article/:articleId" element={<HelpArticlePage />} />
-        <Route path="/status" element={<SystemStatusPage />} />
-        <Route path="/community" element={<CommunityPage />} />
-        <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/terms" element={<TermsPage />} />
-        <Route path="/security" element={<SecurityPage />} />
-        <Route path="/cookies" element={<CookiePage />} />
-        <Route path="/help" element={<HelpPage />} />
-        
-        {/* Coming soon pages */}
-        <Route path="/status" element={<ComingSoonPage title="System Status" description="System status and uptime information will be available here." />} />
-        <Route path="/community" element={<ComingSoonPage title="Community" description="Connect with other club managers in our community forum, coming soon!" />} />
-        
-        {/* Authenticated app routes */}
-        <Route path="/app/*" element={<AuthenticatedApp />} />
-        <Route path="/book" element={<Navigate to="/app" replace />} />
-        <Route path="/clubs" element={<Navigate to="/app" replace />} />
-        <Route path="/tournaments" element={<Navigate to="/app" replace />} />
-        <Route path="/rankings" element={<Navigate to="/app" replace />} />
-        <Route path="/home" element={<Navigate to="/app" replace />} />
-        
-        {/* Auth routes */}
-        <Route path="/login" element={<Navigate to="/app" replace />} />
-        <Route path="/signup" element={<Navigate to="/app" replace />} />
-        <Route path="/demo" element={<Navigate to="/app" replace />} />
-        
-        {/* Catch-all redirect to landing page */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
-  );
-}
-
 /* -------------------- No Club View -------------------- */
 
 /* -------------------- Announcement Panel -------------------- */
@@ -1155,11 +983,12 @@ function AnnouncementPanel({ user, club, isManager, announcements = [], onClose,
 
 /* -------------------- Auth (Login / Register) -------------------- */
 export function Auth({ onLogin, onRegister }) {
-  const [mode, setMode] = useState("login"); // 'login' | 'register'
+  const [mode, setMode] = useState("login"); // 'login' | 'register' | 'verification-sent'
   const [username, setUsername] = useState(""); // email OR username
   const [email, setEmail] = useState("");       // only used in register
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(""); // Success/error messages
 
   // Reset app loading state when auth component mounts
   useEffect(() => {
@@ -1174,6 +1003,7 @@ export function Auth({ onLogin, onRegister }) {
   const doLogin = async () => {
     console.log('doLogin invoked', { username });
     setBusy(true);
+    setMessage("");
     try {
       const r = await fetch(`${API}/auth/login`, {
         method: "POST",
@@ -1187,7 +1017,14 @@ export function Auth({ onLogin, onRegister }) {
       const data = await r.json().catch(() => null);
       if (!r.ok) {
         console.error('login failed', { status: r.status, data });
-        return alert((data && data.error) || "Login failed");
+        
+        // Handle email verification required
+        if (r.status === 403 && data?.email_verification_required) {
+          setMessage("Please verify your email address before logging in. Check your email for the verification link.");
+          return;
+        }
+        
+        return setMessage((data && data.error) || "Login failed");
       }
 
       // Store JWT token in localStorage
@@ -1199,7 +1036,7 @@ export function Auth({ onLogin, onRegister }) {
       onLogin?.(data.user || { id: data.user_id });
     } catch (e) {
       console.error('doLogin error', e);
-      alert('Login failed: ' + (e && e.message ? e.message : String(e)));
+      setMessage('Login failed: ' + (e && e.message ? e.message : String(e)));
     } finally {
       setBusy(false);
     }
@@ -1208,6 +1045,7 @@ export function Auth({ onLogin, onRegister }) {
   // REGISTER: send { email, password, name }
   const doRegister = async () => {
     setBusy(true);
+    setMessage("");
     try {
       const name =
         (username && username.trim()) ||
@@ -1225,14 +1063,46 @@ export function Auth({ onLogin, onRegister }) {
         }),
       });
       const data = await r.json().catch(() => null);
-      if (!r.ok) return alert((data && data.error) || "Signup failed");
+      if (!r.ok) {
+        return setMessage((data && data.error) || "Signup failed");
+      }
 
-      alert("We sent a verification email. Verify, then log in.");
-  setMode("login");
-  // Call onRegister with the actual user object when available so the
-  // app's handleAuthed() receives a user with `id` and can immediately
-  // fetch the user's clubs. Server returns { user: { ... } } on success.
-  onRegister?.(data && data.user ? data.user : data);
+      // Show verification sent message
+      setMode("verification-sent");
+      setMessage("We've sent a verification email to " + email.trim() + ". Please check your email and click the verification link before logging in.");
+      
+      // Do NOT auto-login after registration - user must verify email first
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Resend verification email
+  const resendVerification = async () => {
+    if (!email.trim()) {
+      setMessage("Please enter your email address");
+      return;
+    }
+    
+    setBusy(true);
+    try {
+      const r = await fetch(`${API}/auth/resend-verification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          email: email.trim(),
+        }),
+      });
+      const data = await r.json().catch(() => null);
+      
+      if (!r.ok) {
+        return setMessage((data && data.error) || "Failed to resend verification email");
+      }
+      
+      setMessage("Verification email sent! Please check your email.");
+    } catch (e) {
+      setMessage("Failed to resend verification email");
     } finally {
       setBusy(false);
     }
@@ -1240,6 +1110,37 @@ export function Auth({ onLogin, onRegister }) {
 
   const canLogin = username.trim() && password;
   const canRegister = username.trim() && email.trim() && password;
+
+  // Handle verification-sent mode
+  if (mode === "verification-sent") {
+    return (
+      <div className="min-h-screen grid place-items-center p-4">
+        <div className="auth-form">
+          <div className="form">
+            <h2 className="title">Check Your Email</h2>
+            <p className="subtitle">We've sent you a verification link</p>
+            
+            {message && <div style={{ color: "#2d7c47", marginBottom: "1rem", padding: "0.75rem", backgroundColor: "#f0f9ff", border: "1px solid #2d7c47", borderRadius: "4px" }}>{message}</div>}
+            
+            <p style={{ marginBottom: "1rem", color: "#6b7280" }}>
+              Didn't receive an email? Check your spam folder or resend it.
+            </p>
+            
+            <button onClick={resendVerification} disabled={busy} style={{ marginBottom: "1rem", width: "100%" }}>
+              {busy ? "Sending..." : "Resend Verification Email"}
+            </button>
+            
+            <div className="form-section">
+              Already verified?{" "}
+              <a href="#" onClick={(e) => { e.preventDefault(); setMode("login"); setMessage(""); }}>
+                Log in
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen grid place-items-center p-4">
@@ -1251,6 +1152,21 @@ export function Auth({ onLogin, onRegister }) {
           <p className="subtitle">
             {mode === "login" ? "Welcome back!" : "Join us today"}
           </p>
+
+          {/* Display messages */}
+          {message && (
+            <div style={{ 
+              color: message.includes("verification") || message.includes("verify") ? "#ed8936" : "#dc2626", 
+              marginBottom: "1rem", 
+              padding: "0.75rem", 
+              backgroundColor: message.includes("verification") || message.includes("verify") ? "#fef3c7" : "#fee2e2", 
+              border: `1px solid ${message.includes("verification") || message.includes("verify") ? "#ed8936" : "#dc2626"}`, 
+              borderRadius: "4px",
+              fontSize: "0.875rem"
+            }}>
+              {message}
+            </div>
+          )}
 
           {/* Login: label as "Email or Username" */}
           <div className="form-container">
@@ -1299,7 +1215,7 @@ export function Auth({ onLogin, onRegister }) {
               </button>
               <div className="form-section">
                 Don’t have an account?{" "}
-                <a href="#" onClick={(e) => { e.preventDefault(); setMode("register"); }}>
+                <a href="#" onClick={(e) => { e.preventDefault(); setMode("register"); setMessage(""); }}>
                   Create one
                 </a>
               </div>
@@ -1311,7 +1227,7 @@ export function Auth({ onLogin, onRegister }) {
               </button>
               <div className="form-section">
                 Already have an account?{" "}
-                <a href="#" onClick={(e) => { e.preventDefault(); setMode("login"); }}>
+                <a href="#" onClick={(e) => { e.preventDefault(); setMode("login"); setMessage(""); }}>
                   Log in
                 </a>
               </div>
@@ -2402,12 +2318,19 @@ function TournamentsView({ API, club, user, isManager }) {
 
   // creation form
   const [name, setName] = useState('');
-  const [sport, setSport] = useState('tennis');
+  const [sportChoice, setSportChoice] = useState(''); // 'tennis' | 'basketball' | ... | 'custom'
+  const [customSport, setCustomSport] = useState('');
   const [drawSize, setDrawSize] = useState(16);
-  const [seedCount, setSeedCount] = useState(4);
+  const [seedCount, setSeedCount] = useState(''); // Changed to string for placeholder
   const [pointsByRound, setPointsByRound] = useState({
     R128: 0, R64: 5, R32: 10, R16: 20, QF: 40, SF: 70, F: 120, C: 200
   });
+
+  // State for editing tournament settings
+  const [editingSettings, setEditingSettings] = useState(false);
+  const [editDrawSize, setEditDrawSize] = useState(16);
+  const [editSeedCount, setEditSeedCount] = useState(4);
+  const [editPointsByRound, setEditPointsByRound] = useState({});
 
   // selected tournament
   const [selectedId, setSelectedId] = useState(null);
@@ -2450,6 +2373,14 @@ function TournamentsView({ API, club, user, isManager }) {
   const createTournament = async () => {
     if (!isManager) return;
     if (!name.trim()) return alert('Name required');
+    
+    // Determine final sport value
+    const finalSport = sportChoice === 'custom' ? customSport.trim() : sportChoice;
+    if (!finalSport) return alert('Please select a sport');
+    
+    // Validate seed count
+    if (!seedCount) return alert('Please select amount of seeds');
+    
     const needed = roundLabelsFor(Number(drawSize));
     const pts = {};
     needed.forEach(lbl => { pts[lbl] = Number(pointsByRound[lbl] || 0); });
@@ -2457,13 +2388,22 @@ function TournamentsView({ API, club, user, isManager }) {
     const r = await fetch(`${API}/clubs/${club.id}/tournaments`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: name.trim(), sport, drawSize: Number(drawSize),
-        seedCount: Number(seedCount), pointsByRound: pts, managerId: user.id
+        name: name.trim(), 
+        sport: finalSport, 
+        drawSize: Number(drawSize),
+        seedCount: Number(seedCount), 
+        pointsByRound: pts, 
+        managerId: user.id
       })
     });
     const data = await r.json();
     if (!r.ok) return alert(data.error || 'Create failed');
+    
+    // Reset form
     setName('');
+    setSportChoice('');
+    setCustomSport('');
+    setSeedCount('');
     await loadList();
   };
 
@@ -2481,6 +2421,24 @@ function TournamentsView({ API, club, user, isManager }) {
       return;
     }
     setDetail(data);
+    
+    // Load tournament settings for editing
+    if (data.tournament) {
+      setEditDrawSize(data.tournament.draw_size || 16);
+      setEditSeedCount(data.tournament.seed_count || data.tournament.seeds_count || 0);
+      // Load points by round if available
+      if (data.tournament.points_by_round) {
+        try {
+          const pts = typeof data.tournament.points_by_round === 'string' 
+            ? JSON.parse(data.tournament.points_by_round)
+            : data.tournament.points_by_round;
+          setEditPointsByRound(pts);
+        } catch (e) {
+          setEditPointsByRound({});
+        }
+      }
+    }
+    setEditingSettings(false);
   };
 
   // Sign in / Withdraw (non-managers)
@@ -2591,9 +2549,17 @@ function TournamentsView({ API, club, user, isManager }) {
 
   const generateBracket = async () => {
     if (!selectedId) return;
+    // Use tournament's saved settings instead of local state
+    const tournamentDrawSize = detail?.tournament?.draw_size || 16;
+    const tournamentSeedCount = detail?.tournament?.seed_count || detail?.tournament?.seeds_count || 0;
+    
     const r = await fetch(`${API}/tournaments/${selectedId}/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ drawSize: Number(drawSize), seedCount: Number(seedCount), managerId: user.id })
+      body: JSON.stringify({ 
+        drawSize: Number(tournamentDrawSize), 
+        seedCount: Number(tournamentSeedCount), 
+        managerId: user.id 
+      })
     });
     const data = await r.json();
     if (!r.ok) return alert(data.error || 'Generate failed');
@@ -2811,14 +2777,88 @@ function TournamentsView({ API, club, user, isManager }) {
         <div className="border rounded-lg p-4 bg-white shadow-sm">
           <div className="text-base font-semibold mb-3">Create Tournament</div>
           <div className="grid sm:grid-cols-2 gap-3">
-            <input className="border rounded px-3 py-2" placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
-            <input className="border rounded px-3 py-2" placeholder="Sport (e.g., tennis)" value={sport} onChange={e=>setSport(e.target.value)} />
-            <select className="border rounded px-3 py-2" value={drawSize} onChange={e=>setDrawSize(Number(e.target.value))}>
+            {/* Name input */}
+            <label className="block">
+              <span className="sr-only">Tournament name</span>
+              <input 
+                className="border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                placeholder="Name" 
+                value={name} 
+                onChange={e=>setName(e.target.value)}
+                aria-describedby="name-helper"
+              />
+            </label>
+
+            {/* Sport dropdown */}
+            <div>
+              <label htmlFor="sport-select" className="sr-only">Sport</label>
+              <select
+                id="sport-select"
+                className={`border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  !sportChoice ? 'text-gray-400' : 'text-gray-900'
+                }`}
+                style={!sportChoice ? { opacity: 1 } : {}}
+                value={sportChoice}
+                onChange={e => setSportChoice(e.target.value)}
+                aria-describedby="sport-helper"
+              >
+                <option value="" disabled hidden style={{ color: '#9ca3af' }}>Sport</option>
+                <option value="tennis">Tennis</option>
+                <option value="basketball">Basketball</option>
+                <option value="football">Football</option>
+                <option value="soccer">Soccer</option>
+                <option value="pickleball">Pickleball</option>
+                <option value="padel">Padel</option>
+                <option value="badminton">Badminton</option>
+                <option value="volleyball">Volleyball</option>
+                <option value="custom">Custom…</option>
+              </select>
+            </div>
+
+            {/* Custom sport input (shows when Custom is selected) */}
+            {sportChoice === 'custom' && (
+              <div className="sm:col-span-2">
+                <label htmlFor="custom-sport" className="sr-only">Custom sport name</label>
+                <input
+                  id="custom-sport"
+                  className="border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter sport name"
+                  value={customSport}
+                  onChange={e => setCustomSport(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Draw size dropdown */}
+            <select 
+              className="border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+              value={drawSize} 
+              onChange={e=>setDrawSize(Number(e.target.value))}
+            >
               {[4,8,16,32,64,128].map(n=> <option key={n} value={n}>{n} draw</option>)}
             </select>
-            <input type="number" min={0} max={Math.min(32, Number(drawSize))}
-                   className="border rounded px-3 py-2" value={seedCount}
-                   onChange={e=>setSeedCount(Number(e.target.value))} />
+
+            {/* Seeds dropdown */}
+            <div>
+              <label htmlFor="seeds-select" className="sr-only">Amount of seeds</label>
+              <select
+                id="seeds-select"
+                className={`border rounded px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  !seedCount ? 'text-gray-400' : 'text-gray-900'
+                }`}
+                style={!seedCount ? { opacity: 1 } : {}}
+                value={seedCount}
+                onChange={e => setSeedCount(e.target.value)}
+                aria-describedby="seeds-helper"
+              >
+                <option value="" disabled hidden style={{ color: '#9ca3af' }}>Amount of Seeds</option>
+                <option value="2">2</option>
+                <option value="4">4</option>
+                <option value="8">8</option>
+                <option value="16">16</option>
+                <option value="32">32</option>
+              </select>
+            </div>
           </div>
 
           {/* Points by round */}
@@ -2834,7 +2874,7 @@ function TournamentsView({ API, club, user, isManager }) {
           </div>
 
           <div className="mt-3">
-            <button className="px-4 py-2 rounded bg-black text-white" onClick={createTournament}>Create</button>
+            <button className="px-4 py-2 rounded bg-black text-white hover:bg-gray-800" onClick={createTournament}>Create</button>
           </div>
         </div>
       )}
@@ -2846,6 +2886,131 @@ function TournamentsView({ API, club, user, isManager }) {
             <div className="text-base font-semibold">{detail?.tournament?.name ?? ''} · {detail?.tournament?.sport ?? ''}</div>
             <button className="text-sm text-gray-500 hover:underline" onClick={()=> setDetail(null)}>Close</button>
           </div>
+
+          {/* Tournament Settings (visible only to managers) */}
+          {isManager && detail?.tournament && (
+            <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm font-medium text-gray-700">Tournament Settings</div>
+                <button 
+                  className="text-xs px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
+                  onClick={() => setEditingSettings(!editingSettings)}
+                >
+                  {editingSettings ? 'Cancel' : 'Edit'}
+                </button>
+              </div>
+              
+              {!editingSettings ? (
+                <div className="space-y-2 text-sm">
+                  <div className="flex gap-6">
+                    <div>
+                      <span className="text-gray-600">Draw Size:</span>
+                      <span className="ml-2 font-semibold text-gray-900">{detail.tournament.draw_size || 'Not set'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Seeds:</span>
+                      <span className="ml-2 font-semibold text-gray-900">{detail.tournament.seed_count || detail.tournament.seeds_count || 0}</span>
+                    </div>
+                  </div>
+                  
+                  {/* Points by Round Display */}
+                  <div className="mt-3 pt-3 border-t border-gray-300">
+                    <div className="text-gray-600 mb-2">Points by Round:</div>
+                    {detail.tournament.points_by_round ? (
+                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+                        {Object.entries(
+                          typeof detail.tournament.points_by_round === 'string' 
+                            ? JSON.parse(detail.tournament.points_by_round)
+                            : detail.tournament.points_by_round
+                        ).map(([round, pts]) => (
+                          <div key={round} className="text-xs">
+                            <span className="text-gray-500">{round}:</span>
+                            <span className="ml-1 font-semibold">{pts}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-400 italic">Not set</div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-gray-600 mb-1 block">Draw Size</label>
+                      <select 
+                        className="border rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+                        value={editDrawSize}
+                        onChange={e => setEditDrawSize(Number(e.target.value))}
+                      >
+                        {[4,8,16,32,64,128].map(n => <option key={n} value={n}>{n} draw</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600 mb-1 block">Seeds</label>
+                      <select 
+                        className="border rounded px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
+                        value={editSeedCount}
+                        onChange={e => setEditSeedCount(Number(e.target.value))}
+                      >
+                        <option value={0}>0 seeds</option>
+                        <option value={2}>2</option>
+                        <option value={4}>4</option>
+                        <option value={8}>8</option>
+                        <option value={16}>16</option>
+                        <option value={32}>32</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  {/* Points by Round Edit */}
+                  <div>
+                    <label className="text-xs text-gray-600 mb-2 block">Points by Round</label>
+                    <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
+                      {roundLabelsFor(Number(editDrawSize)).map(lbl => (
+                        <div key={lbl} className="flex items-center gap-1">
+                          <span className="text-xs w-8 text-gray-600">{lbl}</span>
+                          <input 
+                            type="number" 
+                            className="border rounded px-2 py-1 w-16 text-sm"
+                            value={editPointsByRound[lbl] ?? 0}
+                            onChange={e => setEditPointsByRound(prev => ({ ...prev, [lbl]: Number(e.target.value) }))}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <button 
+                    className="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700 text-sm"
+                    onClick={async () => {
+                      // Save tournament settings
+                      const r = await fetch(`${API}/tournaments/${detail.tournament.id}/settings`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          managerId: user.id,
+                          drawSize: editDrawSize,
+                          seeds: editSeedCount,
+                          points: editPointsByRound
+                        })
+                      });
+                      if (!r.ok) {
+                        const err = await r.json().catch(() => ({ error: 'Failed to update settings' }));
+                        alert(err.error || 'Failed to update settings');
+                        return;
+                      }
+                      setEditingSettings(false);
+                      await openDetail(detail.tournament.id);
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Manager pre-draw controls */}
           {isManager && !detail?.tournament?.end_date && detail?.matches?.length === 0 && (
@@ -2880,15 +3045,10 @@ function TournamentsView({ API, club, user, isManager }) {
               {/* Generate bracket */}
               <div className="border rounded p-3">
                 <div className="text-sm font-medium mb-2">Generate Bracket</div>
-                <div className="flex gap-2 items-center">
-                  <select className="border rounded px-2 py-1" value={drawSize} onChange={e=>setDrawSize(Number(e.target.value))}>
-                    {[4,8,16,32,64,128].map(n=> <option key={n} value={n}>{n}</option>)}
-                  </select>
-                  <input type="number" min={0} max={Math.min(32, Number(drawSize))}
-                         className="border rounded px-2 py-1 w-20"
-                         value={seedCount} onChange={e=>setSeedCount(Number(e.target.value))} />
-                  <button className="px-3 py-1 rounded bg-black text-white" onClick={generateBracket}>Generate</button>
-                </div>
+                <p className="text-xs text-gray-500 mb-2">
+                  Will use tournament settings: {detail?.tournament?.draw_size || 16} draw, {detail?.tournament?.seed_count || detail?.tournament?.seeds_count || 0} seeds
+                </p>
+                <button className="px-4 py-2 rounded bg-black text-white hover:bg-gray-800" onClick={generateBracket}>Generate</button>
               </div>
             </div>
           )}
