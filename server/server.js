@@ -19,6 +19,7 @@ import { DateTime } from 'luxon';
 import { prisma, logDbConnection } from './prisma.js';
 import healthRoutes from './routes/health.js';
 import webhookRoutes from './routes/webhooks.js';
+import emailDebugRoutes from './routes/email-debug.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -212,6 +213,9 @@ app.use('/health', healthRoutes);
 
 // Mount webhook routes
 app.use('/webhooks', webhookRoutes);
+
+// Mount email debug routes
+app.use('/debug', emailDebugRoutes);
 
 // env check
 app.get('/__envcheck', async (req, res) => {
