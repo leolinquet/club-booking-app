@@ -102,8 +102,11 @@ export function buildAuthRouter() {
             subject: 'Verify your email',
             html: `<p>Welcome! Please verify your email:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p>`
           });
+          console.log(`[auth] Verification email sent to ${values.email}`);
         } catch (mailErr) {
-          console.error('sendEmail failed:', mailErr?.message || mailErr);
+          console.error('[auth] sendEmail failed:', mailErr?.message || mailErr);
+          console.error('[auth] Email was not sent but account was created for:', values.email);
+          // Account is still created - email verification is optional
         }
         return res.json({ ok: true, user_id, mode: 'email-verify' });
       }

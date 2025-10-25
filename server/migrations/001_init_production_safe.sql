@@ -10,7 +10,9 @@ CREATE TABLE IF NOT EXISTS users (
   display_name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
-  email_verified_at TIMESTAMPTZ
+  email_verified_at TIMESTAMPTZ,
+  email_verify_token TEXT,
+  email_verify_expires TIMESTAMPTZ
 );
 
 -- clubs next
