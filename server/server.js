@@ -18,6 +18,7 @@ import { DateTime } from 'luxon';
 // Prisma setup
 import { prisma, logDbConnection } from './prisma.js';
 import healthRoutes from './routes/health.js';
+import webhookRoutes from './routes/webhooks.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -208,6 +209,9 @@ if (isProd) {
 
 // Mount health check routes
 app.use('/health', healthRoutes);
+
+// Mount webhook routes
+app.use('/webhooks', webhookRoutes);
 
 // env check
 app.get('/__envcheck', async (req, res) => {
