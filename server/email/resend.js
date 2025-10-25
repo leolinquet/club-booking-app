@@ -75,3 +75,48 @@ export async function sendEmail({ to, subject, text, html, from }) {
 }
 
 export { mailBackend }
+
+// Generate verification email content
+export async function generateVerificationEmail(verifyUrl, displayName) {
+  const name = displayName || 'there';
+  
+  return {
+    subject: 'Verify your email - SportsClubNet',
+    text: `Hi ${name},\n\nWelcome to SportsClubNet! Please verify your email address by clicking the link below:\n\n${verifyUrl}\n\nThis link will expire in 24 hours.\n\nIf you didn't create this account, you can safely ignore this email.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h1 style="color: #10b981; margin-bottom: 20px;">Welcome to SportsClubNet!</h1>
+        
+        <p>Hi ${name},</p>
+        
+        <p>Thank you for signing up! Please verify your email address to complete your registration.</p>
+        
+        <div style="margin: 30px 0;">
+          <a href="${verifyUrl}" 
+             style="background-color: #10b981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
+            Verify Email Address
+          </a>
+        </div>
+        
+        <p style="color: #6b7280; font-size: 14px;">
+          Or copy and paste this link into your browser:<br>
+          <a href="${verifyUrl}" style="color: #10b981; word-break: break-all;">${verifyUrl}</a>
+        </p>
+        
+        <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
+          This link will expire in 24 hours.
+        </p>
+        
+        <p style="color: #6b7280; font-size: 14px;">
+          If you didn't create this account, you can safely ignore this email.
+        </p>
+        
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
+        
+        <p style="color: #9ca3af; font-size: 12px;">
+          SportsClubNet - Your sports club management platform
+        </p>
+      </div>
+    `
+  };
+}
