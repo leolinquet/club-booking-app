@@ -1,5 +1,4 @@
 import React from 'react';
-import { useParams, Navigate } from 'react-router-dom';
 import { ArrowLeft, Clock, User, ThumbsUp, ThumbsDown, MessageCircle, ChevronRight, Users, HelpCircle } from 'lucide-react';
 import Footer from '../../components/marketing/Footer.jsx';
 
@@ -1266,11 +1265,14 @@ const articleContent = {
 };
 
 export default function HelpArticlePage() {
-  const { articleId } = useParams();
+  // Extract article ID from URL path instead of using useParams
+  const articleId = window.location.pathname.split('/').pop();
   const article = articleContent[parseInt(articleId)];
 
   if (!article) {
-    return <Navigate to="/help-center" replace />;
+    // Redirect to help center if article not found
+    window.location.href = '/help-center';
+    return null;
   }
 
   return (

@@ -18,6 +18,7 @@ import LandingPage from './pages/LandingPage';
 import AboutPage from './pages/marketing/AboutPage';
 import BlogPage from './pages/marketing/BlogPage';
 import HelpCenterPage from './pages/marketing/HelpCenterPage';
+import HelpArticlePage from './pages/marketing/HelpArticlePage';
 import SystemStatusPage from './pages/marketing/SystemStatusPage';
 import CommunityPage from './pages/marketing/CommunityPage';
 import PrivacyPage from './pages/marketing/PrivacyPage';
@@ -638,6 +639,7 @@ export default function App(){
   if (currentPage === '/about') return <AboutPage />;
   if (currentPage === '/blog') return <BlogPage />;
   if (currentPage === '/help-center') return <HelpCenterPage />;
+  if (currentPage.startsWith('/help-center/article/')) return <HelpArticlePage />;
   if (currentPage === '/status') return <SystemStatusPage />;
   if (currentPage === '/community') return <CommunityPage />;
   if (currentPage === '/privacy') return <PrivacyPage />;
