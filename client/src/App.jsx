@@ -60,7 +60,7 @@ const API = (() => {
   try {
     const h = typeof window !== 'undefined' ? window.location.hostname : '';
     if ((/\.onrender\.com$/i.test(h) || /sportsclubnet\.com$/i.test(h)) && (!runtimeBase || /localhost/.test(runtimeBase))) {
-      base = 'https://club-booking-app.onrender.com';
+      base = 'https://sportsclubnet.com';
       if (typeof window !== 'undefined') window.API_BASE = base;
     }
   } catch (e) {
@@ -1904,7 +1904,7 @@ function UserBooking({ user, club }){
                         {cell.owned ? (
                           <button
                             onClick={() => cancelBooking(cell.bookingId)}
-                            className="w-full rounded bg-orange-500 hover:opacity-90 relative
+                            className="booking-slot w-full rounded bg-orange-500 hover:opacity-90 relative
                                       min-h-12 sm:h-10 active:scale-[.98] transition"
                             title="Click to cancel your reservation"
                           >
@@ -1912,13 +1912,16 @@ function UserBooking({ user, club }){
                             <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium select-none">
                               {cell.bookedBy ? cell.bookedBy : 'You'}
                             </span>
+                            <div className="booking-slot-tooltip">
+                              {row.time} • Court {i+1} • Click to cancel
+                            </div>
                             <span className="sr-only">Cancel your reservation</span>
                           </button>
                         ) : cell.booked ? (
                           isManager ? (
                             <button
                               onClick={() => cancelBooking(cell.bookingId)}
-                              className="w-full rounded bg-red-500 hover:opacity-90 relative
+                              className="booking-slot w-full rounded bg-red-500 hover:opacity-90 relative
                                         min-h-12 sm:h-10 active:scale-[.98] transition"
                               title="Manager: click to cancel this booking"
                             >
@@ -1928,16 +1931,22 @@ function UserBooking({ user, club }){
                                   {cell.bookedBy}
                                 </span>
                               )}
+                              <div className="booking-slot-tooltip">
+                                {row.time} • Court {i+1} • Booked by {cell.bookedBy || 'unknown'}
+                              </div>
                               <span className="sr-only">Cancel booking</span>
                             </button>
                           ) : (
-                            <div className="rounded bg-red-500 min-h-12 sm:h-10 relative">
+                            <div className="booking-slot rounded bg-red-500 min-h-12 sm:h-10 relative">
                               {/* For non-managers, show the booking name if available */}
                               {cell.bookedBy && (
                                 <span className="absolute inset-0 grid place-items-center text-[11px] text-white font-medium select-none">
                                   {cell.bookedBy}
                                 </span>
                               )}
+                              <div className="booking-slot-tooltip">
+                                {row.time} • Court {i+1} • Booked by {cell.bookedBy || 'unknown'}
+                              </div>
                             </div>
                           )
                         ) : (
@@ -1949,11 +1958,16 @@ function UserBooking({ user, club }){
                             return (
                               <button
                                 onClick={() => openConfirm(cell.courtIndex, row.time)}
-                                className={`w-full rounded bg-green-500 hover:opacity-90 relative
+                                className={`booking-slot w-full rounded bg-green-500 hover:opacity-90 relative
                                             min-h-12 sm:h-10 active:scale-[.98] transition ${extraCls}`}
                                 disabled={disabled}
                                 aria-pressed="false"
                               >
+                                {!disabled && (
+                                  <div className="booking-slot-tooltip">
+                                    {row.time} • Court {i+1} • Click to book
+                                  </div>
+                                )}
                                 <span className="sr-only">Book this slot</span>
                               </button>
                             );

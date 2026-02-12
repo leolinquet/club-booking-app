@@ -685,3 +685,29 @@
 .animate-slide-in-right {
   animation: slide-in-right 0.3s ease-out;
 }
+
+/* Booking Slot Tooltip */
+.booking-slot-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out;
+  z-index: 10;
+}
+
+.booking-slot:hover .booking-slot-tooltip {
+  opacity: 1;
+}
+
+.booking-slot {
+  position: relative;
+}
